@@ -8,9 +8,11 @@ repos:
     rev: v4.5.0
     hooks:
       - id: trailing-whitespace
+      - id: check-ast
       - id: check-yaml
       - id: check-added-large-files
         args: ['--maxkb=2500']
+      - id: check-docstring-first
       - id: check-toml
       - id: check-merge-conflict
       - id: mixed-line-ending
@@ -38,5 +40,27 @@ repos:
         args: ["clean"]
         language: system
         pass_filenames: false
+
+  - repo: https://github.com/Lucas-C/pre-commit-hooks
+    rev: v1.1.10
+    hooks:
+      - id: insert-license
+        name: Add MIT license to docs
+        exclude: ^(docs/source)
+        files: \.py$
+        args:
+          - --license-filepath
+          - LICENSE
+
+  - repo: https://github.com/Lucas-C/pre-commit-hooks
+    rev: v1.1.10
+    hooks:
+      - id: insert-license
+        name: insert MIT license
+        exclude: ^(docs/source)
+        files: \.py$
+        args:
+          - --license-filepath
+          - LICENSE
 
 # TODO: add CI for docs
