@@ -1,0 +1,198 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "interpreto"
+version = "0.1.0.dev0"
+description = "TODO"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {file = "LICENSE"}
+keywords = []
+authors = [
+  {name = "TODO"},
+  {email = "TODO"}
+]
+maintainers = [
+  {name = "TODO"},
+  {email = "TODO"}
+]
+# Pypi classifiers: https://pypi.org/classifiers/
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Environment :: GPU",
+  "Environment :: GPU :: NVIDIA CUDA",
+  "Framework :: Jupyter",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Scientific/Engineering :: Visualization",
+  "Typing :: Typed"
+]
+dependencies = [
+  "transformers[sentencepiece,tokenizers]>=4.22.0",
+  "torch>=2.0",
+  "nvidia-cublas-cu11>=11.10.3.66; sys_platform=='Linux'",
+  "nvidia-cuda-cupti-cu11>=11.7.101; sys_platform=='Linux'",
+  "nvidia-cuda-nvrtc-cu11>=11.7.99; sys_platform=='Linux'",
+  "nvidia-cuda-runtime-cu11>=11.7.99; sys_platform=='Linux'",
+  "nvidia-cudnn-cu11>=8.5.0.96; sys_platform=='Linux'",
+  "nvidia-cufft-cu11>=10.9.0.58; sys_platform=='Linux'",
+  "nvidia-curand-cu11>=10.2.10.91; sys_platform=='Linux'",
+  "nvidia-cusolver-cu11>=11.4.0.1; sys_platform=='Linux'",
+  "nvidia-cusparse-cu11>=11.7.4.91; sys_platform=='Linux'",
+  "nvidia-nccl-cu11>=2.14.3; sys_platform=='Linux'",
+  "nvidia-nvtx-cu11>=11.7.91; sys_platform=='Linux'",
+] # TODO: Add more dependencies
+
+[project.optional-dependencies]
+docs = [] # TODO: Add dependencies for mkdocs
+lint = [
+  "setuptools",
+  "pydoclint>=0.4.0",
+  "pre-commit>=2.19.0",
+  "pytest>=7.2.0",
+  "pytest-cov>=4.0.0",
+  "pytest-xdist>=3.5.0",
+  "ruff>=0.2.0",
+  "virtualenv>=20.26.6",
+  "networkx<=2.8.8; python_version<'3.10'",
+  "networkx>=3.0.0; python_version>='3.10'",
+  "numpy<=2.1.0; python_version<'3.10' and python_version>='3.9'",
+  "numpy<=1.24.4; python_version<'3.9'",
+  "numpy>=2.2.0; python_version>='3.10'"
+]
+
+[project.urls]
+homepage = "https://github.com/FOR-sight-ai/interpreto"
+documentation = "TODO"
+repository = "https://github.com/FOR-sight-ai/interpreto"
+changelog = "https://github.com/FOR-sight-ai/interpreto/blob/main/CHANGELOG.md"
+
+[tool.mypy]
+# https://mypy.readthedocs.io/en/latest/config_file.html#using-a-pyproject-toml-file
+python_version = "3.8"
+strict = true
+
+
+[tool.pytest.ini_options]
+# https://docs.pytest.org/en/6.2.x/customize.html#pyproject-toml
+# Directories that are not visited by pytest collector:
+testpaths = "tests"
+python_files = "test_*.py"
+norecursedirs =["hooks", "*.egg", ".eggs", "dist", "build", "docs", ".tox", ".git", "__pycache__"]
+doctest_optionflags = ["NUMBER", "NORMALIZE_WHITESPACE", "IGNORE_EXCEPTION_DETAIL"]
+markers = [
+  "slow",
+  "require_cuda_gpu"
+]
+addopts = [
+  "--strict-markers",
+  "--tb=short",
+  "--doctest-modules",
+  "--doctest-continue-on-failure",
+  "--disable-pytest-warnings",
+  "--color=yes"
+]
+
+
+[tool.coverage.run]
+parallel = true
+source = [
+    "interpreto",
+]
+omit = [
+    "*/__main__.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no-cover",
+  "pass",
+  "raise",
+  "except",
+  "raise NotImplementedError",
+]
+
+
+[tool.setuptools]
+packages = ["interpreto"]
+
+
+[tool.ruff]
+target-version = "py310"
+exclude = [
+  ".git",
+  ".vscode",
+  ".github",
+  "__pycache__",
+  "docs/source/conf.py",
+  "old",
+  "build",
+  "htmlcov",
+  "dev_examples",
+  "dist",
+  ".tox",
+  "temp",
+  "*.egg",
+  "venv",
+  ".venv",
+]
+fix = true
+line-length = 119
+src = ["interpreto", "examples", "tests"]
+extend-include = ["*.ipynb"]
+
+[tool.ruff.lint]
+external = [
+  "DOC",  # pydoclint
+]
+ignore = [
+  "B006", # mutable default argument
+  "C901", # function too complex
+  "E501", # line too long (handled by format)
+  "E731", # do not assign a lambda expression, use a def
+  "E741", # ambiguous variable name
+  "F722", # syntax error in forward annotation (as used by jaxtyping)
+  "F821", # undefined name
+  "PLR2004", # unnamed numerical constants used
+  "PLR0913", # too many arguments
+  "PLR0915", # too many statements
+  "W191", # indentation contains tabs (handled by format)
+]
+select = [
+  "E", # pycodestyle errors
+  "F", # pyflakes
+  "W", # pycodestyle warnings
+  "C", # flake8-comprehensions
+  #"D", # flake8-docstrings
+  "B", # flake8-bugbear
+  "I", # isort
+  "UP", # flake8-pyupgrade
+  "PLC", # flake8-pylint
+  "PLE", # flake8-pylint
+  "PLR", # flake8-pylint
+  "PLW", # flake8-pylint
+]
+per-file-ignores = { "__init__.py" = ["F401"], "**/examples/*" = ["B018", "E402"] }
+isort = { known-first-party = ["interpreto"], order-by-type = true}
+pylint = { max-branches = 22 }
+pyupgrade = { keep-runtime-typing = true }
+pydocstyle = { convention = "google" }
+
+
+[tool.pydoclint]
+style = 'google'
+exclude = '\.git|\.tox|tests/data|some_script\.py'
+require-return-section-when-returning-nothing = true
