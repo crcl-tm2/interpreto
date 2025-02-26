@@ -16,9 +16,7 @@ class Perturbator(ABC):
     """
 
     @abstractmethod
-    def perturbate(
-        self, item: ModelInput | Collection[ModelInput]
-    ) -> Collection[TokenEmbedding]:
+    def perturbate(self, item: ModelInput | Collection[ModelInput]) -> Collection[TokenEmbedding]:
         """
         Method to perturbate an input, should return a collection of perturbated elements and their associated masks
         """
