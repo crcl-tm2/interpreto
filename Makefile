@@ -71,8 +71,7 @@ check-style:
 	$(PYTHON) -m ruff check --no-fix --config pyproject.toml ./
 
 .PHONY: lint
-lint:
-	fix-style check-style
+lint: fix-style
 
 #* Testing
 .PHONY: test
