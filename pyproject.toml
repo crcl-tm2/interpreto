@@ -65,7 +65,8 @@ lint = [
   "pytest-cov>=4.0.0",
   "pytest-xdist>=3.5.0",
   "ruff>=0.2.0",
-  "virtualenv>=20.26.6"
+  "virtualenv>=20.26.6",
+  "networkx<=2.8.8" # Pinned to allow torch compatibility with Python <3.10
 ]
 
 [project.urls]
