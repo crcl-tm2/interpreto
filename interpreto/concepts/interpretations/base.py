@@ -14,4 +14,3 @@ class ConceptInterpretability(ABC):
 
         :param concept: The concept to analyze.
         """
-        pass

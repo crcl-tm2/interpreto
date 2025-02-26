@@ -1,10 +1,13 @@
-from base import AbstractConceptExplainer
+from abc import abstractmethod
+
+from interpreto.concepts.base import AbstractConceptExplainer
 
 
 class ConceptBottleneckExplainer(AbstractConceptExplainer):
     """
     Implementation of a concept explainer based on the Concept Bottleneck model.
     """
+
     @abstractmethod
     def fit(self, inputs, split):
         """
@@ -13,11 +16,9 @@ class ConceptBottleneckExplainer(AbstractConceptExplainer):
         :param inputs: The inputs to be explained.
         :return: the concept encoder and the concept decoder.
         """
-        #self.split = split
-        #self.encoder = ...
-        #self.decoder = ...
-        pass
-
+        # self.split = split
+        # self.encoder = ...
+        # self.decoder = ...
 
     def concept_output_attribution(self, concepts, attribution_method):
         """
@@ -27,4 +28,6 @@ class ConceptBottleneckExplainer(AbstractConceptExplainer):
         :param attribution_method: The method to use for attribution analysis.
         :return: A list of attribution scores for each concept.
         """
-        pass
+        raise NotImplementedError(
+            f"Concept output attribution method {concepts}, {attribution_method} is not implemented yet."
+        )

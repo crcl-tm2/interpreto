@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import List, Tuple, Union
+from collections.abc import Iterable
+
 
 class AbstractConceptExplainer(ABC):
     """
@@ -23,11 +26,12 @@ class AbstractConceptExplainer(ABC):
         :param inputs: The inputs to be explained.
         :return: the concept encoder.
         """
-        #self.encoder = ...
-        #self.split = split
-        pass
+        # self.encoder = ...
+        # self.split = split
 
-    def top_k_inputs_for_concept(self, inputs: Union[str, List[str], List[List[str]]], concept: Union[str, List[str]], k: int = 5) -> List[Tuple[str, float]]:
+    def top_k_inputs_for_concept(
+        self, inputs: str | Iterable[str] | Iterable[Iterable[str]], concept: str | list[str], k: int = 5
+    ) -> list[tuple[str, float]]:
         """
         Retrieves the top-k most important tokens/words/clauses/phrases related to a given concept.
 
@@ -36,10 +40,13 @@ class AbstractConceptExplainer(ABC):
         :param k: The number of important textual elements to retrieve.
         :return: A list of tuples containing the top-k most relevant textual elements and their importance scores.
         """
-        #TODO
-        pass
+        # TODO
+        print(inputs, concept, k)
+        raise NotImplementedError()
 
-    def input_concept_attribution(self, inputs: Union[str, List[str], List[List[str]]], concept: Union[str, List[str]], attribution_method: str) -> List[float]:
+    def input_concept_attribution(
+        self, inputs: str | Iterable[str] | Iterable[Iterable[str]], concept: str | list[str], attribution_method: str
+    ) -> list[float]:
         """
         Computes the attribution of each input to a given concept.
 
@@ -48,5 +55,6 @@ class AbstractConceptExplainer(ABC):
         :param attribution_method: The method to use for attribution analysis.
         :return: A list of attribution scores for each input.
         """
-        #TODO
-        pass
+        # TODO
+        print(inputs, concept, attribution_method)
+        raise NotImplementedError()
