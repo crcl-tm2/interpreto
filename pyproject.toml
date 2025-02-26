@@ -102,7 +102,7 @@ lint = [
 
 [project.urls]
 homepage = "https://github.com/FOR-sight-ai/interpreto"
-documentation = "TODO"
+documentation = "https://github.com/FOR-sight-ai/interpreto" # TODO
 repository = "https://github.com/FOR-sight-ai/interpreto"
 changelog = "https://github.com/FOR-sight-ai/interpreto/blob/main/CHANGELOG.md"
 
