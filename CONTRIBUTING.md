@@ -27,10 +27,7 @@ make lint
 
 ### Checks
 
-Many checks are configured for this project. Command `make check-style` will check style with `ruff`.
-The `make check-safety` command will look at the security of your code.
-
-Comand `make lint` applies all checks.
+Many checks are configured for this project. Command `make lint` will check style with `ruff`.
 
 ### Before submitting
 

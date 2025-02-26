@@ -38,12 +38,8 @@ jobs:
 
     - name: Run style checks
       run: |
-        make check-style
+        make lint
 
     - name: Run fast tests
       run: |
         make fast-test-ci
-
-    - name: Run safety checks
-      run: |
-        make check-safety

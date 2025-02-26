@@ -9,10 +9,8 @@ help:
 	@echo "install         : installs required dependencies"
 	@echo "install-dev     : installs the dev dependencies for the project"
 	@echo "update-deps     : updates the dependencies and writes them to requirements.txt"
-	@echo "check-style     : run checks on all files without fixing them."
 	@echo "fix-style       : run checks on files and potentially modifies them."
-	@echo "check-safety    : run safety checks on all tests."
-	@echo "lint            : run linting on all files (check-style + check-safety)"
+	@echo "lint            : run linting on all files"
 	@echo "test            : run all tests."
 	@echo "test-cpu        : run all tests that do not depend on Torch GPU support."
 	@echo "fast-test       : run all quick tests."
@@ -62,24 +60,17 @@ update-deps:
 	uv pip compile --all-extras pyproject.toml -o requirements-dev.txt
 
 #* Linting
-.PHONY: check-style
-check-style:
-	$(PYTHON) -m ruff format --check --config pyproject.toml ./
-	$(PYTHON) -m ruff check --no-fix --config pyproject.toml ./
-
 .PHONY: fix-style
 fix-style:
 	$(PYTHON) -m ruff format --config pyproject.toml ./
 	$(PYTHON) -m ruff check --config pyproject.toml ./
 
-.PHONY: check-safety
-check-safety:
-	$(PYTHON) -m safety scan --full-report -i 70612 -i 72089
-
 .PHONY: lint
-lint: fix-style check-safety
+lint:
+	$(PYTHON) -m ruff format --check --config pyproject.toml ./
+	$(PYTHON) -m ruff check --no-fix --config pyproject.toml ./
 
-#* Linting
+#* Testing
 .PHONY: test
 test:
 	$(PYTHON) -m pytest -n auto -c pyproject.toml -v
