@@ -1,6 +1,5 @@
 <div align="center">
-  <h1>Interpreto 🪄</h1>
-  <h4>Interpretability toolbox for LLMs</h4>
+  <img src="img/interpreto.png" alt="Interpreto: Interpretability Toolkit for LLMs">
 <br/>
 
 [![Build status](https://img.shields.io/github/actions/workflow/status/FOR-sight-ai/interpreto/build.yml?branch=main)](https://github.com/FOR-sight-ai/interpreto/actions?query=workflow%3Abuild)
