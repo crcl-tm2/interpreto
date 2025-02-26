@@ -5,7 +5,7 @@ class ConceptBottleneckExplainer(AbstractConceptExplainer):
     """
     Implementation of a concept explainer based on the Concept Bottleneck model.
     """
-
+    @abstractmethod
     def fit(self, inputs, split):
         """
         Method for explaining a concept.
