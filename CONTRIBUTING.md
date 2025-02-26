@@ -2,7 +2,7 @@
 
 ## Dependencies
 
-We use [`uv`](https://github.com/astral-sh/uv) to manage Inseq dependencies.
+We use [`uv`](https://github.com/astral-sh/uv) to manage Interpreto dependencies.
 If you dont have `uv`, you should install with `make uv-download`.
 
 To install dependencies and prepare [`pre-commit`](https://pre-commit.com/) hooks you would need to run `install` command:
