@@ -8,7 +8,6 @@ recursive-include interpreto *.py
 
 exclude Makefile
 prune .github
-prune docker
 prune docs
 prune examples
 prune tests
