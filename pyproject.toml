@@ -59,6 +59,7 @@ dependencies = [
 [project.optional-dependencies]
 docs = [] # TODO: Add dependencies for mkdocs
 lint = [
+  "setuptools",
   "pydoclint>=0.4.0",
   "pre-commit>=2.19.0",
   "pytest>=7.2.0",
@@ -66,7 +67,10 @@ lint = [
   "pytest-xdist>=3.5.0",
   "ruff>=0.2.0",
   "virtualenv>=20.26.6",
-  "networkx<=2.8.8" # Pinned to allow torch compatibility with Python <3.10
+  "networkx<=2.8.8; python_version<'3.10'",
+  "numpy<=2.1.0; python_version<'3.10' and python_version>='3.9'",
+  "numpy<=1.24.4; python_version<'3.9'",
+  "numpy; python_version>='3.10'"
 ]
 
 [project.urls]

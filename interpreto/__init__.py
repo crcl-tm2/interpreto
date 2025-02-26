@@ -1,8 +1,8 @@
 def get_version() -> str:
     """Returns the current version of the Inseq library."""
-    try:
-        import pkg_resources
+    import pkg_resources
 
+    try:
         return pkg_resources.get_distribution("interpreto").version
     except pkg_resources.DistributionNotFound:
         return "unknown"

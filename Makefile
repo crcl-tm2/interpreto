@@ -49,15 +49,14 @@ install:
 install-dev:
 	make uv-activate && uv pip install -r requirements-dev.txt && pre-commit install && pre-commit autoupdate
 
-
-.PHONY: install-ci
-install-ci:
-	make uv-activate && uv pip install -r requirements-dev.txt
-
 .PHONY: update-deps
 update-deps:
 	uv pip compile pyproject.toml -o requirements.txt
 	uv pip compile --all-extras pyproject.toml -o requirements-dev.txt
+
+.PHONY: install-ci
+install-ci:
+	make uv-activate && make update-deps && uv pip install -r requirements-dev.txt
 
 #* Linting
 .PHONY: fix-style
