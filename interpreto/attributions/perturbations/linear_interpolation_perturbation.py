@@ -3,6 +3,7 @@ from __future__ import annotations
 import torch
 
 from interpreto.attributions.perturbations.base import Perturbator
+from interpreto.typing import TensorBaseline
 
 
 class LinearInterpolationPerturbation(Perturbator):
@@ -10,7 +11,7 @@ class LinearInterpolationPerturbation(Perturbator):
     Perturbation using linear interpolation TODO: add docstring
     """
 
-    def __init__(self, baseline: torch.Tensor | float | None = None, n_samples: int = 10):
+    def __init__(self, baseline: TensorBaseline = None, n_samples: int = 10):
         super().__init__(baseline=baseline, n_samples=n_samples)
 
     def perturb(self, inputs: torch.Tensor) -> tuple[torch.Tensor, None]:  # TODO: test
