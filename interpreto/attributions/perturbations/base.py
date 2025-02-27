@@ -65,7 +65,7 @@ class Perturbator(ABC):
         return baseline
 
     @abstractmethod
-    def perturb(self, item: ModelInput | Collection[ModelInput]) -> Collection[TokenEmbedding]:
+    def perturb(self, inputs: ModelInput | Collection[ModelInput]) -> Collection[TokenEmbedding]:
         """
         Method to perturb an input, should return a collection of perturbed elements and their associated masks
         """

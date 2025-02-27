@@ -7,7 +7,7 @@ import torch
 from interpreto.attributions.aggregations import MeanAggregation
 from interpreto.attributions.base import GradientExplainer
 from interpreto.attributions.perturbations import LinearInterpolationPerturbation
-from interpreto.commons.model_wrapping.inference_wrapper import ClassificationInferenceWrapperPlaceholder
+from interpreto.commons.model_wrapping.inference_wrapper import ClassificationInferenceWrapper
 
 
 class IntegratedGradients(GradientExplainer):
@@ -25,7 +25,7 @@ class IntegratedGradients(GradientExplainer):
     ):
         super().__init__(
             perturbation=LinearInterpolationPerturbation(baseline=baseline, n_samples=n_samples),
-            inference_wrapper=ClassificationInferenceWrapperPlaceholder(model, batch_size=batch_size, device=device),
+            inference_wrapper=ClassificationInferenceWrapper(model, batch_size=batch_size, device=device),
             aggregation=MeanAggregation(),  # TODO: check if we need a trapezoidal mean
             batch_size=batch_size,
             device=device,
