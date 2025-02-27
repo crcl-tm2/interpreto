@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Collection
+from typing import Union
 
 import torch
 
@@ -22,12 +23,13 @@ class Perturbator(ABC):
         baseline: torch.Tensor | float | None = None,
         n_samples: int = 10,
     ):
-        assert isinstance(baseline, torch.Tensor | int | float | None)
+        assert isinstance(baseline, Union[torch.Tensor, float, int, None])  # noqa: UP007  # pipe unsupported for isinstance with torch.Tensor
         assert isinstance(n_samples, int) and n_samples > 0
         self.baseline = baseline
         self.n_samples = n_samples
 
-    def adjust_baseline(self, inputs: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def adjust_baseline(baseline: torch.Tensor | float | int | None, inputs: torch.Tensor) -> torch.Tensor:
         """
         Ensures the 'baseline' argument is correctly adjusted based on the shape of 'inputs' (PyTorch tensor).
 
@@ -36,10 +38,11 @@ class Perturbator(ABC):
         - If baseline is a tensor, its shape must match input.shape[1:]; otherwise, an error is raised.
 
         Args:
-            func (Callable): The function to be decorated.
+            baseline: The baseline to adjust.
+            inputs: The input to adjust the baseline for.
 
         Returns:
-            Callable: The wrapped function with adjusted baseline.
+            The adjusted baseline.
         """
         if not isinstance(inputs, torch.Tensor):
             raise TypeError("Expected 'inputs' to be a PyTorch tensor.")
@@ -47,17 +50,16 @@ class Perturbator(ABC):
         # Shape: (batch_size, *input_shape)
         input_shape = inputs.shape[1:]
 
-        if self.baseline is None:
-            self.baseline = 0
+        if baseline is None:
+            baseline = 0
 
-        if isinstance(self.baseline, int | float):
-            baseline = torch.full(input_shape, self.baseline, dtype=inputs.dtype, device=inputs.device)
-        elif isinstance(self.baseline, torch.Tensor):
-            if self.baseline.shape != input_shape:
-                raise ValueError(f"Baseline shape {self.baseline.shape} does not match expected shape {input_shape}.")
-            if self.baseline.dtype != inputs.dtype:
-                raise ValueError(f"Baseline dtype {self.baseline.dtype} does not match expected dtype {inputs.dtype}.")
-            baseline = self.baseline
+        if isinstance(baseline, int | float):
+            baseline = torch.full(input_shape, baseline, dtype=inputs.dtype, device=inputs.device)
+        elif isinstance(baseline, torch.Tensor):
+            if baseline.shape != input_shape:
+                raise ValueError(f"Baseline shape {baseline.shape} does not match expected shape {input_shape}.")
+            if baseline.dtype != inputs.dtype:
+                raise ValueError(f"Baseline dtype {baseline.dtype} does not match expected dtype {inputs.dtype}.")
         else:
             raise TypeError("Baseline must be None, a float, or a PyTorch tensor.")
 

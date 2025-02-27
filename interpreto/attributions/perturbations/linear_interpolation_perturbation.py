@@ -17,7 +17,7 @@ class LinearInterpolationPerturbation(Perturbator):
         """
         TODO: add docstring
         """
-        baseline = self.adjust_baseline(inputs)
+        baseline = Perturbator.adjust_baseline(self.baseline, inputs)
         assert inputs.shape[1:] == baseline.shape
         # Shape: (1, steps, ...)
         alphas = torch.linspace(0, 1, self.n_samples, device=inputs.device).view(
