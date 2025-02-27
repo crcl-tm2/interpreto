@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Collection
-from typing import Union
 
 import torch
 
@@ -23,7 +22,7 @@ class Perturbator(ABC):
         baseline: torch.Tensor | float | None = None,
         n_samples: int = 10,
     ):
-        assert isinstance(baseline, Union[torch.Tensor, float, int, None])  # noqa: UP007  # pipe unsupported for isinstance with torch.Tensor
+        assert isinstance(baseline, torch.Tensor) or isinstance(baseline, None | int | float)
         assert isinstance(n_samples, int) and n_samples > 0
         self.baseline = baseline
         self.n_samples = n_samples
