@@ -67,3 +67,4 @@ typing-extensions==4.12.2
     #   torch
 urllib3==2.2.3
     # via requests
+nnsight
