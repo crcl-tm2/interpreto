@@ -80,10 +80,19 @@ dependencies = [
   "nvidia-cusparse-cu11>=11.7.4.91; sys_platform=='Linux'",
   "nvidia-nccl-cu11>=2.14.3; sys_platform=='Linux'",
   "nvidia-nvtx-cu11>=11.7.91; sys_platform=='Linux'",
-] # TODO: Add more dependencies
+]
 
 [project.optional-dependencies]
-docs = [] # TODO: Add dependencies for mkdocs
+docs = [
+  "mkdocs>=1.6.1",
+  "mkdocs-material>=9.5.34",
+  "mkdocs-autorefs>=1.1.0",
+  "mkdocs-section-index>=0.3.9",
+  "mkdocstrings>=0.25.2",
+  "mkdocstrings-python>=1.10.9",
+  "mknotebooks>=0.8.0",
+  "docstr-coverage>=2.3.2",
+]
 lint = [
   "setuptools",
   "pydoclint>=0.4.0",
