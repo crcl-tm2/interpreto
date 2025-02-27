@@ -9,7 +9,7 @@ from collections.abc import Collection
 
 import torch
 
-from interpreto.typing import ModelInput, TokenEmbedding
+from interpreto.typing import ModelInput, TensorBaseline, TokenEmbedding
 
 
 class Perturbator(ABC):
@@ -19,16 +19,16 @@ class Perturbator(ABC):
 
     def __init__(
         self,
-        baseline: torch.Tensor | float | None = None,
+        baseline: TensorBaseline = None,
         n_samples: int = 10,
     ):
-        assert isinstance(baseline, torch.Tensor) or isinstance(baseline, int | float) or baseline is None
+        assert isinstance(baseline, (torch.Tensor, int, float, type(None)))  # noqa: UP038
         assert isinstance(n_samples, int) and n_samples > 0
         self.baseline = baseline
         self.n_samples = n_samples
 
     @staticmethod
-    def adjust_baseline(baseline: torch.Tensor | float | int | None, inputs: torch.Tensor) -> torch.Tensor:
+    def adjust_baseline(baseline: TensorBaseline, inputs: torch.Tensor) -> torch.Tensor:
         """
         Ensures the 'baseline' argument is correctly adjusted based on the shape of 'inputs' (PyTorch tensor).
 
