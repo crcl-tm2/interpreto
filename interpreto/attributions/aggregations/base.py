@@ -19,7 +19,7 @@ class Aggregator(ABC):
     @abstractmethod
     def aggregate(self, results: Collection[Any], mask, **kwargs) -> Any:
         """
-        Get results from multiple "Inference wrappers", aggregate results and gives an explaination
+        Get results from multiple "Inference wrappers", aggregate results and gives an explanation
         """
 
     def __call__(self, results: Mapping[TokenEmbedding, Any], mask: Any, **kwargs):

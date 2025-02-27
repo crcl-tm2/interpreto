@@ -1,0 +1,140 @@
+site_name: Interpreto
+site_description: "Interpretability Toolkit for LLMs"
+copyright: "Copyright (c) 2025 IRT Antoine de Saint Exupéry et Université Paul Sabatier Toulouse III - All rights reserved."
+repo_name: "FOR-sight-ai/interpreto"
+repo_url: http://github.com/FOR-sight-ai/interpreto
+
+# Set navigation here
+nav:
+  - Home: index.md
+  - Quickstart: notebooks/quickstart.ipynb
+  - Tutorials:
+    - "Training a concept explainer": notebooks/concept_explainer_training.ipynb
+  - Supported Methods:
+    - Attribution Explainers:
+      - Overview: methods/attributions/overview.md
+      - Raw Gradients: methods/attributions/raw_gradients.md
+    - Concept Explainers:
+      - Overview: methods/concepts/overview.md
+      - NMF: methods/concepts/nmf.md
+  - API Reference:
+    - Attribution Explainers:
+      - Overview: api/attributions/overview.md
+      - Raw Gradients: api/attributions/raw_gradients.md
+    - Concept Explainers:
+      - Overview: api/concepts/overview.md
+      - NMF: api/concepts/nmf.md
+  - Roadmap: roadmap.md
+  - Contributing: contributing.md
+  - About: about.md
+  - Citation: citation.md
+
+plugins:
+  - search
+  - mknotebooks
+  - autorefs
+  - section-index
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          options:
+            modernize_annotations: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            show_signature_annotations: false
+            separate_signature: true
+            signature_crossrefs: true
+            merge_init_into_class: true
+            parameter_headings: true
+            show_root_heading: false
+            docstring_options:
+              ignore_init_summary: true
+            show_source: false
+            filters:
+              - "!^_"
+              - "^__init__$"
+              - "!^can_replace$"
+              # Hide some methods that Widget subclasses implement but that we don't want
+              # to be shown in the docs.
+              # This is then overridden in widget.md and app.md so that it shows in the
+              # base class.
+              - "!^compose$"
+              - "!^render$"
+              - "!^render_line$"
+              - "!^render_lines$"
+              - "!^get_content_width$"
+              - "!^get_content_height$"
+              - "!^compose_add_child$"
+      watch:
+        - interpreto/
+
+# hooks:
+#   - docs/generate_attribution_explainers_overview_table.py
+#   - docs/generate_concept_explainers_overview_table.py
+
+theme:
+  name: material
+  custom_dir: docs/assets/custom_theme
+  logo: assets/img/interpreto_logo.png
+  favicon: assets/interpreto_logo.png
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.indexes
+    - navigation.tabs.sticky
+    - navigation.footer
+    - content.code.annotate
+    - content.code.copy
+  icon:
+    repo: fontawesome/brands/github
+
+markdown_extensions:
+  - pymdownx.keys
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tabbed:
+      alternate_style: true
+  - footnotes
+  - extra
+  - admonition
+  - codehilite
+  - markdown.extensions.attr_list
+  - toc:
+      baselevel: 1
+      permalink: true
+  - def_list
+
+extra_css:
+  - css/custom.css
+
+extra_javascript:
+  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+  - js/custom.js
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/FOR-sight-ai/interpreto
+      name: Interpreto on Github

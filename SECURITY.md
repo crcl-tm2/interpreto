@@ -7,7 +7,10 @@
 
 Vulnerabilities can be reported by emailing core members:
 
-- TODO
+- Fanny Jourdan <fanny.jourdan@irt-saintexupery.com>
+- Antonin Poché <antonin.poche@irt-saintexupery.com>
+- Thomas Mullor <thomas.mullor@irt-saintexupery.com>
+- Gabriele Sarti <gabriele.sarti996@gmail.com>
 
 Please include the requested information listed below (as much as you can provide) to help us better understand the nature and scope of the possible issue:
 

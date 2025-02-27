@@ -10,13 +10,15 @@ help:
 	@echo "install-dev     : installs the dev dependencies for the project"
 	@echo "update-deps     : updates the dependencies and writes them to requirements.txt"
 	@echo "fix-style       : run checks on files and potentially modifies them."
+	@echo "check-style     : run checks on files without modifying them."
 	@echo "lint            : run linting on all files"
 	@echo "test            : run all tests."
 	@echo "test-cpu        : run all tests that do not depend on Torch GPU support."
 	@echo "fast-test       : run all quick tests."
-	@echo "build-docs      : build sphinx documentation."
+	@echo "build-docs      : build mkdocs documentation."
 	@echo "serve-docs      : serve documentation locally."
-	@echo "docs            : build and serve generated documentation locally."
+	@echo "deploy-docs     : deploy documentation to https://FOR-sight-ai.github.io/interpreto (gh-pages branch)"
+	@echo "docs            : shortcut to build and serve generated documentation locally."
 	@echo "codecov         : check coverage of all the code."
 	@echo "clean           : cleans all unecessary files."
 
@@ -64,10 +66,13 @@ fix-style:
 	$(PYTHON) -m ruff format --config pyproject.toml ./
 	$(PYTHON) -m ruff check --config pyproject.toml ./
 
-.PHONY: lint
-lint:
+.PHONY: check-style
+check-style:
 	$(PYTHON) -m ruff format --check --config pyproject.toml ./
 	$(PYTHON) -m ruff check --no-fix --config pyproject.toml ./
+
+.PHONY: lint
+lint: fix-style
 
 #* Testing
 .PHONY: test
@@ -94,11 +99,15 @@ codecov:
 #* Docs
 .PHONY: build-docs
 build-docs:
-	echo "TODO"
+	make uv-activate && mkdocs build
 
 .PHONY: serve-docs
 serve-docs:
-	echo "TODO"
+	make uv-activate && mkdocs serve
+
+.PHONY: deploy-docs
+deploy-docs:
+	make uv-activate && mkdocs gh-deploy
 
 .PHONY: docs
 docs: build-docs serve-docs

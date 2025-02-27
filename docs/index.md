@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="docs/assets/img/interpreto_banner.png" alt="Interpreto: Interpretability Toolkit for LLMs">
+  <img src="assets/img/interpreto_banner.png" alt="Interpreto: Interpretability Toolkit for LLMs">
 <br/>
 
 [![Build status](https://img.shields.io/github/actions/workflow/status/FOR-sight-ai/interpreto/build.yml?branch=main)](https://github.com/FOR-sight-ai/interpreto/actions?query=workflow%3Abuild)
@@ -8,24 +8,6 @@
 [![Python Version](https://img.shields.io/pypi/pyversions/interpreto.svg?color=blue)](https://pypi.org/project/interpreto/)
 [![Downloads](https://static.pepy.tech/badge/interpreto)](https://pepy.tech/project/interpreto)
 [![License](https://img.shields.io/github/license/FOR-sight-ai/interpreto)](https://github.com/FOR-sight-ai/interpreto/blob/main/LICENSE)
-
-  <!-- Link to the documentation -->
-  <a href="TODO"><strong>Explore Interpreto docs »</strong></a>
-  <br>
-
-</div>
-
-## 📚 Table of contents
-
-- [📚 Table of contents](#-table-of-contents)
-- [🚀 Quick Start](#-quick-start)
-- [📦 What's Included](#-whats-included)
-- [👍 Contributing](#-contributing)
-- [👀 See Also](#-see-also)
-- [🙏 Acknowledgments](#-acknowledgments)
-- [👨‍🎓 Creators](#-creators)
-- [🗞️ Citation](#️-citation)
-- [📝 License](#-license)
 
 ## 🚀 Quick Start
 
@@ -71,7 +53,3 @@ If you use Interpreto 🪄 as part of your workflow in a scientific publication,
 ```
 TODO bibtex
 ```
-
-## 📝 License
-
-The package is released under [MIT license](LICENSE).

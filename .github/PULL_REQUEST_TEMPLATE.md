@@ -21,8 +21,8 @@
 
 <!-- Mark with an `x` all the checkboxes that apply (like `[x]`) -->
 
-- [ ] I've read the [`CODE_OF_CONDUCT.md`](https://github.com/FOR-sight-ai/interpreto/blob/master/CODE_OF_CONDUCT.md) document.
-- [ ] I've read the [`CONTRIBUTING.md`](https://github.com/FOR-sight-ai/interpreto/blob/master/CONTRIBUTING.md) guide.
+- [ ] I've read the [`CODE_OF_CONDUCT.md`](https://github.com/FOR-sight-ai/interpreto/blob/main/CODE_OF_CONDUCT.md) document.
+- [ ] I've read the [`CONTRIBUTING.md`](https://github.com/FOR-sight-ai/interpreto/blob/main/docs/contributing.md) guide.
 - [ ] I've successfully run the style checks using `make lint`.
 - [ ] I've written tests for all new methods and classes that I created and successfully ran `make test`.
 - [ ] I've written the docstring in Google format for all the methods and classes that I used.
