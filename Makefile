@@ -15,9 +15,10 @@ help:
 	@echo "test            : run all tests."
 	@echo "test-cpu        : run all tests that do not depend on Torch GPU support."
 	@echo "fast-test       : run all quick tests."
-	@echo "build-docs      : build sphinx documentation."
+	@echo "build-docs      : build mkdocs documentation."
 	@echo "serve-docs      : serve documentation locally."
-	@echo "docs            : build and serve generated documentation locally."
+	@echo "deploy-docs     : deploy documentation to https://FOR-sight-ai.github.io/interpreto (gh-pages branch)"
+	@echo "docs            : shortcut to build and serve generated documentation locally."
 	@echo "codecov         : check coverage of all the code."
 	@echo "clean           : cleans all unecessary files."
 
@@ -98,11 +99,15 @@ codecov:
 #* Docs
 .PHONY: build-docs
 build-docs:
-	echo "TODO"
+	make uv-activate && mkdocs build
 
 .PHONY: serve-docs
 serve-docs:
-	echo "TODO"
+	make uv-activate && mkdocs serve
+
+.PHONY: deploy-docs
+deploy-docs:
+	make uv-activate && mkdocs gh-deploy
 
 .PHONY: docs
 docs: build-docs serve-docs

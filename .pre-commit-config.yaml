@@ -42,7 +42,7 @@ repos:
         pass_filenames: false
 
   - repo: https://github.com/Lucas-C/pre-commit-hooks
-    rev: v1.1.10
+    rev: v1.5.5
     hooks:
       - id: insert-license
         name: Add MIT license to docs
@@ -53,7 +53,7 @@ repos:
           - LICENSE
 
   - repo: https://github.com/Lucas-C/pre-commit-hooks
-    rev: v1.1.10
+    rev: v1.5.5
     hooks:
       - id: insert-license
         name: insert MIT license
@@ -63,4 +63,11 @@ repos:
           - --license-filepath
           - LICENSE
 
-# TODO: add CI for docs
+  - repo: local
+    hooks:
+      - id: docs
+        name: build docs
+        entry: make
+        args: ["build-docs"]
+        language: system
+        pass_filenames: false
