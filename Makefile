@@ -10,6 +10,7 @@ help:
 	@echo "install-dev     : installs the dev dependencies for the project"
 	@echo "update-deps     : updates the dependencies and writes them to requirements.txt"
 	@echo "fix-style       : run checks on files and potentially modifies them."
+	@echo "check-style     : run checks on files without modifying them."
 	@echo "lint            : run linting on all files"
 	@echo "test            : run all tests."
 	@echo "test-cpu        : run all tests that do not depend on Torch GPU support."
@@ -64,10 +65,13 @@ fix-style:
 	$(PYTHON) -m ruff format --config pyproject.toml ./
 	$(PYTHON) -m ruff check --config pyproject.toml ./
 
-.PHONY: lint
-lint:
+.PHONY: check-style
+check-style:
 	$(PYTHON) -m ruff format --check --config pyproject.toml ./
 	$(PYTHON) -m ruff check --no-fix --config pyproject.toml ./
+
+.PHONY: lint
+lint: fix-style
 
 #* Testing
 .PHONY: test
