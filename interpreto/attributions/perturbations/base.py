@@ -22,7 +22,7 @@ class Perturbator(ABC):
         baseline: torch.Tensor | float | None = None,
         n_samples: int = 10,
     ):
-        assert isinstance(baseline, torch.Tensor) or isinstance(baseline, None | int | float)
+        assert isinstance(baseline, torch.Tensor) or isinstance(baseline, int | float) or baseline is None
         assert isinstance(n_samples, int) and n_samples > 0
         self.baseline = baseline
         self.n_samples = n_samples
