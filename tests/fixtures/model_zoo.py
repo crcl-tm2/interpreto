@@ -21,11 +21,11 @@ class SmallDenseModel(nn.Module):
 class SmallConv1DModel(nn.Module):
     """A small 1D convolutional neural network for sequence data."""
 
-    def __init__(self, input_channels: int = 1, output_size: int = 10):
+    def __init__(self, input_channels: int = 1, input_length: int = 8, output_size: int = 10):
         super().__init__()
         self.conv1 = nn.Conv1d(input_channels, 16, kernel_size=3, padding=1)
         self.conv2 = nn.Conv1d(16, 32, kernel_size=3, padding=1)
-        self.fc = nn.Linear(32 * 8, output_size)  # Assuming input length = 8
+        self.fc = nn.Linear(32 * input_length, output_size)  # Assuming input length = 8
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = F.relu(self.conv1(x))
@@ -37,11 +37,11 @@ class SmallConv1DModel(nn.Module):
 class SmallConv2DModel(nn.Module):
     """A small 2D convolutional neural network."""
 
-    def __init__(self, input_channels: int = 1, output_size: int = 10):
+    def __init__(self, input_channels: int = 1, image_size: tuple[int, int] = (8, 8), output_size: int = 10):
         super().__init__()
         self.conv1 = nn.Conv2d(input_channels, 8, kernel_size=3, padding=1)
         self.conv2 = nn.Conv2d(8, 16, kernel_size=3, padding=1)
-        self.fc = nn.Linear(16 * 8 * 8, output_size)  # Assuming input is 8x8
+        self.fc = nn.Linear(16 * image_size[0] * image_size[1], output_size)  # Assuming input is 8x8
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = F.relu(self.conv1(x))
@@ -183,7 +183,7 @@ class SmallTextClassifier(nn.Module):
         Returns:
             torch.Tensor: Output tensor of shape (batch_size, output_size)
         """
-        x = self.embedding(x)
+        x = self.embedding(x.long())  # TODO: debug, I do not think it is a correct model
         x = self.transformer(x)
         x = x.mean(dim=1)  # Mean pooling over sequence length
         return self.fc(x)
