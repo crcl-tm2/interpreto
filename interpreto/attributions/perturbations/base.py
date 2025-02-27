@@ -52,7 +52,7 @@ class Perturbator(ABC):
         if baseline is None:
             baseline = 0
 
-        if isinstance(baseline, int | float):
+        if isinstance(baseline, (int, float)):  # noqa: UP038
             baseline = torch.full(input_shape, baseline, dtype=inputs.dtype, device=inputs.device)
         elif isinstance(baseline, torch.Tensor):
             if baseline.shape != input_shape:
