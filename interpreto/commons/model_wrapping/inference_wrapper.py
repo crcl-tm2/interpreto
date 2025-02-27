@@ -88,8 +88,7 @@ class ClassificationInferenceWrapperPlaceholder:  # TODO: remove this class
             batch = inputs[i : i + self.batch_size].to(self.device)
             batch_scores = self.inference(batch).cpu()
             scores.append(batch_scores)
-        scores = torch.cat(scores, dim=0)
-        return scores
+        return torch.cat(scores, dim=0)
 
     @flatten_unflatten
     def batch_gradients(self, inputs: torch.Tensor) -> torch.Tensor:
@@ -98,5 +97,4 @@ class ClassificationInferenceWrapperPlaceholder:  # TODO: remove this class
             batch = inputs[i : i + self.batch_size].to(self.device)
             batch_gradients = self.gradients(batch).detach().cpu()
             gradients.append(batch_gradients)
-        gradients = torch.cat(gradients, dim=0)
-        return gradients
+        return torch.cat(gradients, dim=0)

@@ -4,9 +4,8 @@ Base classes for perturbations used in attribution methods
 
 from __future__ import annotations
 
-import functools
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Collection
+from collections.abc import Collection
 
 import torch
 
@@ -23,13 +22,14 @@ class Perturbator(ABC):
         baseline: torch.Tensor | float | None = None,
         n_samples: int = 10,
     ):
+        assert isinstance(baseline, torch.Tensor | int | float | None)
+        assert isinstance(n_samples, int) and n_samples > 0
         self.baseline = baseline
         self.n_samples = n_samples
 
-    def adjust_baseline(func: Callable) -> Callable:
+    def adjust_baseline(self, inputs: torch.Tensor) -> torch.Tensor:
         """
-        A decorator that ensures the 'baseline' argument is correctly adjusted
-        based on the shape of 'input' (PyTorch tensor).
+        Ensures the 'baseline' argument is correctly adjusted based on the shape of 'inputs' (PyTorch tensor).
 
         - If baseline is None, it is replaced with a tensor of zeros matching input.shape[1:].
         - If baseline is a float, it is broadcasted to input.shape[1:].
@@ -41,30 +41,27 @@ class Perturbator(ABC):
         Returns:
             Callable: The wrapped function with adjusted baseline.
         """
+        if not isinstance(inputs, torch.Tensor):
+            raise TypeError("Expected 'inputs' to be a PyTorch tensor.")
 
-        @functools.wraps(func)
-        def wrapper(self, inputs: torch.Tensor, *args, **kwargs) -> torch.Tensor:
-            if not isinstance(inputs, torch.Tensor):
-                raise TypeError("Expected 'inputs' to be a PyTorch tensor.")
+        # Shape: (batch_size, *input_shape)
+        input_shape = inputs.shape[1:]
 
-            # Shape: (batch_size, *input_shape)
-            input_shape = inputs.shape[1:]
+        if self.baseline is None:
+            self.baseline = 0
 
-            if self.baseline is None:
-                self.baseline = torch.zeros(input_shape, dtype=inputs.dtype, device=inputs.device)
-            elif isinstance(self.baseline, int | float):
-                self.baseline = torch.full(input_shape, self.baseline, dtype=inputs.dtype, device=inputs.device)
-            elif isinstance(self.baseline, torch.Tensor):
-                if self.baseline.shape != input_shape:
-                    raise ValueError(
-                        f"Baseline shape {self.baseline.shape} does not match expected shape {input_shape}."
-                    )
-            else:
-                raise TypeError("Baseline must be None, a float, or a PyTorch tensor.")
+        if isinstance(self.baseline, int | float):
+            baseline = torch.full(input_shape, self.baseline, dtype=inputs.dtype, device=inputs.device)
+        elif isinstance(self.baseline, torch.Tensor):
+            if self.baseline.shape != input_shape:
+                raise ValueError(f"Baseline shape {self.baseline.shape} does not match expected shape {input_shape}.")
+            if self.baseline.dtype != inputs.dtype:
+                raise ValueError(f"Baseline dtype {self.baseline.dtype} does not match expected dtype {inputs.dtype}.")
+            baseline = self.baseline
+        else:
+            raise TypeError("Baseline must be None, a float, or a PyTorch tensor.")
 
-            return func(self, inputs, *args, **kwargs)
-
-        return wrapper
+        return baseline
 
     @abstractmethod
     def perturb(self, item: ModelInput | Collection[ModelInput]) -> Collection[TokenEmbedding]:
