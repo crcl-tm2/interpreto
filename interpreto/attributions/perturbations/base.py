@@ -44,9 +44,6 @@ class Perturbator(ABC):
 
         @functools.wraps(func)
         def wrapper(self, inputs: torch.Tensor, *args, **kwargs) -> torch.Tensor:
-            print("Perturbator.adjust_baseline()")
-            print("inputs:", inputs.shape, type(inputs))
-            print("baseline:", self.baseline, type(self.baseline))
             if not isinstance(inputs, torch.Tensor):
                 raise TypeError("Expected 'inputs' to be a PyTorch tensor.")
 
