@@ -70,7 +70,6 @@ theme:
   name: material
   custom_dir: docs/assets/custom_theme
   logo: assets/img/interpreto_logo.png
-  favicon: assets/interpreto_logo.png
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -80,7 +79,7 @@ theme:
         name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: indigo
+      primary: black
       toggle:
         icon: material/weather-night
         name: Switch to light mode
@@ -100,7 +99,8 @@ theme:
     - search.highlight
     - search.suggest
   icon:
-    repo: fontawesome/brands/github
+    logo: logo
+  favicon: assets/img/interpreto_logo.png
   font:
     text: Roboto
     code: Roboto Mono
@@ -150,3 +150,7 @@ extra:
     - icon: fontawesome/brands/github
       link: https://github.com/FOR-sight-ai/interpreto
       name: Interpreto on Github
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/interpreto/
+    - icon: fontawesome/brands/x-twitter
+      link: https://x.com/ANITI_Toulouse

@@ -1,9 +1,5 @@
-<style>
-  .md-typeset h1,
-  .md-content__button {
-    display: none;
-  }
-</style>
+template: home.html
+---
 
 ![Interpreto: Interpretability Toolkit for LLMs](assets/img/interpreto_banner.png)
 
