@@ -111,6 +111,10 @@ lint = [
   "numpy<=1.24.4; python_version<'3.9'",
   "numpy>=2.2.0; python_version>='3.10'"
 ]
+notebook = [
+  "ipykernel>=6.29.2",
+  "ipywidgets>=8.1.2"
+]
 
 [project.urls]
 homepage = "https://github.com/FOR-sight-ai/interpreto"
