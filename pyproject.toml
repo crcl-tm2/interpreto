@@ -69,6 +69,9 @@ classifiers = [
 dependencies = [
   "transformers[sentencepiece,tokenizers]>=4.22.0",
   "torch>=2.0",
+  "nnsight>=0.4.0",
+  "jaxtyping<=0.2.15; python_version<='3.8'",
+  "jaxtyping<=0.2.36; python_version>'3.9'",
   "nvidia-cublas-cu11>=11.10.3.66; sys_platform=='Linux'",
   "nvidia-cuda-cupti-cu11>=11.7.101; sys_platform=='Linux'",
   "nvidia-cuda-nvrtc-cu11>=11.7.99; sys_platform=='Linux'",
