@@ -1,4 +1,4 @@
-# GOVERNANCE
+# About
 
 `interpreto` is developed as part of the Artificial and Natural Intelligence Toulouse Institute (DEEL/FOR/ANITI) program.
 
@@ -30,7 +30,7 @@ All contributors with write rights (commit rights) are maintainers.
 
 ### Contributions
 
-Contributions rules are defined and developed in [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributions rules are defined and developed in [docs/contributing.md](docs/contributing.md).
 
 Pull requests with major changes must be approved by at least two members of the governance committee.
 
