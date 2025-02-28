@@ -48,7 +48,6 @@ def test_attribution_methods_with_2d_input_models():
 
     for model, attribution_explainer in product(models, attribution_methods_to_test):
         attributions = attribution_explainer(model, batch_size=3, device=DEVICE).explain(input_tensor)
-
         assert attributions.shape == input_shape
 
 

@@ -11,7 +11,7 @@ class LinearInterpolationPerturbation(Perturbator):
     Perturbation using linear interpolation between a reference point (baseline) and the input.
     """
 
-    def __init__(self, baseline: TensorBaseline = None,):
+    def __init__(self, baseline: TensorBaseline = None, n_perturbations: int = 10):
         """
         Initializes the LinearInterpolationPerturbation instance.
 
@@ -23,6 +23,7 @@ class LinearInterpolationPerturbation(Perturbator):
             AssertionError: If the baseline is not a torch.Tensor, int, float, or None.
         """
         assert isinstance(baseline, (torch.Tensor, int, float, type(None)))  # noqa: UP038
+        self.n_perturbations = n_perturbations
         self.baseline = baseline
 
     @staticmethod
@@ -62,7 +63,7 @@ class LinearInterpolationPerturbation(Perturbator):
 
         return baseline
 
-    def perturb(self, inputs: torch.Tensor, n_samples: int = 10) -> tuple[torch.Tensor, None]:  # TODO: test
+    def perturb(self, inputs: torch.Tensor) -> tuple[torch.Tensor, None]:
         """
         Generates perturbed samples by performing linear interpolation between the input tensor and the baseline tensor.
 
@@ -77,8 +78,8 @@ class LinearInterpolationPerturbation(Perturbator):
         baseline = self.adjust_baseline(self.baseline, inputs)
         assert inputs.shape[1:] == baseline.shape
         # Shape: (1, steps, ...)
-        alphas = torch.linspace(0, 1, n_samples, device=inputs.device).view(
-            1, n_samples, *([1] * (inputs.dim() - 1))
+        alphas = torch.linspace(0, 1, self.n_perturbations, device=inputs.device).view(
+            1, self.n_perturbations, *([1] * (inputs.dim() - 1))
         )
 
         # Shape: (batch_size, steps:1, *input_shape)
