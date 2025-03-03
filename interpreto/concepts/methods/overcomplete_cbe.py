@@ -1,3 +1,27 @@
+# MIT License
+#
+# Copyright (c) 2025 IRT Antoine de Saint Exupéry et Université Paul Sabatier Toulouse III - All
+# rights reserved. DEEL and FOR are research programs operated by IVADO, IRT Saint Exupéry,
+# CRIAQ and ANITI - https://www.deel.ai/.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 """
 Concept Bottleneck Explainer based on Overcomplete concept-encoder-decoder framework.
 """
@@ -15,7 +39,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from interpreto.commons.model_wrapping.model_splitter import ModelSplitterPlaceholder
 from interpreto.concepts.base import ConceptBottleneckExplainer
-from interpreto.typing import LatentActivation
+from interpreto.typing import ConceptsActivations, LatentActivations
 
 Criterion = Callable[[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]
 
@@ -41,10 +65,10 @@ def dead_neurons_reanimation_criterion(
     return loss
 
 
-class OvercompleteMethods(NamedTuple):
+class _OvercompleteMethods(NamedTuple):
     """
     Overcomplete concepts encoder decoders classes for dictionary learning.
-    TODO: add link to Thomas' lib a bit everywhere
+    https://github.com/KempnerInstitute/overcomplete/tree/main
     """
 
     SAE: type[oc_sae.SAE] = oc_sae.SAE
@@ -62,12 +86,17 @@ class OvercompleteMethods(NamedTuple):
     SVD: type[oc_opt.BaseOptimDictionaryLearning] = oc_opt.SkSVD
 
 
+overcomplete_method_classes = _OvercompleteMethods()
+
+
 class OvercompleteSAE(ConceptBottleneckExplainer):
     """
     Implementation of a concept explainer based on the Overcomplete SAEs framework.
+    https://github.com/KempnerInstitute/overcomplete/tree/main
 
     Attributes:
         splitted_model (ModelSplitterPlaceholder): Model splitter
+        split (str): The split in the model where the concepts are encoded from.
         concept_encoder_decoder (oc_sae.SAE): Overcomplete SAE model
         fitted (bool): Whether the model has been fitted
         _differentiable_concept_encoder (bool): Whether the concept encoder is differentiable.
@@ -82,6 +111,7 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
         splitted_model: ModelSplitterPlaceholder,
         ConceptEncoderDecoder: type[oc_sae.SAE],
         n_concepts: int,
+        *,
         encoder_module: nn.Module | str | None = None,
         dictionary_params: dict | None = None,
         device: torch.device | str = "cpu",
@@ -99,10 +129,15 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
             device (torch.device | str): Device to use for the concept encoder-decoder.
             **kwargs: Additional keyword arguments to pass to the concept encoder-decoder. See the Overcomplete documentation of the provided `ConceptEncoderDecoder` for more details.
         """
-        super().__init__(splitted_model.model)
+        super().__init__(splitted_model)
+
+        if not issubclass(ConceptEncoderDecoder, oc_sae.SAE):
+            raise ValueError(
+                "ConceptEncoderDecoder must be a subclass of `overcomplete.sae.SAE`. Use `OvercompleteMethods` instead."
+            )
 
         self.concept_encoder_decoder = ConceptEncoderDecoder(
-            input_shape=self.splitted_model.model.input_to_latent.in_features,
+            input_shape=self.splitted_model.latent_shape,  # TODO: adapt this, it is tricky because it requires to know the split
             nb_concepts=n_concepts,
             encoder_module=encoder_module,
             dictionary_params=dictionary_params,
@@ -113,8 +148,9 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
 
     def fit(
         self,
-        activations: dict[LatentActivation],
-        split: str,
+        activations: dict[LatentActivations],
+        *,
+        split: str | None = None,
         use_amp: bool = False,
         batch_size: int = 1024,
         criterion: Criterion = mse_criterion,
@@ -131,8 +167,8 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
         ConceptEncoderDecoder for explaining a concept.
 
         Args:
-            activations (dict[LatentActivation]): The activations to train the concept encoder-decoder on.
-            split (str): The split to use for the explanation.
+            activations (dict[LatentActivations]): the activations to train the concept encoder on.
+            split: (str | None): The dataset split to use for training the concept encoder. If None, the model is assumed to be a single-split model. And split is inferred from the keys of the activations dict.
             use_amp (bool): Whether to use automatic mixed precision.
             criterion (Criterion): Loss criterion for the training of the concept encoder-decoder.
             optimizer (torch.optim.Optimizer): Optimizer for the training of the concept encoder-decoder.
@@ -147,11 +183,13 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
         Returns:
             log: dictionary with training history.
         """
-        inputs = activations[split]
-        self.split = split
+        inputs, self.split = self.verify_activations(activations, split)
+        assert len(inputs.shape) == 2, (
+            f"Inputs should be a 2D tensor, (batch_size, n_features) but got {inputs.shape}."
+        )
 
         dataloader = DataLoader(TensorDataset(inputs), batch_size=batch_size, shuffle=True)
-        optimizer = torch.optimizer.Adam(self.concept_encoder_decoder.parameters(), lr=lr)
+        optimizer = torch.optim.Adam(self.concept_encoder_decoder.parameters(), lr=lr)
 
         if use_amp:
             log = oc_sae.train_sae_amp(
@@ -159,7 +197,7 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
                 dataloader=dataloader,
                 criterion=criterion,
                 optimizer=optimizer,
-                scheduler=None,
+                scheduler=scheduler,
                 nb_epochs=nb_epochs,
                 clip_grad=clip_grad,
                 monitoring=monitoring,
@@ -172,13 +210,35 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
                 dataloader=dataloader,
                 criterion=criterion,
                 optimizer=optimizer,
-                scheduler=None,
+                scheduler=scheduler,
                 nb_epochs=nb_epochs,
                 clip_grad=clip_grad,
                 monitoring=monitoring,
                 device=device,
             )
+        self.fitted = True
         return log
+
+    def encode_activations(
+        self, activations: LatentActivations | dict[LatentActivations], **kwargs
+    ) -> ConceptsActivations:
+        """
+        Encode the given activations using the concept encoder-decoder.
+
+        Args:
+            activations (LatentActivations | dict[LatentActivations]): The activations to encode.
+
+        Returns:
+            ConceptsActivations: The encoded activations.
+        """
+        assert self.fitted, "Concept explainer has not been fitted yet."
+
+        inputs, _ = self.verify_activations(activations)
+        inputs = inputs.to(self.concept_encoder_decoder.device)
+
+        # SAEs.encode returns both codes (concepts activations) and pre_codes (before relu)
+        _, codes = self.concept_encoder_decoder.encode(inputs, **kwargs)
+        return codes
 
     def to(self, device: torch.device | str):
         """
@@ -205,9 +265,11 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
 class OvercompleteDictionaryLearning(ConceptBottleneckExplainer):
     """
     Implementation of a concept explainer based on the Overcomplete optimization module for dictionary learning.
+    https://github.com/KempnerInstitute/overcomplete/tree/main
 
     Attributes:
         splitted_model (ModelSplitterPlaceholder): Model splitter
+        split (str): The split in the model where the concepts are encoded from.
         concept_encoder_decoder (oc_opt.BaseOptimDictionaryLearning): Overcomplete optimization module for dictionary learning
         fitted (bool): Whether the model has been fitted
         _differentiable_concept_encoder (bool): Whether the concept encoder is differentiable.
@@ -221,6 +283,7 @@ class OvercompleteDictionaryLearning(ConceptBottleneckExplainer):
         splitted_model: ModelSplitterPlaceholder,
         ConceptEncoderDecoder: type[oc_opt.BaseOptimDictionaryLearning],
         n_concepts: int,
+        *,
         device: torch.device | str = "cpu",
         **kwargs,
     ):
@@ -234,24 +297,32 @@ class OvercompleteDictionaryLearning(ConceptBottleneckExplainer):
             device (torch.device | str): Device to use for the concept encoder-decoder.
             **kwargs: Additional keyword arguments to pass to the concept encoder-decoder. See the Overcomplete documentation of the provided `ConceptEncoderDecoder` for more details.
         """
-        super().__init__(splitted_model.model)
+        super().__init__(splitted_model)
+
+        if not issubclass(ConceptEncoderDecoder, oc_opt.BaseOptimDictionaryLearning):
+            raise ValueError(
+                "ConceptEncoderDecoder must be a subclass of `overcomplete.optimization.BaseOptimDictionaryLearning`. Use `OvercompleteMethods` instead."
+            )
+
         self.concept_encoder_decoder = ConceptEncoderDecoder(nb_concepts=n_concepts, device=device, **kwargs)
         self.fitted = False
 
         if "NMF" in ConceptEncoderDecoder.__name__:
             self._differentiable_concept_encoder = False
 
-    def fit(self, activations: dict[LatentActivation], split: str, **kwargs):
+    def fit(self, activations: dict[LatentActivations], *, split: str | None = None, **kwargs):
         """
         ConceptEncoderDecoder for explaining a concept.
 
         Args:
-            activations (dict[LatentActivation]): The activations to train the concept encoder-decoder on. Shape: (n_samples, n_features).
-            split (str): The split to use for the explanation.
+            activations (dict[LatentActivations]): the activations to train the concept encoder on. Shape: (n_samples, n_features).
+            split: (str | None): The dataset split to use for training the concept encoder. If None, the model is assumed to be a single-split model. And split is inferred from the keys of the activations dict.
             **kwargs: Additional keyword arguments to pass to the concept encoder-decoder. See the Overcomplete documentation of the provided `ConceptEncoderDecoder` for more details.
         """
-        inputs = activations[split]
-        self.split = split
+        inputs, self.split = self.verify_activations(activations, split)
+        assert len(inputs.shape) == 2, (
+            f"Inputs should be a 2D tensor, (batch_size, n_features) but got {inputs.shape}."
+        )
 
         self.concept_encoder_decoder.fit(inputs, **kwargs)
         self.fitted = True

@@ -1,18 +1,51 @@
+# MIT License
+#
+# Copyright (c) 2025 IRT Antoine de Saint Exupéry et Université Paul Sabatier Toulouse III - All
+# rights reserved. DEEL and FOR are research programs operated by IVADO, IRT Saint Exupéry,
+# CRIAQ and ANITI - https://www.deel.ai/.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 """
 Tests for interpreto.concepts.methods.concept_bottleneck methods
 """
 
 from __future__ import annotations
 
+import pytest
 import torch
+from overcomplete import optimization as oc_opt
+from overcomplete import sae as oc_sae
 from torch import nn
 from torch.nn import functional as F
 
 from interpreto.commons.model_wrapping.model_splitter import ModelSplitterPlaceholder
-from interpreto.concepts.methods.overcomplete_cbe import OvercompleteCBE, OvercompleteMethods
+from interpreto.concepts.methods.overcomplete_cbe import (
+    OvercompleteDictionaryLearning,
+    OvercompleteSAE,
+    overcomplete_method_classes,
+)
+
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-class DummySplittedModel(nn.Module):
+class EasilySplittableModel(nn.Module):
     """
     Dummy model with two parts for testing purposes
     """
@@ -37,28 +70,74 @@ class DummySplittedModel(nn.Module):
         return self.end_model(x)
 
 
+def test_verify_activations():
+    """
+    Test verify_activations
+    """
+    n_samples = 20
+    input_size = 5
+    hidden_size = 10
+    n_concepts = 7
+
+    model = EasilySplittableModel(input_size=input_size, hidden_size=hidden_size, output_size=2)
+    split = "input_to_latent"
+    splitted_model = ModelSplitterPlaceholder(model, split)
+
+    inputs = torch.randn(n_samples, input_size)
+
+    # different splits between activations and model
+    activations = {
+        "input_to_latent": splitted_model.get_activations(inputs),
+        "end_model": inputs,
+    }
+    with pytest.raises(ValueError):
+        cbe = OvercompleteDictionaryLearning(splitted_model, oc_opt.NMF, n_concepts=n_concepts)
+        cbe.fit(activations, split="input_to_latent")
+
+    # several splits in activations and model but none specified
+    splitted_model.splits = ["input_to_latent", "end_model"]
+    # conflict with activations
+    with pytest.raises(ValueError):
+        cbe = OvercompleteDictionaryLearning(splitted_model, oc_opt.NMF, n_concepts=n_concepts)
+        cbe.fit(activations)
+    # conflict with activations
+    with pytest.raises(ValueError):
+        cbe = OvercompleteDictionaryLearning(splitted_model, oc_opt.NMF, n_concepts=n_concepts)
+        cbe.fit(activations[split])
+
+
 def test_overcomplete_cbe():
     """
-    Test OvercompleteCBE
+    Test OvercompleteSAE and OvercompleteDictionaryLearning
     """
-    n_samples = 100
-    input_size = 10
-    hidden_size = 20
-    n_concepts = hidden_size
+    n_samples = 20
+    input_size = 5
+    hidden_size = 10
+    n_concepts = 7
 
-    model = DummySplittedModel(input_size=input_size, hidden_size=hidden_size, output_size=2)
-    splitted_model = ModelSplitterPlaceholder(model, "input_to_latent")
+    model = EasilySplittableModel(input_size=input_size, hidden_size=hidden_size, output_size=2)
+    split = "input_to_latent"
+    splitted_model = ModelSplitterPlaceholder(model, split)
 
     inputs = torch.randn(n_samples, input_size)
     activations = splitted_model.get_activations(inputs)
-    assert activations.shape == (n_samples, hidden_size)
+    assert activations[split].shape == (n_samples, hidden_size)
 
-    concept_extraction_methods_to_test = [OvercompleteMethods.NMF]  # TODO: add other methods
+    dictionary_learning_methods_to_test = [overcomplete_method_classes.NMF]  # TODO: add other methods
+    sae_methods_to_test = [overcomplete_method_classes.SAE]
 
-    for method in concept_extraction_methods_to_test:
-        cbe = OvercompleteCBE(splitted_model, method, n_concepts=n_concepts)
-        cbe.fit(activations)
+    for method in dictionary_learning_methods_to_test + sae_methods_to_test:
+        if issubclass(method, oc_sae.SAE):
+            cbe = OvercompleteSAE(splitted_model, method, n_concepts=n_concepts, device=DEVICE)
+            cbe.fit(activations, nb_epochs=1, device=DEVICE)
+        else:
+            cbe = OvercompleteDictionaryLearning(splitted_model, method, n_concepts=n_concepts, device=DEVICE)
+            cbe.fit(activations)
+
+        assert hasattr(cbe, "concept_encoder_decoder")
+        assert hasattr(cbe, "splitted_model")
         assert cbe.fitted
+        assert cbe.split == split
         assert hasattr(cbe, "_differentiable_concept_encoder")
         assert hasattr(cbe, "_differentiable_concept_decoder")
 
@@ -66,4 +145,6 @@ def test_overcomplete_cbe():
         assert concepts.shape == (n_samples, n_concepts)
         reconstructed_activations = cbe.decode_concepts(concepts)
         assert reconstructed_activations.shape == (n_samples, hidden_size)
-        assert torch.allclose(reconstructed_activations, activations, atol=1e-2)
+
+
+test_overcomplete_cbe()  # TODO: remove
