@@ -54,7 +54,7 @@ class SquaredMeanAggregator(Aggregator):
     # TODO : remake this class with __method as a function chain of torch.mean and torch.square
     # _method=torch.mean
     def aggregate(self, results: torch.Tensor, _) -> Any:
-        return torch.mean(results, _) ** 2
+        return torch.mean(torch.square(results), _)
 
 
 class SumAggregator(TorchAggregator):

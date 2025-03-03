@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Collection
+from typing import Iterable
 
 import torch
 
@@ -18,7 +19,7 @@ class Perturbator(ABC):
     """
 
     @abstractmethod
-    def perturb(self, inputs: ModelInput | Collection[ModelInput]) -> Collection[TokenEmbedding]:
+    def perturb(self, inputs: ModelInput | Collection[ModelInput]) -> tuple[torch.Tensor]|tuple[Iterable[torch.Tensor]]:
         """
         Method to perturb an input, should return a collection of perturbed elements and their associated masks
         """

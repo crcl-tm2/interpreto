@@ -30,11 +30,20 @@ class TokenOcclusionPerturbator(TokenPerturbation):
         self.mask_value = mask_value or tokenizer.mask_token
 
     @singledispatchmethod
-    def perturb(self, inputs) -> tuple[torch.Tensor, torch.Tensor]:
+    def perturb(self, inputs) -> tuple[torch.Tensor]|tuple[list[torch.Tensor]]:
+        """
+        Perturb a sentence or a collection of sentences by applying token occlusion
+
+        Args:
+            inputs (str|Iterable[str]): sentence to perturb
+
+        Returns:
+            tuple[torch.Tensor]|tuple[list[torch.Tensor]]: embeddings of perturbed sentences and associated masks
+        """
         raise NotImplementedError(f"Type {type(inputs)} not supported")
 
     @perturb.register(str)
-    def _(self, inputs: str) -> tuple[torch.Tensor, torch.Tensor]:
+    def _(self, inputs: str) -> tuple[torch.Tensor]:
         # Get tokens from str input
         tokens = self.tokenizer.tokenize(inputs)
         n_perturbations = len(tokens)
@@ -44,14 +53,14 @@ class TokenOcclusionPerturbator(TokenPerturbation):
             for i in range(n_perturbations)
         ]
         # Get words embeddings for each variation
-        embeddings = torch.stack([self.inputs_embeddings(torch.tensor(variation)) for variation in variations])
+        embeddings = torch.stack([self.inputs_embeddings(torch.tensor(variation)) for variation in variations]).unsqueeze(0)
         # Return embeddings and identity matrix as mask
         return embeddings, torch.eye(n_perturbations)
 
     @perturb.register(Iterable)
-    def _(self, inputs: Iterable):
+    def _(self, inputs: Iterable)->tuple[list[torch.Tensor]]:
         # Perturb a batch of inputs (or nested batchs of inputs)
-        return [self.perturb(input) for input in inputs]
+        return [self.perturb(item) for item in inputs]
 
 
 class WordOcclusionPerturbator(TokenPerturbation):
@@ -69,6 +78,15 @@ class WordOcclusionPerturbator(TokenPerturbation):
 
     @singledispatchmethod
     def perturb(self, inputs) -> tuple[torch.Tensor, torch.Tensor] | list[tuple[torch.Tensor, torch.Tensor]]:
+        """
+        Perturb a sentence or a collection of sentences by applying word occlusion
+
+        Args:
+            inputs (str|Iterable[str]): sentence to perturb
+
+        Returns:
+            tuple[torch.Tensor]|tuple[list[torch.Tensor]]: embeddings of perturbed sentences and associated masks
+        """
         raise NotImplementedError(f"Type {type(inputs)} not supported")
 
     @perturb.register(str)
@@ -78,9 +96,11 @@ class WordOcclusionPerturbator(TokenPerturbation):
         n_perturbations = len(words)
         # Create variations by masking each word
         variations = []
-        for word in inputs.split():
-            sentence = " ".join(inputs.replace(word, self.mask_value))
-            tokens = self.tokenizer.tokenize(sentence)
+        for index, word in enumerate(inputs.split()):
+            first_part = self.tokenizer.tokenize( " ".join(words[:index]))
+            second_part = self.tokenizer.tokenize(" ".join(words[index + 1 :]))
+
+            tokens =  first_part + [self.tokenizer.mask_token] + second_part
             # add truncation ?
             # tokens = tokens[: max_nb_tokens]
             variations.append(self.tokenizer.convert_tokens_to_ids(tokens))
@@ -93,10 +113,10 @@ class WordOcclusionPerturbator(TokenPerturbation):
         embeddings = [self.inputs_embeddings(torch.tensor(variation)) for variation in variations]
 
         # Return embeddings and identity matrix as mask
-        return torch.stack(embeddings), torch.eye(n_perturbations)
+        return torch.stack(embeddings).unsqueeze(0), torch.eye(n_perturbations)
 
     @perturb.register(Iterable)
     def _(self, inputs: Iterable) -> list[tuple[torch.Tensor, torch.Tensor]]:
         # TODO : put this in a mixin to avoid code duplication
         # Perturb a batch of inputs (or nested batchs of inputs)
-        return [self.perturb(input) for input in inputs]
+        return [self.perturb(item) for item in inputs]
