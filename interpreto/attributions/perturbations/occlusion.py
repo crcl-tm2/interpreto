@@ -30,7 +30,7 @@ class TokenOcclusionPerturbator(TokenPerturbation):
         self.mask_value = mask_value or tokenizer.mask_token
 
     @singledispatchmethod
-    def perturb(self, inputs) -> tuple[torch.Tensor]|tuple[list[torch.Tensor]]:
+    def perturb(self, inputs) -> tuple[torch.Tensor] | tuple[list[torch.Tensor]]:
         """
         Perturb a sentence or a collection of sentences by applying token occlusion
 
@@ -53,12 +53,14 @@ class TokenOcclusionPerturbator(TokenPerturbation):
             for i in range(n_perturbations)
         ]
         # Get words embeddings for each variation
-        embeddings = torch.stack([self.inputs_embeddings(torch.tensor(variation)) for variation in variations]).unsqueeze(0)
+        embeddings = torch.stack(
+            [self.inputs_embeddings(torch.tensor(variation)) for variation in variations]
+        ).unsqueeze(0)
         # Return embeddings and identity matrix as mask
         return embeddings, torch.eye(n_perturbations)
 
     @perturb.register(Iterable)
-    def _(self, inputs: Iterable)->tuple[list[torch.Tensor]]:
+    def _(self, inputs: Iterable) -> tuple[list[torch.Tensor]]:
         # Perturb a batch of inputs (or nested batchs of inputs)
         return [self.perturb(item) for item in inputs]
 
@@ -96,11 +98,11 @@ class WordOcclusionPerturbator(TokenPerturbation):
         n_perturbations = len(words)
         # Create variations by masking each word
         variations = []
-        for index, word in enumerate(inputs.split()):
-            first_part = self.tokenizer.tokenize( " ".join(words[:index]))
+        for index in range(n_perturbations):
+            first_part = self.tokenizer.tokenize(" ".join(words[:index]))
             second_part = self.tokenizer.tokenize(" ".join(words[index + 1 :]))
 
-            tokens =  first_part + [self.tokenizer.mask_token] + second_part
+            tokens = first_part + [self.tokenizer.mask_token] + second_part
             # add truncation ?
             # tokens = tokens[: max_nb_tokens]
             variations.append(self.tokenizer.convert_tokens_to_ids(tokens))

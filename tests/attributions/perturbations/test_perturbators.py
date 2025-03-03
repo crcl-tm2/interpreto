@@ -84,18 +84,24 @@ def tokenizer():
 
 
 @pytest.fixture
-def model():
+def inputs_embedding():
     return BertModel.from_pretrained("bert-base-uncased").get_input_embeddings()
+
 
 @pytest.fixture
 def sentences():
-    return ["Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
-            "Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.",
-            "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.",
-            "Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."]
+    return [
+        "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+        "Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.",
+        "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.",
+        "Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
+    ]
+
 
 def test_tokens_perturbators(tokenizer, inputs_embedding, sentences):
-    token_perturbators = [TokenOcclusionPerturbator(tokenizer=tokenizer, inputs_embeddings=inputs_embedding), ]
+    token_perturbators = [
+        TokenOcclusionPerturbator(tokenizer=tokenizer, inputs_embeddings=inputs_embedding),
+    ]
 
     def assert_mask_pertinence(reference, perturbations, mask):
         # Check that a masks corresponds to the perturbation
@@ -105,7 +111,9 @@ def test_tokens_perturbators(tokenizer, inputs_embedding, sentences):
         binary_mask = mask.ne(0)
         assert torch.equal(binary_mask, diff), "Mask is incoherent with applied perturbation"
 
-    sentences_embeddings = [inputs_embedding(torch.tensor(tokenizer.convert_tokens_to_ids(tokenizer.tokenize(sent)))) for sent in sentences]
+    sentences_embeddings = [
+        inputs_embedding(torch.tensor(tokenizer.convert_tokens_to_ids(tokenizer.tokenize(sent)))) for sent in sentences
+    ]
 
     for perturbator in token_perturbators:
         # Test single sentence
@@ -122,13 +130,21 @@ def test_tokens_perturbators(tokenizer, inputs_embedding, sentences):
         for index, (emb, mask) in enumerate(perturbator.perturb(sentences)):
             assert_mask_pertinence(sentences_embeddings[index], emb.squeeze(0), mask)
 
+
 def test_word_perturbators(tokenizer, inputs_embedding, sentences):
-    word_perturbators = [WordOcclusionPerturbator(tokenizer=tokenizer, inputs_embeddings=inputs_embedding), ]
+    word_perturbators = [
+        WordOcclusionPerturbator(tokenizer=tokenizer, inputs_embeddings=inputs_embedding),
+    ]
+    for perturbator in word_perturbators:  # noqa: B007
+        ...
     # TODO : define tests for word perturbators
 
+
 def test_occlusion_perturbators(tokenizer, inputs_embedding, sentences):
-    occlusion_perturbators = [TokenOcclusionPerturbator(tokenizer=tokenizer, inputs_embeddings=inputs_embedding),
-                              WordOcclusionPerturbator(tokenizer=tokenizer, inputs_embeddings=inputs_embedding), ]
+    occlusion_perturbators = [
+        TokenOcclusionPerturbator(tokenizer=tokenizer, inputs_embeddings=inputs_embedding),
+        WordOcclusionPerturbator(tokenizer=tokenizer, inputs_embeddings=inputs_embedding),
+    ]
 
     for perturbator in occlusion_perturbators:
         sentence = sentences[0]
@@ -139,16 +155,16 @@ def test_occlusion_perturbators(tokenizer, inputs_embedding, sentences):
         assert torch.all(mask == torch.eye(mask.shape[0]))
 
 
-def test_word_occlusion_perturbator(tokenizer, model, sentences):
-    perturbator = WordOcclusionPerturbator(tokenizer, model)
+def test_word_occlusion_perturbator(tokenizer, inputs_embedding, sentences):
+    perturbator = WordOcclusionPerturbator(tokenizer, inputs_embedding)
     embeddings, mask = perturbator.perturb(sentences[0])
     n_words = len(sentences[0].split())
     assert embeddings.shape[1] == n_words
     assert mask.shape == (n_words, n_words)
 
 
-def test_token_occlusion_perturbator(tokenizer, model, sentences):
-    perturbator = TokenOcclusionPerturbator(tokenizer, model)
+def test_token_occlusion_perturbator(tokenizer, inputs_embedding, sentences):
+    perturbator = TokenOcclusionPerturbator(tokenizer, inputs_embedding)
     embeddings, mask = perturbator.perturb(sentences[0])
     n_tokens = len(tokenizer.tokenize(sentences[0]))
     assert embeddings.shape[1] == embeddings.shape[2] == n_tokens

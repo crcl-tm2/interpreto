@@ -1,3 +1,3 @@
-from .linear_interpolation_perturbation import LinearInterpolationPerturbation
 from .base import GaussianNoisePerturbator
+from .linear_interpolation_perturbation import LinearInterpolationPerturbation
 from .occlusion import TokenOcclusionPerturbator, WordOcclusionPerturbator

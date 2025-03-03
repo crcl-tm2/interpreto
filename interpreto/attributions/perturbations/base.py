@@ -5,12 +5,11 @@ Base classes for perturbations used in attribution methods
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Collection
-from typing import Iterable
+from collections.abc import Collection, Iterable
 
 import torch
 
-from interpreto.typing import ModelInput, TokenEmbedding
+from interpreto.typing import ModelInput
 
 
 class Perturbator(ABC):
@@ -19,7 +18,9 @@ class Perturbator(ABC):
     """
 
     @abstractmethod
-    def perturb(self, inputs: ModelInput | Collection[ModelInput]) -> tuple[torch.Tensor]|tuple[Iterable[torch.Tensor]]:
+    def perturb(
+        self, inputs: ModelInput | Collection[ModelInput]
+    ) -> tuple[torch.Tensor] | tuple[Iterable[torch.Tensor]]:
         """
         Method to perturb an input, should return a collection of perturbed elements and their associated masks
         """
