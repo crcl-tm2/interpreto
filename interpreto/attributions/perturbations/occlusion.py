@@ -79,13 +79,21 @@ class WordOcclusionPerturbator(TokenPerturbation):
         # Create variations by masking each word
         variations = []
         for word in inputs.split():
-            sentence = "".join(inputs.replace(word, self.mask_value))
+            sentence = " ".join(inputs.replace(word, self.mask_value))
             tokens = self.tokenizer.tokenize(sentence)
+            # add truncation ?
+            # tokens = tokens[: max_nb_tokens]
             variations.append(self.tokenizer.convert_tokens_to_ids(tokens))
+
+        max_length = max([len(tokens) for tokens in variations])
+        # TODO : put the padding in a separate reusable utility function
+        variations = [v + [self.tokenizer.pad_token_id] * (max_length - len(v)) for v in variations]
+
         # Get words embeddings for each variation
-        embeddings = torch.stack([self.inputs_embeddings(torch.tensor(variation)) for variation in variations])
+        embeddings = [self.inputs_embeddings(torch.tensor(variation)) for variation in variations]
+
         # Return embeddings and identity matrix as mask
-        return embeddings, torch.eye(n_perturbations)
+        return torch.stack(embeddings), torch.eye(n_perturbations)
 
     @perturb.register(Iterable)
     def _(self, inputs: Iterable) -> list[tuple[torch.Tensor, torch.Tensor]]:
