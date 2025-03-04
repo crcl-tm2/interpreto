@@ -29,7 +29,7 @@ Concept Bottleneck Explainer based on Overcomplete concept-encoder-decoder frame
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 import torch
 from overcomplete import optimization as oc_opt
@@ -41,7 +41,8 @@ from interpreto.commons.model_wrapping.model_splitter import ModelSplitterPlaceh
 from interpreto.concepts.base import ConceptBottleneckExplainer
 from interpreto.typing import ConceptsActivations, LatentActivations
 
-Criterion = Callable[[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]
+if TYPE_CHECKING:
+    Criterion = Callable[[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]
 
 
 def mse_criterion(
