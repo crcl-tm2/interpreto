@@ -14,7 +14,6 @@ from interpreto.attributions.aggregations.base import Aggregator
 from interpreto.attributions.perturbations.base import Perturbator
 from interpreto.typing import ModelInput
 
-
 class AttributionExplainer:
     """
     Abstract class for attribution methods, gives specific types of explanations
@@ -35,13 +34,14 @@ class AttributionExplainer:
         self.device = device
 
     @abstractmethod
-    def explain(self, item: ModelInput) -> Any:
+    def explain(self, inputs: ModelInput, target:torch.Tensor|None=None) -> Any:
+        # TODO : give more generic type for model output / target
         """
         main process of attribution method
         """
         raise NotImplementedError
 
-    def __call__(self, item: ModelInput) -> Any:
+    def __call__(self, item: ModelInput, target:torch.Tensor|None=None) -> Any:
         return self.explain(item)
 
 
@@ -52,7 +52,7 @@ class GradientExplainer(AttributionExplainer):
     Subclasses of this explainer are mostly reductions to a specific perturbation or aggregation
     """
 
-    def explain(self, item: ModelInput) -> Any:
+    def explain(self, item: ModelInput, target) -> Any:
         """
         main process of attribution method
         """
@@ -71,15 +71,19 @@ class InferenceExplainer(AttributionExplainer):
     """
     Black box model explainer
     """
-    # TODO : change structuration to avoid code duplication between this class and GradientExplainer
-    def explain(self, item: ModelInput) -> Any:
+    def explain(self, inputs: ModelInput, targets) -> Any:
         """
         main process of attribution method
         """
-        embeddings, mask = self.perturbator.perturb(item)
+        embeddings, mask = self.perturbator.perturb(inputs)
+        # embeddings.shape : (n, p, l, d)
+        # target.shape : (n, o)
+
+        # repeat target along the p dimension
+        targets = targets.unsqueeze(1).repeat(1, embeddings.shape[1], 1)
 
         self.inference_wrapper.to(self.device)
-        results = self.inference_wrapper.batch_inference(embeddings, flatten=True)
+        results = self.inference_wrapper.batch_inference(embeddings, targets, flatten=True)
         self.inference_wrapper.cpu()  # TODO: check if we need to do this
 
         explanation = self.aggregator(results, mask)

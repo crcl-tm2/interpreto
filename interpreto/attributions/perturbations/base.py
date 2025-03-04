@@ -26,19 +26,23 @@ class Perturbator(ABC):
         """
 
 
-class TokenPerturbation(Perturbator):
+class TokenPerturbator(Perturbator):
     """
     Generic class for token modification (occlusion, words substitution...)
     """
 
+class WordPerturbator(Perturbator):
+    """
+    Generic class for word-wise modification
+    """
 
-class TensorPerturbation(Perturbator):
+class TensorPerturbator(Perturbator):
     """
     Generic class for any tensor-wise modification
     """
 
 
-class GaussianNoisePerturbator(TensorPerturbation):
+class GaussianNoisePerturbator(TensorPerturbator):
     """
     Perturbator adding gaussian noise to the input tensor
     """
