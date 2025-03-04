@@ -45,9 +45,7 @@ huggingface-hub==0.29.1
 idna==3.10
     # via requests
 importlib-metadata==8.5.0
-    # via
-    #   diffusers
-    #   typeguard
+    # via diffusers
 ipython==8.12.3
     # via nnsight
 jaxtyping==0.2.15
@@ -172,9 +170,7 @@ typeguard==4.4.0
     # via jaxtyping
 typing-extensions==4.12.2
     # via
-    #   annotated-types
     #   huggingface-hub
-    #   ipython
     #   jaxtyping
     #   pydantic
     #   pydantic-core
