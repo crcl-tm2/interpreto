@@ -38,8 +38,8 @@ from torch.nn import functional as F
 from interpreto.commons.model_wrapping.model_splitter import ModelSplitterPlaceholder
 from interpreto.concepts.methods.overcomplete_cbe import (
     OvercompleteDictionaryLearning,
+    OvercompleteMethods,
     OvercompleteSAE,
-    overcomplete_method_classes,
 )
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -125,14 +125,14 @@ def test_overcomplete_cbe():
     assert activations[split].shape == (n_samples, hidden_size)
 
     # iterate over all methods from the namedtuple listing them
-    for method in overcomplete_method_classes._asdict().values():
-        if issubclass(method, oc_sae.SAE):
-            cbe = OvercompleteSAE(splitted_model, method, n_concepts=n_concepts, device=DEVICE)
+    for method in OvercompleteMethods:
+        if issubclass(method.value, oc_sae.SAE):
+            cbe = OvercompleteSAE(splitted_model, method.value, n_concepts=n_concepts, device=DEVICE)
             cbe.fit(activations, nb_epochs=1, batch_size=n_samples // 2, device=DEVICE)
         else:
             cbe = OvercompleteDictionaryLearning(
                 splitted_model,
-                method,
+                method.value,
                 n_concepts=n_concepts,
                 device=DEVICE,
             )

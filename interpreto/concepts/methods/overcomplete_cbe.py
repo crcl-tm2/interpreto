@@ -29,7 +29,8 @@ Concept Bottleneck Explainer based on Overcomplete concept-encoder-decoder frame
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, NamedTuple
+from enum import Enum
+from typing import TYPE_CHECKING
 
 import torch
 from overcomplete import optimization as oc_opt
@@ -66,28 +67,25 @@ def dead_neurons_reanimation_criterion(
     return loss
 
 
-class _OvercompleteMethods(NamedTuple):
+class OvercompleteMethods(Enum):
     """
-    Overcomplete concepts encoder decoders classes for dictionary learning.
+    Overcomplete concepts encoder-decoder classes for dictionary learning.
     https://github.com/KempnerInstitute/overcomplete/tree/main
     """
 
-    SAE: type[oc_sae.SAE] = oc_sae.SAE
-    TopKSAE: type[oc_sae.SAE] = oc_sae.TopKSAE
-    BatchTopKSAE: type[oc_sae.SAE] = oc_sae.BatchTopKSAE
-    JumpSAE: type[oc_sae.SAE] = oc_sae.JumpSAE
-    NMF: type[oc_opt.BaseOptimDictionaryLearning] = oc_opt.NMF
-    SemiNMF: type[oc_opt.BaseOptimDictionaryLearning] = oc_opt.SemiNMF
-    ConvexNMF: type[oc_opt.BaseOptimDictionaryLearning] = oc_opt.ConvexNMF
-    PCA: type[oc_opt.BaseOptimDictionaryLearning] = oc_opt.SkPCA
-    ICA: type[oc_opt.BaseOptimDictionaryLearning] = oc_opt.SkICA
-    KMeans: type[oc_opt.BaseOptimDictionaryLearning] = oc_opt.SkKMeans
-    DictionaryLearning: type[oc_opt.BaseOptimDictionaryLearning] = oc_opt.SkDictionaryLearning
-    SparsePCA: type[oc_opt.BaseOptimDictionaryLearning] = oc_opt.SkSparsePCA
-    SVD: type[oc_opt.BaseOptimDictionaryLearning] = oc_opt.SkSVD
-
-
-overcomplete_method_classes = _OvercompleteMethods()
+    SAE = oc_sae.SAE
+    TopKSAE = oc_sae.TopKSAE
+    BatchTopKSAE = oc_sae.BatchTopKSAE
+    JumpSAE = oc_sae.JumpSAE
+    NMF = oc_opt.NMF
+    SemiNMF = oc_opt.SemiNMF
+    ConvexNMF = oc_opt.ConvexNMF
+    PCA = oc_opt.SkPCA
+    ICA = oc_opt.SkICA
+    KMeans = oc_opt.SkKMeans
+    DictionaryLearning = oc_opt.SkDictionaryLearning
+    SparsePCA = oc_opt.SkSparsePCA
+    SVD = oc_opt.SkSVD
 
 
 class OvercompleteSAE(ConceptBottleneckExplainer):

@@ -30,7 +30,7 @@ from __future__ import annotations
 
 # from interpreto.attributions import Occlusion, SobolAttribution
 from interpreto.commons.model_wrapping.model_splitter import ModelSplitterPlaceholder
-from interpreto.concepts.methods.overcomplete_cbe import OvercompleteDictionaryLearning, overcomplete_method_classes
+from interpreto.concepts.methods.overcomplete_cbe import OvercompleteDictionaryLearning, OvercompleteMethods
 from interpreto.typing import ConceptsActivations, ModelInput
 
 
@@ -60,7 +60,7 @@ class Cockatiel(OvercompleteDictionaryLearning):
         """
         super().__init__(
             splitted_model=splitted_model,
-            ConceptEncoderDecoder=overcomplete_method_classes.NMF,
+            ConceptEncoderDecoder=OvercompleteMethods.NMF,
             n_concepts=n_concepts,
             device=device,
         )

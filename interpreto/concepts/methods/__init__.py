@@ -23,4 +23,4 @@
 # SOFTWARE.
 
 from .cockatiel import Cockatiel
-from .overcomplete_cbe import OvercompleteDictionaryLearning, OvercompleteSAE, overcomplete_method_classes
+from .overcomplete_cbe import OvercompleteDictionaryLearning, OvercompleteMethods, OvercompleteSAE
