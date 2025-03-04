@@ -70,7 +70,9 @@ dependencies = [
   "transformers[sentencepiece,tokenizers]>=4.22.0",
   "torch>=2.0",
   "overcomplete>=0.2.3",  # TODO: see how to limit sub-dependencies
-  "nnsight>=0.4.3",
+  "nnsight>=0.4.0",
+  "jaxtyping<=0.2.15; python_version<='3.8'",
+  "jaxtyping<=0.2.36; python_version>'3.9'",
   "nvidia-cublas-cu11>=11.10.3.66; sys_platform=='Linux'",
   "nvidia-cuda-cupti-cu11>=11.7.101; sys_platform=='Linux'",
   "nvidia-cuda-nvrtc-cu11>=11.7.99; sys_platform=='Linux'",
@@ -109,6 +111,10 @@ lint = [
   "numpy<=2.1.0; python_version<'3.10' and python_version>='3.9'",
   "numpy<=1.24.4; python_version<'3.9'",
   "numpy>=2.2.0; python_version>='3.10'"
+]
+notebook = [
+  "ipykernel>=6.29.2",
+  "ipywidgets>=8.1.2"
 ]
 
 [project.urls]
