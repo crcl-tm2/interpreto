@@ -24,13 +24,13 @@ class AttributionExplainer:
         self,
         inference_wrapper: Callable,
         batch_size: int,
-        perturbation: Perturbator | None = None,
-        aggregation: Aggregator | None = None,
+        perturbator: Perturbator | None = None,
+        aggregator: Aggregator | None = None,
         device: torch.device | None = None,
     ):
-        self.perturbation = perturbation
+        self.perturbator = perturbator
         self.inference_wrapper = inference_wrapper
-        self.aggregation = aggregation
+        self.aggregator = aggregator
         self.batch_size = batch_size
         self.device = device
 
@@ -56,13 +56,13 @@ class GradientExplainer(AttributionExplainer):
         """
         main process of attribution method
         """
-        embeddings, _ = self.perturbation.perturb(item)
+        embeddings, _ = self.perturbator.perturb(item)
 
         self.inference_wrapper.to(self.device)
         results = self.inference_wrapper.batch_gradients(embeddings, flatten=True)
         self.inference_wrapper.cpu()  # TODO: check if we need to do this
 
-        explanation = self.aggregation(results, _)
+        explanation = self.aggregator(results, _)
 
         return explanation
 
@@ -71,3 +71,17 @@ class InferenceExplainer(AttributionExplainer):
     """
     Black box model explainer
     """
+    # TODO : change structuration to avoid code duplication between this class and GradientExplainer
+    def explain(self, item: ModelInput) -> Any:
+        """
+        main process of attribution method
+        """
+        embeddings, mask = self.perturbator.perturb(item)
+
+        self.inference_wrapper.to(self.device)
+        results = self.inference_wrapper.batch_inference(embeddings, flatten=True)
+        self.inference_wrapper.cpu()  # TODO: check if we need to do this
+
+        explanation = self.aggregator(results, mask)
+
+        return explanation

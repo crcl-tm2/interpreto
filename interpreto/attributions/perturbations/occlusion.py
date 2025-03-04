@@ -15,7 +15,6 @@ from interpreto.attributions.perturbations.base import TokenPerturbation
 # TODO : Add a mixin in perturbationts.base to avoid code duplication between multiples token-wise or word-wise perturbations
 # TODO : tests pour les méthodes de word occlusion
 
-
 class TokenOcclusionPerturbator(TokenPerturbation):
     """
     Perturbator removing tokens from the input
