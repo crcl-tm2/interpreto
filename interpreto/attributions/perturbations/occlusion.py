@@ -13,7 +13,7 @@ from transformers import PreTrainedTokenizer
 from interpreto.attributions.perturbations.base import TokenPerturbation
 
 # TODO : Add a mixin in perturbationts.base to avoid code duplication between multiples token-wise or word-wise perturbations
-# TODO : tests pour les méthodes d'occlusion
+# TODO : tests pour les méthodes de word occlusion
 
 
 class TokenOcclusionPerturbator(TokenPerturbation):
@@ -91,6 +91,12 @@ class WordOcclusionPerturbator(TokenPerturbation):
         """
         raise NotImplementedError(f"Type {type(inputs)} not supported")
 
+    @perturb.register(Iterable)
+    def _(self, inputs: Iterable) -> list[tuple[torch.Tensor, torch.Tensor]]:
+        # TODO : put this in a mixin to avoid code duplication
+        # Perturb a batch of inputs (or nested batchs of inputs)
+        return [self.perturb(item) for item in inputs]
+
     @perturb.register(str)
     def _(self, inputs: str) -> tuple[torch.Tensor, torch.Tensor]:
         # Get tokens from str input
@@ -98,11 +104,11 @@ class WordOcclusionPerturbator(TokenPerturbation):
         n_perturbations = len(words)
         # Create variations by masking each word
         variations = []
-        for index in range(n_perturbations):
+        for index, word in enumerate(words):
             first_part = self.tokenizer.tokenize(" ".join(words[:index]))
-            second_part = self.tokenizer.tokenize(" ".join(words[index + 1 :]))
+            second_part = self.tokenizer.tokenize(" " + " ".join(words[index + 1 :]))
 
-            tokens = first_part + [self.tokenizer.mask_token] + second_part
+            tokens = first_part + [self.tokenizer.mask_token for _ in self.tokenizer.tokenize(word)] + second_part
             # add truncation ?
             # tokens = tokens[: max_nb_tokens]
             variations.append(self.tokenizer.convert_tokens_to_ids(tokens))
@@ -117,8 +123,4 @@ class WordOcclusionPerturbator(TokenPerturbation):
         # Return embeddings and identity matrix as mask
         return torch.stack(embeddings).unsqueeze(0), torch.eye(n_perturbations)
 
-    @perturb.register(Iterable)
-    def _(self, inputs: Iterable) -> list[tuple[torch.Tensor, torch.Tensor]]:
-        # TODO : put this in a mixin to avoid code duplication
-        # Perturb a batch of inputs (or nested batchs of inputs)
-        return [self.perturb(item) for item in inputs]
+
