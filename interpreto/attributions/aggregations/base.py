@@ -69,5 +69,11 @@ class VarianceAggregator(TorchAggregator):
     """
     Variance of attributions
     """
-
     _method = torch.var
+
+class MaskwiseMeanAggregation(Aggregator):
+    """
+    TODO : add docstring
+    """
+    def aggregate(self, results: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        return torch.einsum("np,npl->n,l", mask, results) / mask.sum(dim=1)
