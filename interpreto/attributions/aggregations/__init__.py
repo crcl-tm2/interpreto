@@ -1,1 +1,1 @@
-from .mean_aggregation import MeanAggregation
+from .base import MeanAggregator
