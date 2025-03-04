@@ -106,6 +106,7 @@ def test_verify_activations():
         cbe.fit(activations[split])
 
 
+@pytest.mark.slow
 def test_overcomplete_cbe():
     """
     Test OvercompleteSAE and OvercompleteDictionaryLearning
@@ -123,15 +124,18 @@ def test_overcomplete_cbe():
     activations = splitted_model.get_activations(inputs)
     assert activations[split].shape == (n_samples, hidden_size)
 
-    dictionary_learning_methods_to_test = [overcomplete_method_classes.NMF]  # TODO: add other methods
-    sae_methods_to_test = [overcomplete_method_classes.SAE]
-
-    for method in dictionary_learning_methods_to_test + sae_methods_to_test:
+    # iterate over all methods from the namedtuple listing them
+    for method in overcomplete_method_classes._asdict().values():
         if issubclass(method, oc_sae.SAE):
             cbe = OvercompleteSAE(splitted_model, method, n_concepts=n_concepts, device=DEVICE)
-            cbe.fit(activations, nb_epochs=1, device=DEVICE)
+            cbe.fit(activations, nb_epochs=1, batch_size=n_samples // 2, device=DEVICE)
         else:
-            cbe = OvercompleteDictionaryLearning(splitted_model, method, n_concepts=n_concepts, device=DEVICE)
+            cbe = OvercompleteDictionaryLearning(
+                splitted_model,
+                method,
+                n_concepts=n_concepts,
+                device=DEVICE,
+            )
             cbe.fit(activations)
 
         assert hasattr(cbe, "concept_encoder_decoder")

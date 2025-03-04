@@ -154,8 +154,8 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
         use_amp: bool = False,
         batch_size: int = 1024,
         criterion: Criterion = mse_criterion,
-        optimizer: torch.optim.Optimizer = torch.optim.Adam,
-        scheduler: torch.optim.lr_scheduler.LRScheduler | None = None,
+        optimizer_class: type[torch.optim.Optimizer] = torch.optim.Adam,
+        scheduler_class: type[torch.optim.lr_scheduler.LRScheduler] | None = None,
         lr: float = 1e-3,
         nb_epochs: int = 20,
         clip_grad: float | None = None,
@@ -171,8 +171,7 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
             split: (str | None): The dataset split to use for training the concept encoder. If None, the model is assumed to be a single-split model. And split is inferred from the keys of the activations dict.
             use_amp (bool): Whether to use automatic mixed precision.
             criterion (Criterion): Loss criterion for the training of the concept encoder-decoder.
-            optimizer (torch.optim.Optimizer): Optimizer for the training of the concept encoder-decoder.
-            scheduler (torch.optim.lr_scheduler.LRScheduler | None): Learning rate scheduler for the training of the concept encoder-decoder.
+            optimizer_class (type[torch.optim.Optimizer]): Optimizer for the training of the concept encoder-decoder.
             lr (float): Learning rate for the training of the concept encoder-decoder.
             nb_epochs (int): Number of epochs for the training of the concept encoder-decoder.
             clip_grad (float | None): Gradient clipping value for the training of the concept encoder-decoder.
@@ -188,8 +187,8 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
             f"Inputs should be a 2D tensor, (batch_size, n_features) but got {inputs.shape}."
         )
 
-        dataloader = DataLoader(TensorDataset(inputs), batch_size=batch_size, shuffle=True)
-        optimizer = torch.optim.Adam(self.concept_encoder_decoder.parameters(), lr=lr)
+        dataloader = DataLoader(TensorDataset(inputs.detach()), batch_size=batch_size, shuffle=True)
+        optimizer = optimizer_class(self.concept_encoder_decoder.parameters(), lr=lr)
 
         if use_amp:
             log = oc_sae.train_sae_amp(
@@ -197,7 +196,6 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
                 dataloader=dataloader,
                 criterion=criterion,
                 optimizer=optimizer,
-                scheduler=scheduler,
                 nb_epochs=nb_epochs,
                 clip_grad=clip_grad,
                 monitoring=monitoring,
@@ -210,7 +208,6 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
                 dataloader=dataloader,
                 criterion=criterion,
                 optimizer=optimizer,
-                scheduler=scheduler,
                 nb_epochs=nb_epochs,
                 clip_grad=clip_grad,
                 monitoring=monitoring,
@@ -303,6 +300,10 @@ class OvercompleteDictionaryLearning(ConceptBottleneckExplainer):
             raise ValueError(
                 "ConceptEncoderDecoder must be a subclass of `overcomplete.optimization.BaseOptimDictionaryLearning`. Use `OvercompleteMethods` instead."
             )
+
+        if ConceptEncoderDecoder.__name__ == "ConvexNMF":
+            # TODO: see if we can support the pgd solver or have an easy way to set parameters
+            kwargs["solver"] = "mu"
 
         self.concept_encoder_decoder = ConceptEncoderDecoder(nb_concepts=n_concepts, device=device, **kwargs)
         self.fitted = False
