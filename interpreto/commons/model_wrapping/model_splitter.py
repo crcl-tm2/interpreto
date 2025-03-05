@@ -24,12 +24,11 @@
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from nnsight.intervention import Envoy
 from nnsight.modeling.language import LanguageModel
-from torch import nn
+from nnsight.util import fetch_attr
 from transformers import (
     AutoModel,
     BatchEncoding,
@@ -40,6 +39,8 @@ from transformers import (
 )
 from transformers.models.auto import modeling_auto
 
+from ...typing import LatentActivations
+from .splitting_utils import sort_paths, validate_path
 from .transformers_classes import (
     get_supported_hf_transformer_autoclasses,
     get_supported_hf_transformer_generation_autoclasses,
@@ -116,40 +117,15 @@ class ModelSplitter(LanguageModel):
             tokenizer=tokenizer,  # type: ignore
             **kwargs,
         )
-        self._validate_splits(self.splits)
-        self._sort_splits()
+        for split in self.splits:
+            validate_path(self._model, split)
+        self.splits = sort_paths(self._model, self.splits)
         self._model: PreTrainedModel
         if self.repo_id is None:
             self.repo_id = self._model.config.name_or_path
         self.generator: Envoy | None
         if self._model.__class__.__name__ not in get_supported_hf_transformer_generation_classes():
             self.generator = None  # type: ignore
-
-    def _validate_splits(self, splits: str | list[str]) -> None:
-        """Validates that specified splits are present in the loaded model."""
-        splits = splits if isinstance(splits, list) else [splits]
-        for split in splits:
-            # Split the path into components, handling list indexing
-            components = re.findall(r"([^\.]+)", split)[1:]
-            current = self._model
-            current_path = "model"
-            for name in components:
-                try:
-                    current = getattr(current, name)
-                    current_path += f".{name}"
-                except AttributeError as ex:
-                    # Get available submodules for more informative error
-                    try:
-                        available_submodules = list(current._modules.keys())
-                    except Exception:
-                        available_submodules = []
-                    raise InitializationError(
-                        f"The provided splitting point '{split}' is not valid.\n"
-                        f"Module {current_path} does not have submodule '{name}'.\n"
-                        f"Available submodule names: {', '.join(available_submodules)}.\n"
-                        "Use 'model.[...] to define a split based on the structure of your model, or pass an integer "
-                        "corresponding to the selected layer to use the output of that layer as splitting point."
-                    ) from ex
 
     def _generate(
         self,
@@ -167,38 +143,12 @@ class ModelSplitter(LanguageModel):
             )
         super()._generate(inputs=inputs, max_new_tokens=max_new_tokens, streamer=streamer, **kwargs)
 
-    def _sort_splits(self) -> None:
-        """Order the splits according to their actual occurrence in the model's forward pass."""
-
-        def _walk_model(module: nn.Module, prefix=""):
-            """Recursively walk through the model and yield all module paths.
-
-            Args:
-                module (torch.nn.Module): The module to walk through
-                prefix (str): Accumulated path prefix
-
-            Yields:
-                str: Full path to each module
-            """
-            for name, child in module._modules.items():
-                current_path = f"{prefix}.{name}" if prefix else name
-                if child is not None and len(list(child.children())) > 0:
-                    yield from _walk_model(child, current_path)
-                yield current_path
-
-        def _match_split_to_path(split: str, paths: list[str]) -> int:
-            """Match a split to its path index in the model.
-
-            Args:
-                split (str): Split path to match
-
-            Returns:
-                int: Index in model_paths, or raises an error if no match
-            """
-            if split not in paths:
-                raise InitializationError(f"Split '{split}' not found in available model modules.")
-            return model_paths.index(split)
-
-        # Skip the added Generator + Streamer module at the end
-        model_paths = list(_walk_model(self._model, prefix="model"))[:-2]
-        self.splits = sorted(self.splits, key=lambda split: _match_split_to_path(split, paths=model_paths))
+    def get_activations(self, inputs: str | list[str] | BatchEncoding, **kwargs) -> dict[str, LatentActivations]:
+        """Get activations for the all model splits."""
+        # TODO: Handle case where .output attribute is present and .output gets mapped to .nns_output
+        # TODO: Extend to generation settings
+        activations = {}
+        with self.trace(inputs, **kwargs):
+            for split in self.splits:
+                activations[split] = fetch_attr(self, split).output.save()
+        return activations
