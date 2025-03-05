@@ -14,6 +14,7 @@ from interpreto.attributions.aggregations.base import Aggregator
 from interpreto.attributions.perturbations.base import Perturbator
 from interpreto.typing import ModelInput
 
+
 class AttributionExplainer:
     """
     Abstract class for attribution methods, gives specific types of explanations
@@ -34,15 +35,15 @@ class AttributionExplainer:
         self.device = device
 
     @abstractmethod
-    def explain(self, inputs: ModelInput, target:torch.Tensor|None=None) -> Any:
+    def explain(self, inputs: ModelInput, target: torch.Tensor | None = None) -> Any:
         # TODO : give more generic type for model output / target
         """
         main process of attribution method
         """
         raise NotImplementedError
 
-    def __call__(self, item: ModelInput, target:torch.Tensor|None=None) -> Any:
-        return self.explain(item)
+    def __call__(self, inputs: ModelInput, targets: torch.Tensor | None = None) -> Any:
+        return self.explain(inputs, targets)
 
 
 class GradientExplainer(AttributionExplainer):
@@ -52,14 +53,20 @@ class GradientExplainer(AttributionExplainer):
     Subclasses of this explainer are mostly reductions to a specific perturbation or aggregation
     """
 
-    def explain(self, item: ModelInput, target) -> Any:
+    def explain(self, inputs: ModelInput, targets: torch.Tensor | None = None) -> Any:
         """
         main process of attribution method
         """
-        embeddings, _ = self.perturbator.perturb(item)
+        embeddings, _ = self.perturbator.perturb(inputs)
 
         self.inference_wrapper.to(self.device)
-        results = self.inference_wrapper.batch_gradients(embeddings, flatten=True)
+
+        if targets is None:
+            with torch.no_grad():
+                targets = self.inference_wrapper.call_model(inputs)
+        # repeat target along the p dimension
+        targets = targets.unsqueeze(1).repeat(1, embeddings.shape[1], 1)
+        results = self.inference_wrapper.batch_gradients(embeddings, targets, flatten=True)
         self.inference_wrapper.cpu()  # TODO: check if we need to do this
 
         explanation = self.aggregator(results, _)
@@ -71,7 +78,8 @@ class InferenceExplainer(AttributionExplainer):
     """
     Black box model explainer
     """
-    def explain(self, inputs: ModelInput, targets) -> Any:
+
+    def explain(self, inputs: ModelInput, targets: torch.Tensor | None) -> Any:
         """
         main process of attribution method
         """
@@ -79,10 +87,14 @@ class InferenceExplainer(AttributionExplainer):
         # embeddings.shape : (n, p, l, d)
         # target.shape : (n, o)
 
+        self.inference_wrapper.to(self.device)
+
+        if targets is None:
+            with torch.no_grad():
+                targets = self.inference_wrapper.call_model(inputs)
         # repeat target along the p dimension
         targets = targets.unsqueeze(1).repeat(1, embeddings.shape[1], 1)
 
-        self.inference_wrapper.to(self.device)
         results = self.inference_wrapper.batch_inference(embeddings, targets, flatten=True)
         self.inference_wrapper.cpu()  # TODO: check if we need to do this
 

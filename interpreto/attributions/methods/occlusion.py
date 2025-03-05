@@ -70,6 +70,7 @@ class _TokenOcclusionPerturbator(_OcclusionPerturbator):
     """
     Perturbator removing tokens from the input
     """
+
     def _perturb_single_element(self, inputs: str) -> tuple[torch.Tensor]:
         # Get tokens from str input
         tokens = self.tokenizer.tokenize(inputs)
@@ -80,16 +81,16 @@ class _TokenOcclusionPerturbator(_OcclusionPerturbator):
             for i in range(n_perturbations)
         ]
         # Get words embeddings for each variation
-        embeddings = torch.stack(
-            [self.inputs_embeddings(torch.tensor(variation)) for variation in variations]
-        )
+        embeddings = torch.stack([self.inputs_embeddings(torch.tensor(variation)) for variation in variations])
         # Return embeddings and identity matrix as mask
         return embeddings.unsqueeze(0), torch.eye(n_perturbations).unsqueeze(0)
+
 
 class _WordOcclusionPerturbator(_OcclusionPerturbator):
     """
     Perturbator removing words from the input
     """
+
     def _perturb_single_element(self, inputs: str) -> tuple[torch.Tensor]:
         # Get tokens from str input
         words = inputs.split()
@@ -115,10 +116,11 @@ class _WordOcclusionPerturbator(_OcclusionPerturbator):
         # Return embeddings and identity matrix as mask
         return torch.stack(embeddings).unsqueeze(0), torch.eye(n_perturbations).unsqueeze(0)
 
+
 class OcclusionExplainer(InferenceExplainer):
     def __init__(
         self,
-        tokenizer:Callable,
+        tokenizer: Callable,
         inference_wrapper: Callable,
         batch_size: int,
         aggregator: Aggregator | None = None,
@@ -141,12 +143,12 @@ class OcclusionExplainer(InferenceExplainer):
         """
         res = []
         perturbations = self.perturbator.perturb(inputs)
-        for (embeddings, mask), target in zip(perturbations, targets):
+        for (embeddings, mask), target in zip(perturbations, targets, strict=False):
             # repeat target tensor to create p axis
-            target = target.unsqueeze(1).repeat(1, embeddings.shape[1], 1)
+            repeated_target = target.unsqueeze(1).repeat(1, embeddings.shape[1], 1)
 
             self.inference_wrapper.to(self.device)
-            results = self.inference_wrapper.batch_inference(embeddings, target, flatten=True)
+            results = self.inference_wrapper.batch_inference(embeddings, repeated_target, flatten=True)
             self.inference_wrapper.cpu()  # TODO: check if we need to do this
 
             explanation = self.aggregator(results, mask)

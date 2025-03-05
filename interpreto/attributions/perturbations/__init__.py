@@ -1,2 +1,2 @@
 from .base import GaussianNoisePerturbator
-from .linear_interpolation_perturbation import LinearInterpolationPerturbation
+from .linear_interpolation_perturbation import LinearInterpolationPerturbator

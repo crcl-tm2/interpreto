@@ -6,7 +6,7 @@ from interpreto.attributions.perturbations.base import Perturbator
 from interpreto.typing import TensorBaseline
 
 
-class LinearInterpolationPerturbation(Perturbator):
+class LinearInterpolationPerturbator(Perturbator):
     """
     Perturbation using linear interpolation between a reference point (baseline) and the input.
     """

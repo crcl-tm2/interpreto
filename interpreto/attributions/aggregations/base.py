@@ -69,12 +69,15 @@ class VarianceAggregator(TorchAggregator):
     """
     Variance of attributions
     """
+
     _method = torch.var
+
 
 class MaskwiseMeanAggregation(Aggregator):
     """
     TODO : add docstring
     """
+
     def aggregate(self, results: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         print(results.shape, mask.shape)
         # TODO : transform the output tensor to interpretable explaination

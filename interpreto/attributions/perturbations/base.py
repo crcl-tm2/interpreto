@@ -31,10 +31,12 @@ class TokenPerturbator(Perturbator):
     Generic class for token modification (occlusion, words substitution...)
     """
 
+
 class WordPerturbator(Perturbator):
     """
     Generic class for word-wise modification
     """
+
 
 class TensorPerturbator(Perturbator):
     """
