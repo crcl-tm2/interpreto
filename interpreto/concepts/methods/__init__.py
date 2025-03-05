@@ -23,4 +23,5 @@
 # SOFTWARE.
 
 from .cockatiel import Cockatiel
+from .neurons_as_concepts import NeuronsAsConcepts
 from .overcomplete_cbe import OvercompleteDictionaryLearning, OvercompleteMethods, OvercompleteSAE
