@@ -29,8 +29,12 @@ Bases classes for concept explainers
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Literal
 
 import torch
+from beartype import beartype
+from beartype.typing import List
+from jaxtyping import Float, Int, jaxtyped
 
 from interpreto.attributions.base import AttributionExplainer
 from interpreto.commons.model_wrapping.model_splitter import ModelSplitterPlaceholder
@@ -48,7 +52,7 @@ class AbstractConceptExplainer(ABC):
         _differentiable_concept_encoder (bool): Whether the concept encoder is differentiable.
     """
 
-    _differentiable_concept_encoder = False
+    _differentiable_concept_encoder: bool = False
 
     def __init__(self, splitted_model: ModelSplitterPlaceholder):
         """
@@ -59,21 +63,21 @@ class AbstractConceptExplainer(ABC):
         """
         if not isinstance(splitted_model, ModelSplitterPlaceholder):
             raise TypeError("Model should be a ModelSplitterPlaceholder.")
-        self.splitted_model = splitted_model
+        self.splitted_model: ModelSplitterPlaceholder = splitted_model
 
     def verify_activations(
-        self, activations: dict[LatentActivations] | LatentActivations, split: str | None = None
+        self, activations: dict[str, LatentActivations] | LatentActivations, split: str | None = None
     ) -> tuple(LatentActivations, str | None):
         """
         Verify that the given activations are valid for the concept explainer.
         That is if the split corresponds to the model splits.
 
         Args:
-            activations (dict[LatentActivations]): the activations to verify.
+            activations (dict[str, LatentActivations]): the activations to verify.
             split: (str | None): The dataset split to use for training the concept encoder. If None, the model is assumed to be a single-split model. And split is inferred from the keys of the activations dict.
         """
         if hasattr(self, "split") and self.split is not None:
-            split = self.split
+            split: str = self.split
 
         if isinstance(activations, dict):
             if len(activations) != len(self.splitted_model.splits):
@@ -83,11 +87,11 @@ class AbstractConceptExplainer(ABC):
             if split is None:
                 if len(activations) != 1 and len(self.splitted_model.splits) != 1:
                     raise ValueError("Cannot infer split if the model is a not a single-split model.")
-                split = list(activations.keys())[0]
+                split: str = list(activations.keys())[0]
         elif split is None:
             if len(self.splitted_model.splits) != 1:
                 raise ValueError("Cannot infer split if the model is a not a single-split model.")
-            split = self.splitted_model.splits[0]
+            split: str = self.splitted_model.splits[0]
             # assuming the users knows what they are doing
             return activations, None
 
@@ -97,12 +101,12 @@ class AbstractConceptExplainer(ABC):
         return activations[split], split
 
     @abstractmethod
-    def fit(self, activations: dict[LatentActivations], split: str | None = None):
+    def fit(self, activations: dict[str, LatentActivations], split: str | None = None):
         """
         Defines the concept encoder, thus the concept space, using the given activations.
 
         Args:
-            activations (dict[LatentActivations]): the activations to train the concept encoder on.
+            activations (dict[str, LatentActivations]): the activations to train the concept encoder on.
             split: (str | None): The dataset split to use for training the concept encoder. If None, the model is assumed to be a single-split model. And split is inferred from the keys of the activations dict.
 
         Returns:
@@ -112,13 +116,13 @@ class AbstractConceptExplainer(ABC):
 
     @abstractmethod
     def encode_activations(
-        self, activations: LatentActivations | dict[LatentActivations], **kwargs
+        self, activations: LatentActivations | dict[str, LatentActivations], **kwargs
     ) -> ConceptsActivations:
         """
         Encode the given activations using the concept encoder-decoder.
 
         Args:
-            activations (LatentActivations | dict[LatentActivations]): The activations to encode.
+            activations (LatentActivations | dict[str, LatentActivations]): The activations to encode.
 
         Returns:
             ConceptsActivations: The encoded activations.
@@ -142,29 +146,74 @@ class AbstractConceptExplainer(ABC):
         print(inputs, concept, k)
         raise NotImplementedError()
 
-    def top_k_inputs_for_concept_from_activations(
+    @jaxtyped
+    @beartype
+    def top_k_tokens_for_concept_from_activations(
         self,
-        inputs: ModelInput,
-        activations: LatentActivations,
-        corresponding_inputs: list[str],
-        concept: int | list[int],
+        inputs: List[List[str]],  # ModelInput
+        activations: Float[torch.Tensor, "n l d"],  # LatentActivations
+        concepts_indices: int | list[int] | Literal["all"] = "all",
         k: int = 5,
-    ) -> list[tuple[str, float]]:
+    ) -> dict[int, list[tuple[str, float]]]:
         """
         Retrieves the top-k most important tokens/words/clauses/phrases related to a given concept.
 
         Args:
-            inputs: The input data, which can be a string, a list of tokens/words/clauses/sentences, or a dataset.
-            activations: The activations to use for the analysis.
-            corresponding_inputs: The corresponding inputs to the activations.
-            concept: The concept index (or list of concepts indices) to analyze.
-            k: The number of important textual elements to retrieve. Defaults to 5.
+            inputs (List[List[str]]): TODO: clarify the supported types of inputs
+            activations (Float[torch.Tensor, "n l d"]): The activations to use for the analysis. They should correspond to the inputs. Shape: (n, l, d)
+            concepts_indices (int | list[int] | Literal["all"]): The concept index (or list of concepts indices) to analyze. Defaults to "all".
+            k (int): The number of important textual elements to retrieve. Defaults to 5.
 
         Returns:
-            A list of tuples containing the top-k most relevant textual elements and their importance scores.
+            interpretation_dict (dict[int, list[tuple[str, float]]]): A dictionary with keys corresponding to the `concept` index and values containing the top-k most relevant textual elements and their importance scores.
         """
-        print(inputs, concept, k)
-        raise NotImplementedError()
+        assert self.fitted, "Concept explainer has not been fitted yet."
+        assert len(inputs) == len(activations), "Number of inputs and activations should be the same."
+        n_tokens = len(inputs[0])
+
+        # Shape: (n*l, d)
+        flattened_activations: LatentActivations = activations.view(-1, activations.shape[-1])
+
+        # Shape: (n*l, cpt)
+        concepts_activations: ConceptsActivations = self.encode_activations(flattened_activations)
+
+        # take subset of concepts as specified by the user
+        if concepts_indices != "all":
+            if isinstance(concepts_indices, int):
+                concepts_indices = [concepts_indices]
+
+            if not isinstance(concepts_indices, list) and not all(isinstance(c, int) for c in concepts_indices):
+                raise ValueError(
+                    f"`concepts_indices` should be 'all', an int, or a list of int. Received {concepts_indices}."
+                )
+
+            if max(concepts_indices) >= concepts_activations.shape[1]:
+                raise ValueError(
+                    f"At least one concept index out of bounds. `max(concepts_indices)`: {max(concepts_indices)} >= {concepts_activations.shape[1]}."
+                )
+
+            # Shape: (n*l, cpt_of_interest)
+            concepts_activations: ConceptsActivations = concepts_activations.T[concepts_indices].T
+        else:
+            concepts_indices = list(range(concepts_activations.shape[1]))
+
+        # extract indices of the top-k input tokens for each specified concept
+        topk_output = torch.topk(concepts_activations, k=k, dim=0)
+        topk_activations: Float[torch.Tensor, "cpt_of_interest k"] = topk_output[0].T
+        topk_indices: Int[torch.Tensor, "cpt_of_interest k"] = topk_output[1].T
+
+        interpretation_dict = {}
+        # iterate over required concepts
+        for c, top_indices, top_activations in zip(concepts_indices, topk_indices, topk_activations, strict=True):
+            interpretation_dict[c] = [
+                (
+                    inputs[top_indices[rank] // n_tokens][top_indices[rank] % n_tokens],  # the token
+                    top_activations[rank].item(),  # the corresponding concept activation
+                )
+                for rank in range(k)
+            ]
+
+        return interpretation_dict
 
     def input_concept_attribution(
         self,
@@ -201,24 +250,26 @@ class ConceptBottleneckExplainer(AbstractConceptExplainer):
         _differentiable_concept_decoder (bool): Whether the concept decoder is differentiable.
     """
 
-    _differentiable_concept_decoder = False
+    _differentiable_concept_decoder: bool = False
 
     def encode_activations(
-        self, activations: LatentActivations | dict[LatentActivations], **kwargs
+        self, activations: LatentActivations | dict[str, LatentActivations], **kwargs
     ) -> ConceptsActivations:
         """
         Encode the given activations using the concept encoder-decoder.
 
         Args:
-            activations (LatentActivations | dict[LatentActivations]): The activations to encode.
+            activations (LatentActivations | dict[str, LatentActivations]): The activations to encode.
 
         Returns:
             ConceptsActivations: The encoded activations.
         """
         assert self.fitted, "Concept explainer has not been fitted yet."
 
+        inputs: LatentActivations
         inputs, _ = self.verify_activations(activations)
         inputs = inputs.to(self.concept_encoder_decoder.device)
+
         return self.concept_encoder_decoder.encode(inputs, **kwargs)
 
     def decode_concepts(self, concepts: ConceptsActivations) -> LatentActivations:

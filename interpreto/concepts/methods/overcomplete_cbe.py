@@ -147,7 +147,7 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
 
     def fit(
         self,
-        activations: dict[LatentActivations],
+        activations: dict[str, LatentActivations],
         *,
         split: str | None = None,
         use_amp: bool = False,
@@ -166,7 +166,7 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
         ConceptEncoderDecoder for explaining a concept.
 
         Args:
-            activations (dict[LatentActivations]): the activations to train the concept encoder on.
+            activations (dict[str, LatentActivations]): the activations to train the concept encoder on.
             split: (str | None): The dataset split to use for training the concept encoder. If None, the model is assumed to be a single-split model. And split is inferred from the keys of the activations dict.
             use_amp (bool): Whether to use automatic mixed precision.
             criterion (Criterion): Loss criterion for the training of the concept encoder-decoder.
@@ -216,13 +216,13 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
         return log
 
     def encode_activations(
-        self, activations: LatentActivations | dict[LatentActivations], **kwargs
+        self, activations: LatentActivations | dict[str, LatentActivations], **kwargs
     ) -> ConceptsActivations:
         """
         Encode the given activations using the concept encoder-decoder.
 
         Args:
-            activations (LatentActivations | dict[LatentActivations]): The activations to encode.
+            activations (LatentActivations | dict[str, LatentActivations]): The activations to encode.
 
         Returns:
             ConceptsActivations: The encoded activations.
@@ -310,12 +310,12 @@ class OvercompleteDictionaryLearning(ConceptBottleneckExplainer):
         if "NMF" in ConceptEncoderDecoder.__name__:
             self._differentiable_concept_encoder = False
 
-    def fit(self, activations: dict[LatentActivations], *, split: str | None = None, **kwargs):
+    def fit(self, activations: dict[str, LatentActivations], *, split: str | None = None, **kwargs):
         """
         ConceptEncoderDecoder for explaining a concept.
 
         Args:
-            activations (dict[LatentActivations]): the activations to train the concept encoder on. Shape: (n_samples, n_features).
+            activations (dict[str, LatentActivations]): the activations to train the concept encoder on. Shape: (n_samples, n_features).
             split: (str | None): The dataset split to use for training the concept encoder. If None, the model is assumed to be a single-split model. And split is inferred from the keys of the activations dict.
             **kwargs: Additional keyword arguments to pass to the concept encoder-decoder. See the Overcomplete documentation of the provided `ConceptEncoderDecoder` for more details.
         """
@@ -326,3 +326,24 @@ class OvercompleteDictionaryLearning(ConceptBottleneckExplainer):
 
         self.concept_encoder_decoder.fit(inputs, **kwargs)
         self.fitted = True
+
+    def to(self, device: torch.device | str):
+        """
+        Move the concept bottleneck explainer to a new device.
+
+        Args:
+            device (torch.device | str): The device to move the explainer to.
+        """
+        self.concept_encoder_decode.device = device
+
+    def cpu(self):
+        """
+        Move the concept bottleneck explainer to the CPU.
+        """
+        self.to("cpu")
+
+    def cuda(self, device: int = 0):
+        """
+        Move the concept bottleneck explainer to the GPU.
+        """
+        self.to(f"cuda:{device}")

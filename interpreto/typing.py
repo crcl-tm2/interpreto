@@ -31,9 +31,10 @@ from __future__ import annotations
 from typing import Any, Optional, Union
 
 import torch
+from jaxtyping import Float
 
-TokenEmbedding = torch.Tensor
-LatentActivations = torch.Tensor
-ConceptsActivations = torch.Tensor
+TokenEmbedding = Float[torch.Tensor, "n ..."]
+LatentActivations = Float[torch.Tensor, "n ..."]
+ConceptsActivations = Float[torch.Tensor, "n cpt"]
 ModelInput = Any
 TensorBaseline = Optional[Union[torch.Tensor, float, int]]  # noqa: UP007
