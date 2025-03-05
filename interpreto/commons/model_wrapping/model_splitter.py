@@ -118,7 +118,7 @@ class ModelSplitter(LanguageModel):
                     "Model autoclass not found.\n"
                     "The model class can be omitted if a pre-loaded model is passed to `model_or_repo_id` "
                     "param.\nIf an HF Hub ID is used, the corresponding autoclass must be specified in `model_type`.\n"
-                    "Example: ModelSplitWrapper('bert-base-cased', model_type=AutoModelForMaskedLM, ...)"
+                    "Example: ModelSplitter('bert-base-cased', model_type=AutoModelForMaskedLM, ...)"
                 )
             if isinstance(model_autoclass, str):
                 supported_autoclasses = get_supported_hf_transformer_autoclasses()
