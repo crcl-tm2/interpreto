@@ -79,6 +79,7 @@ class MaskwiseMeanAggregation(Aggregator):
     """
 
     def aggregate(self, results: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        print(results.shape, mask.shape)
+        # TODO : this cast should not be there, check to solve the incompatible types error
+        mask = mask.to(results.dtype)
         # TODO : transform the output tensor to interpretable explaination
         return torch.einsum("np,npl->nl", results, mask) / mask.sum(dim=1)

@@ -12,7 +12,7 @@ from typing import Any
 import torch
 from transformers import PreTrainedTokenizer
 
-from interpreto.attributions.aggregations.base import Aggregator
+from interpreto.attributions.aggregations.base import Aggregator, MaskwiseMeanAggregation
 from interpreto.attributions.base import InferenceExplainer
 from interpreto.attributions.perturbations.base import TokenPerturbator
 from interpreto.typing import ModelInput
@@ -70,19 +70,53 @@ class _TokenOcclusionPerturbator(_OcclusionPerturbator):
     """
     Perturbator removing tokens from the input
     """
+    def get_mask(self, n:int, p:int, l:int) -> torch.Tensor:
+        return torch.eye(p).unsqueeze(0).repeat(n, 1, 1)
+
+    def _get_single_mask(self, p, l)->torch.Tensor:
+        assert p <= l, "Number of tokens to mask should be less than the length of the input"
+        result = torch.zeros(p, l)
+        result[:p, :p] = torch.eye(p)
+        return result
+
+    def apply_mask(self, inputs:torch.Tensor, mask:torch.Tensor, mask_value:torch.Tensor|None=None):
+        mask_value = mask_value or self.inputs_embeddings(self.tokenizer.mask_token_id)
+        # TODO : eventually replace l and d dims with elipsis to deal with any number of dimensions ?
+        base = torch.einsum("nld,npl->npld", inputs, 1 - mask)
+        masked = torch.einsum("npl,d->npld", mask, mask_value)
+        return base + masked
 
     def _perturb_single_element(self, inputs: str) -> tuple[torch.Tensor]:
+        encoding = tokenizer(sentences,
+                        truncation=True,
+                        return_tensors='pt',
+                        padding="max_length",
+                        max_length=512,
+                        return_offsets_mapping=True)
+        
+        token_ids = self.tokenizer(inputs, return_tensors="pt", truncation=True, padding="max_length", max_length=self.tokenizer.model_max_length)["input_ids"]
+        inputs_vector = self.inputs_embeddings(token_ids)
+        n, l, p = inputs_vector.shape
+        mask = self._get_single_mask(p, l)
+        return self.apply_mask(inputs_vector, mask), mask
+
+        # get id of mask token
+        mask_token_id = self.tokenizer.convert_tokens_to_ids(self.mask_value)
+
         # Get tokens from str input
-        tokens = self.tokenizer.tokenize(inputs)
-        n_perturbations = len(tokens)
-        # Create variations by masking each token
-        variations = [
-            self.tokenizer.convert_tokens_to_ids(tokens[:i] + [self.mask_value] + tokens[i + 1 :])
-            for i in range(n_perturbations)
-        ]
+        inputs_ids = self.tokenizer(inputs, return_tensors="pt", truncation=True, padding=True, max_length=self.tokenizer.model_max_length)["input_ids"]
+
+        # Generate variations of the sentence by masking each token (except first and last)
+        variations = [inputs_ids[:i] + [self.mask_value] + inputs_ids[i + 1 :] for i in range(1, len(inputs_ids) - 1)]
+
         # Get words embeddings for each variation
         embeddings = torch.stack([self.inputs_embeddings(torch.tensor(variation)) for variation in variations])
+
         # Return embeddings and identity matrix as mask
+        mask = torch.zeros(len(variations), len(inputs_ids))
+        mask[:, 1:-1] = 1
+        print(mask)
+        exit()
         return embeddings.unsqueeze(0), torch.eye(n_perturbations).unsqueeze(0)
 
 
@@ -123,7 +157,7 @@ class OcclusionExplainer(InferenceExplainer):
         tokenizer: Callable,
         inference_wrapper: Callable,
         batch_size: int,
-        aggregator: Aggregator | None = None,
+        aggregator: Aggregator=MaskwiseMeanAggregation(),
         device: torch.device | None = None,
     ):
         super().__init__(

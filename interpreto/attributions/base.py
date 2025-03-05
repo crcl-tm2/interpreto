@@ -79,7 +79,7 @@ class InferenceExplainer(AttributionExplainer):
     Black box model explainer
     """
 
-    def explain(self, inputs: ModelInput, targets: torch.Tensor | None) -> Any:
+    def explain(self, inputs: ModelInput, targets: torch.Tensor | None=None) -> Any:
         """
         main process of attribution method
         """
@@ -91,10 +91,23 @@ class InferenceExplainer(AttributionExplainer):
 
         if targets is None:
             with torch.no_grad():
-                targets = self.inference_wrapper.call_model(inputs)
+                # Put this in NLP_explainer_mixin
+
+                if isinstance(inputs, torch.Tensor):
+                    targets = self.inference_wrapper.call_model(inputs)
+                else:
+                    tokens = self.perturbator.tokenizer(inputs,
+                            truncation=True,
+                            return_tensors='pt',
+                            padding="max_length",
+                            max_length=512,
+                            return_offsets_mapping=True)
+                    target_embeddings = self.inference_wrapper.model.get_input_embeddings()(tokens["input_ids"])
+                    targets = self.inference_wrapper.call_model(target_embeddings)
         # repeat target along the p dimension
         targets = targets.unsqueeze(1).repeat(1, embeddings.shape[1], 1)
 
+        # TODO : remake inference with adaptation to mask
         results = self.inference_wrapper.batch_inference(embeddings, targets, flatten=True)
         self.inference_wrapper.cpu()  # TODO: check if we need to do this
 
