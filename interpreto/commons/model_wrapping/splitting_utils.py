@@ -23,6 +23,7 @@
 # SOFTWARE.
 
 import re
+from collections.abc import Generator
 
 from torch import nn
 
@@ -59,7 +60,7 @@ def validate_path(module: nn.Module, path: str) -> None:
             ) from ex
 
 
-def walk_modules(module: nn.Module, prefix=""):
+def walk_modules(module: nn.Module, prefix="") -> Generator:
     """Recursively walk through the model yielding all model paths.
 
     Args:
@@ -76,7 +77,7 @@ def walk_modules(module: nn.Module, prefix=""):
         yield current_path
 
 
-def get_path_idx(split: str, model_paths: list[str]) -> int:
+def get_path_idx(split: str, model_paths: list[str] | None) -> int:
     """Match a model path to its index in the model according to the order of forward pass completion.
 
     Args:
@@ -85,13 +86,41 @@ def get_path_idx(split: str, model_paths: list[str]) -> int:
     Returns:
         int: Index in model_paths, or raises an error if no match
     """
-    if split not in model_paths:
+    if model_paths is None or split not in model_paths:
         raise ModelPathError(f"Split '{split}' not found in available model modules.")
     return model_paths.index(split)
 
 
-def sort_paths(module: nn.Module, splits: str | list[str]) -> list[str]:
+def _get_paths_from_module(model_paths: list[str] | None = None, module: nn.Module | None = None) -> list[str]:
+    if model_paths is None and module is None:
+        raise ValueError("Either a module or a precomputed list of valid model paths should be provided for sorting.")
+    if model_paths is None:
+        model_paths = []
+        if module is not None:
+            model_paths = list(walk_modules(module))
+    return model_paths
+
+
+def get_layer_by_idx(layer_idx: int, model_paths: list[str] | None = None, module: nn.Module | None = None) -> str:
+    model_paths = _get_paths_from_module(model_paths, module)
+    matches = [s for s in model_paths if s.endswith(f".{str(layer_idx)}")]
+    if len(matches) == 0:
+        raise ModelPathError(
+            f"No model path matching layer {layer_idx} was found. If your model does not contain a ModuleList, "
+            "please specify your splits as dot-separated string paths like: path.to.my.module"
+        )
+    if len(matches) > 1:
+        raise ModelPathError(
+            f"Multiple matches found for layer index {layer_idx}: {', '.join(matches)}. "
+            "Specify your module name as a string to univocally identify the desired split point."
+        )
+    return matches[0]
+
+
+def sort_paths(
+    splits: str | list[str], model_paths: list[str] | None = None, module: nn.Module | None = None
+) -> list[str]:
     """Order model paths according to their actual occurrence in the model's forward pass."""
+    model_paths = _get_paths_from_module(model_paths, module)
     splits = splits if isinstance(splits, list) else [splits]
-    model_paths = list(walk_modules(module))
     return sorted(splits, key=lambda split: get_path_idx(split, model_paths=model_paths))

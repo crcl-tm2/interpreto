@@ -23,74 +23,65 @@
 # SOFTWARE.
 
 import torch
+from pytest import fixture
 from transformers import AutoModelForMaskedLM
 
 from interpreto.commons.model_wrapping.model_splitter import ModelSplitter
 
 
-def test_order_splits():
+@fixture
+def encoder_lm_splitter() -> ModelSplitter:
+    return ModelSplitter(
+        "huawei-noah/TinyBERT_General_4L_312D",
+        splits=[],
+        model_autoclass=AutoModelForMaskedLM,  # type: ignore
+    )
+
+
+BERT_SPLITS = [
+    "cls.predictions.transform.LayerNorm",
+    "bert.encoder.layer.1",
+    "bert.encoder.layer.3.attention.self.query",
+]
+
+BERT_SPLITS_SORTED = [
+    "bert.encoder.layer.1",
+    "bert.encoder.layer.3.attention.self.query",
+    "cls.predictions.transform.LayerNorm",
+]
+
+
+def test_order_splits(encoder_lm_splitter: ModelSplitter):
     """
     Test the _order_splits method with various scenarios
     """
-    test_cases = [
-        # Completely out of order splits
-        {
-            "splits": [
-                "bert.embeddings",
-                "bert.encoder.layer.3.attention.self.dropout",
-                "bert.encoder.layer.1",
-                "bert.encoder.layer.1.attention.output.dense",
-            ],
-            "expected_order": [
-                "bert.embeddings",
-                "bert.encoder.layer.1.attention.output.dense",
-                "bert.encoder.layer.1",
-                "bert.encoder.layer.3.attention.self.dropout",
-            ],
-        },
-        # Already ordered splits
-        {
-            "splits": [
-                "bert.embeddings",
-                "bert.encoder.layer.1.attention.output.dense",
-                "bert.encoder.layer.1",
-                "bert.encoder.layer.3.attention.self.dropout",
-            ],
-            "expected_order": [
-                "bert.embeddings",
-                "bert.encoder.layer.1.attention.output.dense",
-                "bert.encoder.layer.1",
-                "bert.encoder.layer.3.attention.self.dropout",
-            ],
-        },
-    ]
-    for case in test_cases:
-        model: ModelSplitter = ModelSplitter(
-            "huawei-noah/TinyBERT_General_4L_312D",
-            splits=case["splits"],
-            model_class=AutoModelForMaskedLM,  # type: ignore
-        )
-        # Assert the ordered splits match expected order
-        assert model.splits == case["expected_order"], (
-            f"Failed for splits: {case['splits']}\nExpected: {case['expected_order']}\nGot:      {model.splits}"
-        )
+    encoder_lm_splitter.splits = BERT_SPLITS
+    # Assert the ordered splits match expected order
+    assert encoder_lm_splitter.splits == BERT_SPLITS_SORTED, (
+        f"Failed for splits: {BERT_SPLITS}\nExpected: {BERT_SPLITS_SORTED}\nGot:      {encoder_lm_splitter.splits}"
+    )
 
 
-def test_activation_equivalence_batched_text_token_inputs():
+def test_activation_equivalence_batched_text_token_inputs(encoder_lm_splitter: ModelSplitter):
     """
     Test the equivalence of activations for text and token inputs
     """
-    model: ModelSplitter = ModelSplitter(
-        "huawei-noah/TinyBERT_General_4L_312D",
-        splits=["cls.predictions.transform.LayerNorm", "bert.encoder.layer.3.attention.self.query"],
-        model_class=AutoModelForMaskedLM,  # type: ignore
-    )
-
+    encoder_lm_splitter.splits = BERT_SPLITS
     txt = ["Hello, my dog is cute", "The cat is on the [MASK]"]
-    tok_inputs = model.tokenizer(txt, return_tensors="pt")
+    tok_inputs = encoder_lm_splitter.tokenizer(txt, return_tensors="pt")
 
-    activations_txt = model.get_activations(txt)
-    activations_ids = model.get_activations(tok_inputs)
+    activations_txt = encoder_lm_splitter.get_activations(txt)
+    activations_ids = encoder_lm_splitter.get_activations(tok_inputs)
 
     for k in activations_txt.keys():
         assert torch.allclose(activations_txt[k], activations_ids[k])
+
+
+def test_index_by_layer_idx(encoder_lm_splitter: ModelSplitter):
+    """Test indexing by layer idx"""
+    splits_with_layer_idx: list[str | int] = list(BERT_SPLITS)
+    splits_with_layer_idx[1] = 1  # instead of bert.encoder.layer.1
+    encoder_lm_splitter.splits = splits_with_layer_idx
+    assert encoder_lm_splitter.splits == BERT_SPLITS_SORTED, (
+        f"Failed for splits: {BERT_SPLITS}\nExpected: {BERT_SPLITS_SORTED}\nGot:      {encoder_lm_splitter.splits}"
+    )
