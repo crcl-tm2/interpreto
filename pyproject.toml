@@ -69,6 +69,7 @@ classifiers = [
 dependencies = [
   "transformers[sentencepiece,tokenizers]>=4.22.0",
   "torch>=2.0",
+  "overcomplete>=0.2.3",  # TODO: see how to limit sub-dependencies
   "nnsight>=0.4.0",
   "jaxtyping<=0.2.15; python_version<='3.8'",
   "jaxtyping<=0.2.36; python_version>'3.9'",

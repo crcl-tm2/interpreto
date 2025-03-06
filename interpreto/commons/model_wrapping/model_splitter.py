@@ -22,5 +22,41 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from .cockatiel import Cockatiel
-from .overcomplete_cbe import OvercompleteDictionaryLearning, OvercompleteMethods, OvercompleteSAE
+"""
+Model splitting classes based on NNsight
+"""
+
+from __future__ import annotations
+
+from collections import OrderedDict
+
+from torch import nn
+
+from interpreto.typing import LatentActivations, ModelInput
+
+
+class ModelSplitterPlaceholder:
+    """
+    Placeholder class for model splitting
+    """
+
+    def __init__(self, model: nn.Module, splits: str | list[str]):
+        assert splits == "input_to_latent"
+        if isinstance(splits, str):
+            splits = [splits]
+        self.splits = splits
+        assert hasattr(model, "input_to_latent") and hasattr(model, "end_model")
+        self.model = model
+        self.model_parts = OrderedDict(
+            {
+                "input_to_latent": self.model.input_to_latent,
+                "end_model": self.model.end_model,
+            }
+        )
+        self.latent_shape = self.model.fc3.in_features
+
+    def get_activations(self, inputs: ModelInput) -> dict[str, LatentActivations]:
+        """
+        Get activations for a given input at each layer specified by the split
+        """
+        return {split: self.model_parts[split](inputs) for split in self.splits}
