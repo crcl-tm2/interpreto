@@ -84,6 +84,9 @@ class InferenceExplainer(AttributionExplainer):
         main process of attribution method
         """
         embeddings, mask = self.perturbator.perturb(inputs)
+
+        print(embeddings.shape, mask.shape)
+
         # embeddings.shape : (n, p, l, d)
         # target.shape : (n, o)
 
