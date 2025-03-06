@@ -52,9 +52,9 @@ class IntegratedGradients(GradientExplainer):
         baseline: torch.Tensor | float | None = None,
     ):
         super().__init__(
-            perturbation=LinearInterpolationPerturbator(baseline=baseline, n_perturbations=n_interpolations),
+            perturbator=LinearInterpolationPerturbator(baseline=baseline, n_perturbations=n_interpolations),
             inference_wrapper=ClassificationInferenceWrapper(model, batch_size=batch_size, device=device),
-            aggregation=MeanAggregator(),  # TODO: check if we need a trapezoidal mean
+            aggregator=MeanAggregator(),  # TODO: check if we need a trapezoidal mean
             batch_size=batch_size,
             device=device,
         )

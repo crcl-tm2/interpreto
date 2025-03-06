@@ -2,11 +2,11 @@ import pytest
 import torch
 from transformers import BertModel, BertTokenizer
 
+from interpreto.attributions.methods.occlusion import _TokenOcclusionPerturbator, _WordOcclusionPerturbator
 from interpreto.attributions.perturbations.base import GaussianNoisePerturbator
 from interpreto.attributions.perturbations.linear_interpolation_perturbation import (
-    LinearInterpolationPerturbation,
+    LinearInterpolationPerturbator,
 )
-from interpreto.attributions.perturbations.occlusion import TokenOcclusionPerturbator, WordOcclusionPerturbator
 
 
 def test_gaussian_noise_perturbator_perturb():
@@ -23,7 +23,7 @@ def test_gaussian_noise_perturbator_perturb():
 
 def test_linear_interpolation_perturbation_perturb():
     inputs = torch.tensor([[1.0, 2.0], [3.0, 4.0]])
-    perturbator = LinearInterpolationPerturbation(n_perturbations=3, baseline=0.0)
+    perturbator = LinearInterpolationPerturbator(n_perturbations=3, baseline=0.0)
     perturbed_inputs, _ = perturbator.perturb(inputs)
 
     assert perturbed_inputs.shape == (2, 3, 2)
@@ -32,7 +32,7 @@ def test_linear_interpolation_perturbation_perturb():
 
 def test_linear_interpolation_perturbation_perturb_with_tensor_baseline():
     baseline_tensor = torch.tensor([0.0, 0.0])
-    perturbator = LinearInterpolationPerturbation(baseline=baseline_tensor, n_perturbations=3)
+    perturbator = LinearInterpolationPerturbator(baseline=baseline_tensor, n_perturbations=3)
     inputs = torch.tensor([[1.0, 2.0], [3.0, 4.0]])
     perturbed_inputs, _ = perturbator.perturb(inputs)
 
@@ -44,18 +44,18 @@ def test_linear_interpolation_perturbation_adjust_baseline():
     inputs = torch.randn(4, 3, 10)
 
     # Test with None baseline
-    baseline = LinearInterpolationPerturbation.adjust_baseline(None, inputs)
+    baseline = LinearInterpolationPerturbator.adjust_baseline(None, inputs)
     assert torch.all(baseline == 0)
     assert baseline.shape == inputs.shape[1:]
 
     # Test with float baseline
-    baseline = LinearInterpolationPerturbation.adjust_baseline(0.5, inputs)
+    baseline = LinearInterpolationPerturbator.adjust_baseline(0.5, inputs)
     assert torch.all(baseline == 0.5)
     assert baseline.shape == inputs.shape[1:]
 
     # Test with tensor baseline
     baseline_tensor = torch.randn(3, 10)
-    baseline = LinearInterpolationPerturbation.adjust_baseline(baseline_tensor, inputs)
+    baseline = LinearInterpolationPerturbator.adjust_baseline(baseline_tensor, inputs)
     assert torch.all(baseline == baseline_tensor)
     assert baseline.shape == inputs.shape[1:]
 
@@ -65,17 +65,17 @@ def test_linear_interpolation_perturbation_adjust_baseline_invalid():
 
     # Test with invalid baseline type
     with pytest.raises(TypeError):
-        LinearInterpolationPerturbation.adjust_baseline("invalid", inputs)
+        LinearInterpolationPerturbator.adjust_baseline("invalid", inputs)
 
     # Test with mismatched tensor shape
     baseline_tensor = torch.randn(2, 10)
     with pytest.raises(ValueError):
-        LinearInterpolationPerturbation.adjust_baseline(baseline_tensor, inputs)
+        LinearInterpolationPerturbator.adjust_baseline(baseline_tensor, inputs)
 
     # Test with mismatched tensor dtype
     baseline_tensor = torch.randn(3, 10, dtype=torch.float64)
     with pytest.raises(ValueError):
-        LinearInterpolationPerturbation.adjust_baseline(baseline_tensor, inputs)
+        LinearInterpolationPerturbator.adjust_baseline(baseline_tensor, inputs)
 
 
 @pytest.fixture
@@ -100,7 +100,7 @@ def sentences():
 
 def test_tokens_perturbators(tokenizer, inputs_embedding, sentences):
     token_perturbators = [
-        TokenOcclusionPerturbator(tokenizer=tokenizer, inputs_embeddings=inputs_embedding),
+        # TODO : fill
     ]
 
     def assert_mask_pertinence(reference, perturbations, mask):
@@ -131,41 +131,18 @@ def test_tokens_perturbators(tokenizer, inputs_embedding, sentences):
             assert_mask_pertinence(sentences_embeddings[index], emb.squeeze(0), mask)
 
 
-def test_word_perturbators(tokenizer, inputs_embedding, sentences):
-    word_perturbators = [
-        WordOcclusionPerturbator(tokenizer=tokenizer, inputs_embeddings=inputs_embedding),
-    ]
-    for perturbator in word_perturbators:  # noqa: B007
-        ...
-    # TODO : define tests for word perturbators
-
-
 def test_occlusion_perturbators(tokenizer, inputs_embedding, sentences):
     occlusion_perturbators = [
-        TokenOcclusionPerturbator(tokenizer=tokenizer, inputs_embeddings=inputs_embedding),
-        WordOcclusionPerturbator(tokenizer=tokenizer, inputs_embeddings=inputs_embedding),
+        _TokenOcclusionPerturbator(tokenizer=tokenizer, inputs_embeddings=inputs_embedding),
+        _WordOcclusionPerturbator(tokenizer=tokenizer, inputs_embeddings=inputs_embedding),
     ]
-
-    for perturbator in occlusion_perturbators:
-        sentence = sentences[0]
-
-        pert, mask = perturbator.perturb(sentence)
-
-        # Check that the mask is identity
-        assert torch.all(mask == torch.eye(mask.shape[0]))
-
-
-def test_word_occlusion_perturbator(tokenizer, inputs_embedding, sentences):
-    perturbator = WordOcclusionPerturbator(tokenizer, inputs_embedding)
-    embeddings, mask = perturbator.perturb(sentences[0])
-    n_words = len(sentences[0].split())
-    assert embeddings.shape[1] == n_words
-    assert mask.shape == (n_words, n_words)
-
-
-def test_token_occlusion_perturbator(tokenizer, inputs_embedding, sentences):
-    perturbator = TokenOcclusionPerturbator(tokenizer, inputs_embedding)
-    embeddings, mask = perturbator.perturb(sentences[0])
-    n_tokens = len(tokenizer.tokenize(sentences[0]))
-    assert embeddings.shape[1] == embeddings.shape[2] == n_tokens
-    assert mask.shape == (n_tokens, n_tokens)
+    for p in occlusion_perturbators:
+        res = p.perturb(sentences)
+        assert isinstance(res, list)
+        for emb, mask in res:
+            assert isinstance(emb, torch.Tensor)
+            assert isinstance(mask, torch.Tensor)
+            assert torch.equal(mask, torch.eye(mask.shape[-1]).unsqueeze(0))
+            assert emb.shape[0] == 1
+            assert mask.shape[0] == 1
+            assert mask.shape[1] == emb.shape[1]

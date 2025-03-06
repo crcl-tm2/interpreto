@@ -103,4 +103,6 @@ class MaskwiseMeanAggregation(Aggregator):
     """
 
     def aggregate(self, results: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        return torch.einsum("np,npl->n,l", mask, results) / mask.sum(dim=1)
+        print(results.shape, mask.shape)
+        # TODO : transform the output tensor to interpretable explaination
+        return torch.einsum("np,npl->nl", results, mask) / mask.sum(dim=1)

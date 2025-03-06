@@ -56,6 +56,12 @@ class TokenPerturbator(Perturbator):
     """
 
 
+class WordPerturbator(Perturbator):
+    """
+    Generic class for word-wise modification
+    """
+
+
 class TensorPerturbator(Perturbator):
     """
     Generic class for any tensor-wise modification
