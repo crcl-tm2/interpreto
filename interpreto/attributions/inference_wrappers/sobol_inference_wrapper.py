@@ -22,39 +22,40 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""
-Integrated Gradients method
-"""
-
 from __future__ import annotations
-
-from typing import Any
 
 import torch
 
-from interpreto.attributions.aggregations import MeanAggregator
-from interpreto.attributions.base import GradientExplainer
-from interpreto.attributions.perturbations import LinearInterpolationPerturbator
-from interpreto.commons.model_wrapping.inference_wrapper import ClassificationInferenceWrapper
 
+class SobolInferenceWrapper:
+    def __init__(self, model):
+        self.model = model
 
-class IntegratedGradients(GradientExplainer):
-    """
-    Integrated Gradients method
-    """
+    def inference(self, inputs_model):
+        """
+        Run the model on the inputs_model and return the logits.
+        """
+        with torch.no_grad():
+            outputs = self.model(**inputs_model)
+        return outputs.logits
 
-    def __init__(
-        self,
-        model: Any,
-        batch_size: int,
-        device: torch.device | None = None,
-        n_interpolations: int = 10,
-        baseline: torch.Tensor | float | None = None,
-    ):
-        super().__init__(
-            perturbator=LinearInterpolationPerturbator(baseline=baseline, n_perturbations=n_interpolations),
-            inference_wrapper=ClassificationInferenceWrapper(model, batch_size=batch_size, device=device),
-            aggregator=MeanAggregator(),  # TODO: check if we need a trapezoidal mean
-            batch_size=batch_size,
-            device=device,
-        )
+    def batched_inference(self, inputs_model, batch_size=32):
+        """
+        Run the model on the inputs_model in batches and return the concatenated logits.
+
+        Parameters:
+        - inputs_model: dictionary with keys "input_ids" and "attention_mask", each of shape (n_samples, seq_len)
+        - batch_size: the batch size for inference.
+        """
+        input_ids = inputs_model["input_ids"]
+        attention_mask = inputs_model["attention_mask"]
+        n_samples = input_ids.shape[0]
+        logits_list = []
+        with torch.no_grad():
+            for i in range(0, n_samples, batch_size):
+                batch_input_ids = input_ids[i : i + batch_size]
+                batch_attention_mask = attention_mask[i : i + batch_size]
+                outputs = self.model(input_ids=batch_input_ids, attention_mask=batch_attention_mask)
+                logits_list.append(outputs.logits)
+        logits = torch.cat(logits_list, dim=0)
+        return logits

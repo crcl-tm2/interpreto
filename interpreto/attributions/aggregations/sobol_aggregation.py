@@ -22,39 +22,38 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""
-Integrated Gradients method
-"""
-
 from __future__ import annotations
 
-from typing import Any
-
+import numpy as np
 import torch
 
-from interpreto.attributions.aggregations import MeanAggregator
-from interpreto.attributions.base import GradientExplainer
-from interpreto.attributions.perturbations import LinearInterpolationPerturbator
-from interpreto.commons.model_wrapping.inference_wrapper import ClassificationInferenceWrapper
+from interpreto.attributions.aggregations.base import Aggregator
 
 
-class IntegratedGradients(GradientExplainer):
+class SobolAggregator(Aggregator):
     """
-    Integrated Gradients method
+    Aggregates Sobol indices from model outputs.
     """
 
-    def __init__(
-        self,
-        model: Any,
-        batch_size: int,
-        device: torch.device | None = None,
-        n_interpolations: int = 10,
-        baseline: torch.Tensor | float | None = None,
-    ):
-        super().__init__(
-            perturbator=LinearInterpolationPerturbator(baseline=baseline, n_perturbations=n_interpolations),
-            inference_wrapper=ClassificationInferenceWrapper(model, batch_size=batch_size, device=device),
-            aggregator=MeanAggregator(),  # TODO: check if we need a trapezoidal mean
-            batch_size=batch_size,
-            device=device,
-        )
+    @staticmethod
+    def aggregate(f_orig, dict_f_hybrid):
+        """
+        Compute the Sobol indices from the model outputs on the origin perturbations (f_orig)
+        and the token-specific perturbations (dict_f_hybrid).
+
+        Returns a dictionary mapping the token index to its Sobol attribution index.
+        """
+        # Convert to numpy if necessary.
+        if torch.is_tensor(f_orig):
+            f_orig = f_orig.cpu().detach().numpy()
+        var_f = np.var(f_orig)
+        # To avoid division by zero.
+        if var_f == 0:
+            var_f = 1e-6
+        S = {}
+        for token_idx, f_hybrid in dict_f_hybrid.items():
+            if torch.is_tensor(f_hybrid):
+                f_hybrid = f_hybrid.cpu().detach().numpy()
+            delta = f_orig - f_hybrid
+            S[token_idx] = np.mean(delta**2) / var_f
+        return S
