@@ -22,7 +22,41 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from .base import GaussianNoisePerturbator
-from .linear_interpolation_perturbation import LinearInterpolationPerturbator
-from .occlusion import TokenOcclusionPerturbator, WordOcclusionPerturbator
-from .sobol_perturbation import SobolPerturbator
+"""
+Sobol attribution method
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import torch
+from transformers import PreTrainedTokenizer
+
+from interpreto.attributions.aggregations.sobol_aggregation import SobolAggregator
+from interpreto.attributions.base import InferenceExplainer
+from interpreto.attributions.perturbations.sobol_perturbation import SobolPerturbator
+from interpreto.commons.model_wrapping.inference_wrapper import ClassificationInferenceWrapper
+
+
+class SobolAttribution(InferenceExplainer):
+    """
+    Sobol Attribution method
+    """
+
+    def __init__(
+        self,
+        model: Any,
+        tokenizer: PreTrainedTokenizer,
+        batch_size: int,
+        device: torch.device | None = None,
+        n_perturbations: int = 1000,
+        baseline: str = "[MASK]",
+    ):
+        super().__init__(
+            perturbation=SobolPerturbator(tokenizer=tokenizer, baseline=baseline, n_perturbations=n_perturbations),
+            inference_wrapper=ClassificationInferenceWrapper(model=model, batch_size=batch_size, device=device),
+            aggregation=SobolAggregator(),
+            batch_size=batch_size,
+            device=device,
+        )

@@ -22,7 +22,38 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from .base import GaussianNoisePerturbator
-from .linear_interpolation_perturbation import LinearInterpolationPerturbator
-from .occlusion import TokenOcclusionPerturbator, WordOcclusionPerturbator
-from .sobol_perturbation import SobolPerturbator
+from __future__ import annotations
+
+import numpy as np
+import torch
+
+from interpreto.attributions.aggregations.base import Aggregator
+
+
+class SobolAggregator(Aggregator):
+    """
+    Aggregates Sobol indices from model outputs.
+    """
+
+    @staticmethod
+    def aggregate(f_orig, dict_f_hybrid):
+        """
+        Compute the Sobol indices from the model outputs on the origin perturbations (f_orig)
+        and the token-specific perturbations (dict_f_hybrid).
+
+        Returns a dictionary mapping the token index to its Sobol attribution index.
+        """
+        # Convert to numpy if necessary.
+        if torch.is_tensor(f_orig):
+            f_orig = f_orig.cpu().detach().numpy()
+        var_f = np.var(f_orig)
+        # To avoid division by zero.
+        if var_f == 0:
+            var_f = 1e-6
+        S = {}
+        for token_idx, f_hybrid in dict_f_hybrid.items():
+            if torch.is_tensor(f_hybrid):
+                f_hybrid = f_hybrid.cpu().detach().numpy()
+            delta = f_orig - f_hybrid
+            S[token_idx] = np.mean(delta**2) / var_f
+        return S
