@@ -97,13 +97,13 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
         splitted_model (ModelSplitterPlaceholder): Model splitter
         split (str): The split in the model where the concepts are encoded from.
         concept_encoder_decoder (oc_sae.SAE): Overcomplete SAE model
-        fitted (bool): Whether the model has been fitted
-        _differentiable_concept_encoder (bool): Whether the concept encoder is differentiable.
-        _differentiable_concept_decoder (bool): Whether the concept decoder is differentiable.
+        is_fitted (bool): Whether the model has been fitted
+        has_differentiable_concept_encoder (bool): Whether the concept encoder is differentiable.
+        has_differentiable_concept_decoder (bool): Whether the concept decoder is differentiable.
     """
 
-    _differentiable_concept_encoder = True
-    _differentiable_concept_decoder = True
+    has_differentiable_concept_encoder = True
+    has_differentiable_concept_decoder = True
 
     def __init__(
         self,
@@ -143,11 +143,11 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
             device=device,
             **kwargs,
         )
-        self.fitted = False
+        self.is_fitted = False
 
     def fit(
         self,
-        activations: dict[LatentActivations],
+        activations: dict[str, LatentActivations],
         *,
         split: str | None = None,
         use_amp: bool = False,
@@ -166,7 +166,7 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
         ConceptEncoderDecoder for explaining a concept.
 
         Args:
-            activations (dict[LatentActivations]): the activations to train the concept encoder on.
+            activations (dict[str, LatentActivations]): the activations to train the concept encoder on.
             split: (str | None): The dataset split to use for training the concept encoder. If None, the model is assumed to be a single-split model. And split is inferred from the keys of the activations dict.
             use_amp (bool): Whether to use automatic mixed precision.
             criterion (Criterion): Loss criterion for the training of the concept encoder-decoder.
@@ -212,22 +212,22 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
                 monitoring=monitoring,
                 device=device,
             )
-        self.fitted = True
+        self.is_fitted = True
         return log
 
     def encode_activations(
-        self, activations: LatentActivations | dict[LatentActivations], **kwargs
+        self, activations: LatentActivations | dict[str, LatentActivations], **kwargs
     ) -> ConceptsActivations:
         """
         Encode the given activations using the concept encoder-decoder.
 
         Args:
-            activations (LatentActivations | dict[LatentActivations]): The activations to encode.
+            activations (LatentActivations | dict[str, LatentActivations]): The activations to encode.
 
         Returns:
             ConceptsActivations: The encoded activations.
         """
-        assert self.fitted, "Concept explainer has not been fitted yet."
+        assert self.is_fitted, "Concept explainer has not been fitted yet."
 
         inputs, _ = self.verify_activations(activations)
         inputs = inputs.to(self.concept_encoder_decoder.device)
@@ -267,12 +267,12 @@ class OvercompleteDictionaryLearning(ConceptBottleneckExplainer):
         splitted_model (ModelSplitterPlaceholder): Model splitter
         split (str): The split in the model where the concepts are encoded from.
         concept_encoder_decoder (oc_opt.BaseOptimDictionaryLearning): Overcomplete optimization module for dictionary learning
-        fitted (bool): Whether the model has been fitted
-        _differentiable_concept_encoder (bool): Whether the concept encoder is differentiable.
-        _differentiable_concept_decoder (bool): Whether the concept decoder is differentiable.
+        is_fitted (bool): Whether the model has been fitted
+        has_differentiable_concept_encoder (bool): Whether the concept encoder is differentiable.
+        has_differentiable_concept_decoder (bool): Whether the concept decoder is differentiable.
     """
 
-    _differentiable_concept_decoder = True
+    has_differentiable_concept_decoder = True
 
     def __init__(
         self,
@@ -305,17 +305,17 @@ class OvercompleteDictionaryLearning(ConceptBottleneckExplainer):
             kwargs["solver"] = "mu"
 
         self.concept_encoder_decoder = ConceptEncoderDecoder(nb_concepts=n_concepts, device=device, **kwargs)
-        self.fitted = False
+        self.is_fitted = False
 
         if "NMF" in ConceptEncoderDecoder.__name__:
-            self._differentiable_concept_encoder = False
+            self.has_differentiable_concept_encoder = False
 
-    def fit(self, activations: dict[LatentActivations], *, split: str | None = None, **kwargs):
+    def fit(self, activations: dict[str, LatentActivations], *, split: str | None = None, **kwargs):
         """
         ConceptEncoderDecoder for explaining a concept.
 
         Args:
-            activations (dict[LatentActivations]): the activations to train the concept encoder on. Shape: (n_samples, n_features).
+            activations (dict[str, LatentActivations]): the activations to train the concept encoder on. Shape: (n_samples, n_features).
             split: (str | None): The dataset split to use for training the concept encoder. If None, the model is assumed to be a single-split model. And split is inferred from the keys of the activations dict.
             **kwargs: Additional keyword arguments to pass to the concept encoder-decoder. See the Overcomplete documentation of the provided `ConceptEncoderDecoder` for more details.
         """
@@ -325,4 +325,4 @@ class OvercompleteDictionaryLearning(ConceptBottleneckExplainer):
         )
 
         self.concept_encoder_decoder.fit(inputs, **kwargs)
-        self.fitted = True
+        self.is_fitted = True

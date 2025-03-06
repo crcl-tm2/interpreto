@@ -44,11 +44,11 @@ class AbstractConceptExplainer(ABC):
     Attributes:
         splitted_model (ModelSplitterPlaceholder): The model to apply the explanation on. It should be splitted between at least two parts.
         split (str): The split in the model where the concepts are encoded from.
-        fitted (bool): Whether the model has been fitted
-        _differentiable_concept_encoder (bool): Whether the concept encoder is differentiable.
+        is_fitted (bool): Whether the model has been fitted
+        has_differentiable_concept_encoder (bool): Whether the concept encoder is differentiable.
     """
 
-    _differentiable_concept_encoder = False
+    has_differentiable_concept_encoder = False
 
     def __init__(self, splitted_model: ModelSplitterPlaceholder):
         """
@@ -61,35 +61,35 @@ class AbstractConceptExplainer(ABC):
             raise TypeError("Model should be a ModelSplitterPlaceholder.")
         self.splitted_model = splitted_model
 
-    def verify_activations(
-        self, activations: dict[LatentActivations] | LatentActivations, split: str | None = None
-    ) -> tuple(LatentActivations, str | None):
+    def verify_activations(self, activations: dict[str, LatentActivations], split: str | None = None) -> tuple(
+        LatentActivations, str | None
+    ):
         """
         Verify that the given activations are valid for the concept explainer.
         That is if the split corresponds to the model splits.
 
         Args:
-            activations (dict[LatentActivations]): the activations to verify.
+            activations (dict[str, LatentActivations]): the activations to verify.
             split: (str | None): The dataset split to use for training the concept encoder. If None, the model is assumed to be a single-split model. And split is inferred from the keys of the activations dict.
         """
-        if hasattr(self, "split") and self.split is not None:
+        # ensure activations follow the expected type
+        if not isinstance(activations, dict):
+            raise TypeError("Activations should be a dict.")
+
+        # ensure activations keys are in the model splits
+        if any(s not in self.splitted_model.splits for s in activations.keys()):
+            raise ValueError(
+                f"Splits from activations not found in model. activations: {activations.keys()} model: {self.splitted_model.splits}"
+            )
+
+        if split is None and hasattr(self, "split"):
             split = self.split
 
-        if isinstance(activations, dict):
-            if len(activations) != len(self.splitted_model.splits):
-                raise ValueError(
-                    f"Activations should be a dict with {self.splitted_model.splits} keys but got {activations.keys()}."
-                )
-            if split is None:
-                if len(activations) != 1 and len(self.splitted_model.splits) != 1:
-                    raise ValueError("Cannot infer split if the model is a not a single-split model.")
-                split = list(activations.keys())[0]
-        elif split is None:
-            if len(self.splitted_model.splits) != 1:
+        if split is None:
+            if len(activations) != 1:
                 raise ValueError("Cannot infer split if the model is a not a single-split model.")
-            split = self.splitted_model.splits[0]
-            # assuming the users knows what they are doing
-            return activations, None
+            # we are sure len(activations) == 1 and activations.keys() is included in self.splitted_model.splits due to previous assert
+            split = list(activations.keys())[0]
 
         assert split in activations, f"Split {split} not found in activations."
         assert split in self.splitted_model.splits, f"Split {split} not found in model."
@@ -97,12 +97,12 @@ class AbstractConceptExplainer(ABC):
         return activations[split], split
 
     @abstractmethod
-    def fit(self, activations: dict[LatentActivations], split: str | None = None):
+    def fit(self, activations: dict[str, LatentActivations], split: str | None = None):
         """
         Defines the concept encoder, thus the concept space, using the given activations.
 
         Args:
-            activations (dict[LatentActivations]): the activations to train the concept encoder on.
+            activations (dict[str, LatentActivations]): the activations to train the concept encoder on.
             split: (str | None): The dataset split to use for training the concept encoder. If None, the model is assumed to be a single-split model. And split is inferred from the keys of the activations dict.
 
         Returns:
@@ -112,13 +112,13 @@ class AbstractConceptExplainer(ABC):
 
     @abstractmethod
     def encode_activations(
-        self, activations: LatentActivations | dict[LatentActivations], **kwargs
+        self, activations: LatentActivations | dict[str, LatentActivations], **kwargs
     ) -> ConceptsActivations:
         """
         Encode the given activations using the concept encoder-decoder.
 
         Args:
-            activations (LatentActivations | dict[LatentActivations]): The activations to encode.
+            activations (LatentActivations | dict[str, LatentActivations]): The activations to encode.
 
         Returns:
             ConceptsActivations: The encoded activations.
@@ -196,26 +196,26 @@ class ConceptBottleneckExplainer(AbstractConceptExplainer):
         splitted_model (ModelSplitterPlaceholder): The model to apply the explanation on. It should be splitted between at least two parts.
         split (str): The split in the model where the concepts are encoded from.
         concept_encoder_decoder (ConceptEncoderDecoder): Concept encoder-decoder
-        fitted (bool): Whether the model has been fitted
-        _differentiable_concept_encoder (bool): Whether the concept encoder is differentiable.
-        _differentiable_concept_decoder (bool): Whether the concept decoder is differentiable.
+        is_fitted (bool): Whether the model has been fitted
+        has_differentiable_concept_encoder (bool): Whether the concept encoder is differentiable.
+        has_differentiable_concept_decoder (bool): Whether the concept decoder is differentiable.
     """
 
-    _differentiable_concept_decoder = False
+    has_differentiable_concept_decoder = False
 
     def encode_activations(
-        self, activations: LatentActivations | dict[LatentActivations], **kwargs
+        self, activations: LatentActivations | dict[str, LatentActivations], **kwargs
     ) -> ConceptsActivations:
         """
         Encode the given activations using the concept encoder-decoder.
 
         Args:
-            activations (LatentActivations | dict[LatentActivations]): The activations to encode.
+            activations (LatentActivations | dict[str, LatentActivations]): The activations to encode.
 
         Returns:
             ConceptsActivations: The encoded activations.
         """
-        assert self.fitted, "Concept explainer has not been fitted yet."
+        assert self.is_fitted, "Concept explainer has not been fitted yet."
 
         inputs, _ = self.verify_activations(activations)
         inputs = inputs.to(self.concept_encoder_decoder.device)
@@ -231,7 +231,7 @@ class ConceptBottleneckExplainer(AbstractConceptExplainer):
         Returns:
             LatentActivations: The decoded activations.
         """
-        assert self.fitted, "Concept explainer has not been fitted yet."
+        assert self.is_fitted, "Concept explainer has not been fitted yet."
         concepts = concepts.to(self.concept_encoder_decoder.device)
         return self.concept_encoder_decoder.decode(concepts)
 
@@ -242,7 +242,7 @@ class ConceptBottleneckExplainer(AbstractConceptExplainer):
         Returns:
             torch.Tensor: The learned dictionary.
         """
-        assert self.fitted, "Concept explainer has not been fitted yet."
+        assert self.is_fitted, "Concept explainer has not been fitted yet."
         return self.concept_encoder_decoder.get_dictionary()
 
     def concept_output_attribution(
@@ -261,7 +261,7 @@ class ConceptBottleneckExplainer(AbstractConceptExplainer):
         Raises:
             NotImplementedError: If the method is not implemented.
         """
-        assert self.fitted, "Concept explainer has not been fitted yet."
+        assert self.is_fitted, "Concept explainer has not been fitted yet."
         raise NotImplementedError(
             f"Concept output attribution method {concepts}, {attribution_method} is not implemented yet."
         )

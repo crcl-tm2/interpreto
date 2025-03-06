@@ -87,7 +87,7 @@ def test_verify_activations():
 
     # different splits between activations and model
     activations = {
-        "input_to_latent": splitted_model.get_activations(inputs),
+        "input_to_latent": splitted_model.get_activations(inputs)[split],
         "end_model": inputs,
     }
     with pytest.raises(ValueError):
@@ -101,7 +101,7 @@ def test_verify_activations():
         cbe = OvercompleteDictionaryLearning(splitted_model, oc_opt.NMF, n_concepts=n_concepts)
         cbe.fit(activations)
     # conflict with activations
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         cbe = OvercompleteDictionaryLearning(splitted_model, oc_opt.NMF, n_concepts=n_concepts)
         cbe.fit(activations[split])
 
@@ -140,15 +140,12 @@ def test_overcomplete_cbe():
 
         assert hasattr(cbe, "concept_encoder_decoder")
         assert hasattr(cbe, "splitted_model")
-        assert cbe.fitted
+        assert cbe.is_fitted
         assert cbe.split == split
-        assert hasattr(cbe, "_differentiable_concept_encoder")
-        assert hasattr(cbe, "_differentiable_concept_decoder")
+        assert hasattr(cbe, "has_differentiable_concept_encoder")
+        assert hasattr(cbe, "has_differentiable_concept_decoder")
 
         concepts = cbe.encode_activations(activations)
         assert concepts.shape == (n_samples, n_concepts)
         reconstructed_activations = cbe.decode_concepts(concepts)
         assert reconstructed_activations.shape == (n_samples, hidden_size)
-
-
-test_overcomplete_cbe()  # TODO: remove

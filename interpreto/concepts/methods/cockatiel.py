@@ -44,9 +44,9 @@ class Cockatiel(OvercompleteDictionaryLearning):
     Attributes:
         splitted_model (ModelSplitterPlaceholder): Model splitter
         concept_encoder_decoder (oc_opt.NMF): Overcomplete NMF concept encoder decoder
-        fitted (bool): Whether the model has been fitted
-        _differentiable_concept_encoder (bool): Whether the concept encoder is differentiable.
-        _differentiable_concept_decoder (bool): Whether the concept decoder is differentiable.
+        is_fitted (bool): Whether the model has been fitted
+        has_differentiable_concept_encoder (bool): Whether the concept encoder is differentiable.
+        has_differentiable_concept_decoder (bool): Whether the concept decoder is differentiable.
     """
 
     def __init__(self, splitted_model: ModelSplitterPlaceholder, n_concepts: int, device: str = "cpu"):
