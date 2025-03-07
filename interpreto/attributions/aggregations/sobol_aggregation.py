@@ -24,7 +24,6 @@
 
 from __future__ import annotations
 
-import numpy as np
 import torch
 
 from interpreto.attributions.aggregations.base import Aggregator
@@ -35,25 +34,39 @@ class SobolAggregator(Aggregator):
     Aggregates Sobol indices from model outputs.
     """
 
-    @staticmethod
-    def aggregate(f_orig, dict_f_hybrid):
-        """
-        Compute the Sobol indices from the model outputs on the origin perturbations (f_orig)
-        and the token-specific perturbations (dict_f_hybrid).
+    def __init__(self, nb_token_perturbation: int):
+        self.nb_token_perturbation = nb_token_perturbation
 
-        Returns a dictionary mapping the token index to its Sobol attribution index.
+    def single_input_aggregate(self, scores: torch.Tensor, _) -> torch.Tensor:
         """
-        # Convert to numpy if necessary.
-        if torch.is_tensor(f_orig):
-            f_orig = f_orig.cpu().detach().numpy()
-        var_f = np.var(f_orig)
-        # To avoid division by zero.
-        if var_f == 0:
-            var_f = 1e-6
-        S = {}
-        for token_idx, f_hybrid in dict_f_hybrid.items():
-            if torch.is_tensor(f_hybrid):
-                f_hybrid = f_hybrid.cpu().detach().numpy()
-            delta = f_orig - f_hybrid
-            S[token_idx] = np.mean(delta**2) / var_f
-        return S
+        Compute the Sobol indices from the model outputs perturbed inputs.
+
+        Args:
+            scores (torch.Tensor): The model outputs on perturbed inputs. Shape: (p,) with p = (l + 1) * k
+
+        Returns:
+            token_importance (torch.Tensor): The Sobol attribution indices for each token. Shape: (l,)
+        """
+        k = self.nb_token_perturbation
+
+        # Compute token-wise variance on the initial mask
+        initial_scores = scores[:k]  # Shape: (k,)
+        initial_var = torch.var(initial_scores)  # Shape: (1,)
+
+        # Compute token-wise sobol attribution indices
+        token_scores = scores[k:].view(-1, k)  # Shape: (l, k)
+        difference = token_scores - initial_scores.unsqueeze(1)  # Shape: (l, k)
+        token_importance = torch.mean(difference**2, dim=1) / (initial_var + 1e-6)  # Shape: (l,)
+        return token_importance
+
+    def aggregate(self, scores_list: list(torch.Tensor), _) -> list(torch.Tensor):
+        """
+        Compute the Sobol indices from the model outputs perturbed inputs.
+
+        Args:
+            scores_list (list(torch.Tensor)): The list of model outputs on perturbed inputs. Elements shape: (p,) with p = (l + 1) * k
+
+        Returns:
+            list(torch.Tensor): The Sobol attribution indices for each token. Shape: (l,)
+        """
+        return [self.single_input_aggregate(scores, _) for scores in scores_list]

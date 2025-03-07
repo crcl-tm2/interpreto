@@ -35,7 +35,11 @@ from transformers import PreTrainedTokenizer
 
 from interpreto.attributions.aggregations.sobol_aggregation import SobolAggregator
 from interpreto.attributions.base import InferenceExplainer
-from interpreto.attributions.perturbations.sobol_perturbation import SobolPerturbator
+from interpreto.attributions.perturbations.sobol_perturbation import (
+    SequenceSamplers,
+    SobolIndicesOrders,
+    SobolTokenPerturbator,
+)
 from interpreto.commons.model_wrapping.inference_wrapper import ClassificationInferenceWrapper
 
 
@@ -47,14 +51,47 @@ class SobolAttribution(InferenceExplainer):
     def __init__(
         self,
         model: Any,
-        tokenizer: PreTrainedTokenizer,
-        batch_size: int,
-        device: torch.device | None = None,
-        n_perturbations: int = 1000,
+        tokenizer: PreTrainedTokenizer | None = None,
+        n_token_perturbations: int = 30,
+        granularity_level: str = "token",
         baseline: str = "[MASK]",
+        sobol_indices_order: SobolIndicesOrders = SobolIndicesOrders.FIRST_ORDER,
+        sampler: SequenceSamplers = SequenceSamplers.SOBOL,
+        batch_size: int = 1,
+        device: torch.device | None = None,
     ):
+        """
+        Initialize the attribution method.
+
+        Args:
+            model (Any): model to explain
+            tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
+            n_token_perturbations (int): number of Monte Carlo samples perturbations for each token.
+            granularity_level (str): granularity level of the perturbations (token, word, sentence, etc.)
+            baseline (str): replacement token (e.g. “[MASK]”)
+            sobol_indices (SobolIndicesOrders): Sobol indices order, either `FIRST_ORDER` or `TOTAL_ORDER`.
+            sampler (SequenceSamplers): Sobol sequence sampler, either `SOBOL`, `HALTON` or `LatinHypercube`.
+            batch_size (int): batch size for the attribution method
+            device (torch.device): device on which the attribution method will be run
+        """
+        if tokenizer is None:
+            raise ValueError(
+                "Tokenizer must be provided for Sobol token attribution, tensor attributions are not supported yet."
+            )
+
+        perturbator = SobolTokenPerturbator(
+            tokenizer=tokenizer,
+            inputs_embedder=model.get_input_embeddings(),
+            n_token_perturbations=n_token_perturbations,
+            granularity_level=granularity_level,
+            baseline=baseline,
+            sobol_indices_order=sobol_indices_order,
+            sampler=sampler,
+            device=device,
+        )
+
         super().__init__(
-            perturbation=SobolPerturbator(tokenizer=tokenizer, baseline=baseline, n_perturbations=n_perturbations),
+            perturbation=perturbator,
             inference_wrapper=ClassificationInferenceWrapper(model=model, batch_size=batch_size, device=device),
             aggregation=SobolAggregator(),
             batch_size=batch_size,

@@ -28,106 +28,118 @@ Sobol perturbations for NLP
 
 from __future__ import annotations
 
+from enum import Enum
+
 import torch
+from scipy.stats import qmc
 from transformers import PreTrainedTokenizer
 
-from interpreto.attributions.perturbations.base import Perturbator
+from interpreto.attributions.perturbations.base import TokenMaskBasedPerturbator
 
 
-class SobolPerturbator(Perturbator):
-    def __init__(self, tokenizer: PreTrainedTokenizer, baseline="[MASK]", n_perturbations=1000, proba=0.5):
+class SobolIndicesOrders(Enum):
+    """
+    Enumeration of available Sobol indices orders.
+    """
+
+    FIRST_ORDER = "first order"
+    TOTAL_ORDER = "total order"
+
+
+class SequenceSamplers(Enum):
+    """
+    Enumeration of available samplers for Sobol perturbations.
+    """
+
+    SOBOL = qmc.Sobol
+    HALTON = qmc.Halton
+    LatinHypercube = qmc.LatinHypercube
+
+
+class SobolTokenPerturbator(TokenMaskBasedPerturbator):
+    def __init__(
+        self,
+        tokenizer: PreTrainedTokenizer,
+        inputs_embedder: torch.nn.Module | None = None,
+        n_token_perturbations: int = 30,
+        granularity_level: str = "token",
+        baseline: str = "[MASK]",
+        sobol_indices_order=SobolIndicesOrders.FIRST_ORDER,
+        sampler=SequenceSamplers.SOBOL,
+        device: torch.device | None = None,
+    ):
         """
-        - tokenizer: Hugging Face tokenizer associated with the model
-        - baseline: replacement token (e.g. “[MASK]”)
-        - n_perturbations: number of Monte Carlo samples
-        - proba: probability of keeping a token (i.e. putting 1 in the mask)
+        Initialize the perturbator.
+
+        Args:
+            tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
+            inputs_embedder (torch.nn.Module | None): optional inputs embedder
+            n_token_perturbations (int): number of Monte Carlo samples perturbations for each token.
+            granularity_level (str): granularity level of the perturbations (token, word, sentence, etc.)
+            baseline (str): replacement token (e.g. “[MASK]”)
+            sobol_indices (SobolIndicesOrders): Sobol indices order, either `FIRST_ORDER` or `TOTAL_ORDER`.
+            sampler (SequenceSamplers): Sobol sequence sampler, either `SOBOL`, `HALTON` or `LatinHypercube`.
+            device (torch.device): device on which the perturbator will be run
         """
+        super().__init__(
+            tokenizer=tokenizer,
+            inputs_embedder=inputs_embedder,
+            n_perturbations=None,
+            granularity_level=granularity_level,
+            device=device,
+        )
         self.tokenizer = tokenizer
         self.baseline = baseline
-        self.n_perturbations = n_perturbations
-        self.proba = proba
+        self.n_token_perturbations = n_token_perturbations
+        self.sobol_indices_order = sobol_indices_order
+        self.sampler = sampler
 
-    def perturb(self, text, Sobol_indices="first order"):
+    def get_single_input_masks(self, l: int):
         """
-        Generates perturbations for the entire input and for each "real" token position only.
+        Generates a binary mask for each token in the sequence.
 
-        Parameters:
-          - text : original sentence (str)
-          - Sobol_indices : "first order" or "total" (str)
+        Args:
+            l (int): The length of the sequence.
 
-        Returns a dictionary containing:
-          - "origin perturbated inputs": dictionary with input_ids and attention_mask for the full-sequence perturbations.
-          - "list of perturbated inputs for each token": a dict mapping each real token's position to its own perturbation inputs.
-          - "real_tokens": a dict mapping each real token position to its token string.
+        Returns:
+            masks (torch.Tensor): A tensor of shape ((l + 1) * k, l).
         """
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        # Tokenize text with offsets (includes special tokens)
-        inputs_model = self.tokenizer(text, return_offsets_mapping=True, return_tensors="pt")
-        offset_mapping = (
-            inputs_model["offset_mapping"].squeeze(0).tolist()
-        )  # List of (start, end) pairs for each token
-        input_ids = inputs_model["input_ids"].squeeze(0)  # Shape: (seq_len,)
-        attention_mask = inputs_model["attention_mask"].squeeze(0)  # Shape: (seq_len,)
-        all_tokens = self.tokenizer.convert_ids_to_tokens(input_ids)
+        k = self.nb_token_perturbation
+        # Initial random mask. Shape:(k, l)
+        initial_mask = torch.Tensor(self.sampler(d=l).random(n=k), device=self.device)
 
-        # Identify "real" tokens: those with a nonzero span in the offset mapping.
-        real_indices = [i for i, (start, end) in enumerate(offset_mapping) if (end - start) > 0]
-        real_tokens = {i: all_tokens[i] for i in real_indices}
+        # Expand mask across all perturbation steps. Shape ((l + 1) * k, l)
+        mask = initial_mask.repeat((l + 1, 1))
 
-        baseline_id = self.tokenizer.convert_tokens_to_ids(self.baseline)
-        seq_len = input_ids.shape[0]
-        print(
-            "Number of all tokens:",
-            len(all_tokens),
-            "number of real tokens:",
-            len(real_tokens),
-            "Sequence length:",
-            seq_len,
-        )
-        print("All tokens:", all_tokens)
-        print("Real tokens:", real_tokens)
+        # Generate index tensor for perturbations. Shape: (l * k)
+        col_indices = torch.arange(l, device=self.device).repeat_interleave(k)
 
-        # Create origin perturbations for the entire sequence.
-        origin_masks = []
-        origin_input_ids_list = []
-        origin_attention_mask_list = []
-        for _ in range(self.n_perturbations):
-            # Create a binary mask with probability self.proba for keeping the token.
-            origin_mask = torch.bernoulli(torch.full((seq_len,), self.proba)).long()
-            origin_input_ids = input_ids * origin_mask + baseline_id * (1 - origin_mask)
-            origin_masks.append(origin_mask)
-            origin_input_ids_list.append(origin_input_ids)
-            origin_attention_mask_list.append(attention_mask)
-        origin_input_ids_tensor = torch.stack(origin_input_ids_list).to(device)
-        origin_attention_mask_tensor = torch.stack(origin_attention_mask_list).to(device)
-        origin_inputs_model = {
-            "input_ids": origin_input_ids_tensor,
-            "attention_mask": origin_attention_mask_tensor,
-        }
+        # Compute the start and end indices. Shape: (l * k)
+        row_indices = torch.arange(k * l, device=self.device) + k
 
-        # For each real token position, create perturbations by flipping that token's mask.
-        pert_inputs_model_per_token = {}
-        for i in real_indices:
-            pert_input_ids_list = []
-            pert_attention_mask_list = []
-            for j in range(self.n_perturbations):
-                pert_mask = origin_masks[j].clone()
-                # Flip the bit at token position i.
-                pert_mask[i] = 1 - pert_mask[i]
-                # If computing total Sobol indices, flip all bits except the i-th bit.
-                if Sobol_indices == "total":
-                    pert_mask = 1 - pert_mask
-                pert_input_ids = input_ids * pert_mask + baseline_id * (1 - pert_mask)
-                pert_input_ids_list.append(pert_input_ids)
-                pert_attention_mask_list.append(attention_mask)
-            pert_inputs_model = {
-                "input_ids": torch.stack(pert_input_ids_list).to(device),
-                "attention_mask": torch.stack(pert_attention_mask_list).to(device),
-            }
-            pert_inputs_model_per_token[i] = pert_inputs_model
+        # Flip the selected mask values without a loop
+        mask[row_indices, col_indices] = 1 - mask[row_indices, col_indices]  # TODO: add second order Sobol indices
 
-        return {
-            "origin perturbated inputs": origin_inputs_model,
-            "list of perturbated inputs for each token": pert_inputs_model_per_token,
-            "real_tokens": real_tokens,
-        }
+        if self.sobol_indices_order == SobolIndicesOrders.TOTAL_ORDER:
+            mask[k:] = 1 - mask[k:]
+
+        return mask
+
+    def get_masks(self, sizes: tuple | list[int]) -> list[torch.Tensor]:
+        """
+        Generates a binary mask for each token in the sequence.
+
+        Args:
+            sizes (list[int]): A list of sequence lengths (l).
+
+        Returns:
+            masks_list (list[torch.Tensor]): List of tensors of shape ((l + 1) * k, l).
+        """
+        if isinstance(sizes, int):
+            return [self.get_single_input_mask(sizes)]
+
+        if isinstance(sizes, list):
+            return [self.get_single_input_mask(size) for size in sizes]
+
+        if isinstance(sizes, tuple):
+            return torch.repeat(self.get_single_input_mask(sizes[0]).unsqueeze(0), sizes[1], dim=0)
