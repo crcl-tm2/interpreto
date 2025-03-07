@@ -61,11 +61,11 @@ class SobolTokenPerturbator(TokenMaskBasedPerturbator):
         self,
         tokenizer: PreTrainedTokenizer,
         inputs_embedder: torch.nn.Module | None = None,
-        n_token_perturbations: int = 30,
+        nb_token_perturbations: int = 30,
         granularity_level: str = "token",
         baseline: str = "[MASK]",
-        sobol_indices_order=SobolIndicesOrders.FIRST_ORDER,
-        sampler=SequenceSamplers.SOBOL,
+        sobol_indices_order: SobolIndicesOrders = SobolIndicesOrders.FIRST_ORDER,
+        sampler: SequenceSamplers = SequenceSamplers.SOBOL,
         device: torch.device | None = None,
     ):
         """
@@ -74,7 +74,7 @@ class SobolTokenPerturbator(TokenMaskBasedPerturbator):
         Args:
             tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
             inputs_embedder (torch.nn.Module | None): optional inputs embedder
-            n_token_perturbations (int): number of Monte Carlo samples perturbations for each token.
+            nb_token_perturbations (int): number of Monte Carlo samples perturbations for each token.
             granularity_level (str): granularity level of the perturbations (token, word, sentence, etc.)
             baseline (str): replacement token (e.g. “[MASK]”)
             sobol_indices (SobolIndicesOrders): Sobol indices order, either `FIRST_ORDER` or `TOTAL_ORDER`.
@@ -90,7 +90,7 @@ class SobolTokenPerturbator(TokenMaskBasedPerturbator):
         )
         self.tokenizer = tokenizer
         self.baseline = baseline
-        self.n_token_perturbations = n_token_perturbations
+        self.nb_token_perturbations = nb_token_perturbations
         self.sobol_indices_order = sobol_indices_order
         self.sampler = sampler
 
@@ -104,9 +104,9 @@ class SobolTokenPerturbator(TokenMaskBasedPerturbator):
         Returns:
             masks (torch.Tensor): A tensor of shape ((l + 1) * k, l).
         """
-        k = self.nb_token_perturbation
+        k = self.nb_token_perturbations
         # Initial random mask. Shape:(k, l)
-        initial_mask = torch.Tensor(self.sampler(d=l).random(n=k), device=self.device)
+        initial_mask = torch.Tensor(self.sampler(l).random(k), device=self.device)
 
         # Expand mask across all perturbation steps. Shape ((l + 1) * k, l)
         mask = initial_mask.repeat((l + 1, 1))
@@ -118,7 +118,7 @@ class SobolTokenPerturbator(TokenMaskBasedPerturbator):
         row_indices = torch.arange(k * l, device=self.device) + k
 
         # Flip the selected mask values without a loop
-        mask[row_indices, col_indices] = 1 - mask[row_indices, col_indices]  # TODO: add second order Sobol indices
+        mask[row_indices, col_indices] = 1 - mask[row_indices, col_indices]
 
         if self.sobol_indices_order == SobolIndicesOrders.TOTAL_ORDER:
             mask[k:] = 1 - mask[k:]

@@ -52,7 +52,7 @@ class SobolAttribution(InferenceExplainer):
         self,
         model: Any,
         tokenizer: PreTrainedTokenizer | None = None,
-        n_token_perturbations: int = 30,
+        nb_token_perturbations: int = 30,
         granularity_level: str = "token",
         baseline: str = "[MASK]",
         sobol_indices_order: SobolIndicesOrders = SobolIndicesOrders.FIRST_ORDER,
@@ -66,7 +66,7 @@ class SobolAttribution(InferenceExplainer):
         Args:
             model (Any): model to explain
             tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
-            n_token_perturbations (int): number of Monte Carlo samples perturbations for each token.
+            nb_token_perturbations (int): number of Monte Carlo samples perturbations for each token.
             granularity_level (str): granularity level of the perturbations (token, word, sentence, etc.)
             baseline (str): replacement token (e.g. “[MASK]”)
             sobol_indices (SobolIndicesOrders): Sobol indices order, either `FIRST_ORDER` or `TOTAL_ORDER`.
@@ -82,7 +82,7 @@ class SobolAttribution(InferenceExplainer):
         perturbator = SobolTokenPerturbator(
             tokenizer=tokenizer,
             inputs_embedder=model.get_input_embeddings(),
-            n_token_perturbations=n_token_perturbations,
+            nb_token_perturbations=nb_token_perturbations,
             granularity_level=granularity_level,
             baseline=baseline,
             sobol_indices_order=sobol_indices_order,
@@ -93,7 +93,7 @@ class SobolAttribution(InferenceExplainer):
         super().__init__(
             perturbation=perturbator,
             inference_wrapper=ClassificationInferenceWrapper(model=model, batch_size=batch_size, device=device),
-            aggregation=SobolAggregator(),
+            aggregation=SobolAggregator(nb_token_perturbations=nb_token_perturbations),
             batch_size=batch_size,
             device=device,
         )

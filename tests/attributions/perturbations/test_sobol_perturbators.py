@@ -20,7 +20,7 @@ def test_get_masks(sobol_indices_order, sampler):
     perturbator = SobolTokenPerturbator(
         tokenizer=None,
         inputs_embedder=None,
-        n_token_perturbations=k,
+        nb_token_perturbations=k,
         granularity_level="token",
         baseline="[MASK]",
         sobol_indices_order=sobol_indices_order,
