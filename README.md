@@ -38,8 +38,73 @@ pip install interpreto
 Now that `interpreto` is installed, here are some basic examples of what you can do with the available modules.
 
 ## 📦 What's Included
+Interpreto 🪄 provides a modular framework encompassing Attribution Methods, Concept-Based Methods, and Evaluation Metrics.
 
-TODO: A list or table of methods available
+### Attribution Methods
+<details>
+<summary>Interpreto includes both inference-based and gradient-based attribution methods:</summary>
+
+**Inference-based Methods:**
+- Occlusion: [Zeiler and Fergus, 2014. Visualizing and understanding convolutional networks](https://link.springer.com/chapter/10.1007/978-3-319-10590-1_53).
+- LIME: [Ribeiro et al. 2013, "Why should i trust you?" explaining the predictions of any classifier](https://dl.acm.org/doi/abs/10.1145/2939672.2939778).
+- Kernel SHAP: [Lundberg and Lee, 2017, A Unified Approach to Interpreting Model Predictions](https://arxiv.org/abs/1705.07874).
+- Sobol Attribution: [Fel et al. 2021, Look at the variance! efficient black-box explanations with sobol-based sensitivity analysis](https://proceedings.neurips.cc/paper/2021/hash/da94cbeff56cfda50785df477941308b-Abstract.html).
+
+**Gradient based methods:**
+- Saliency, InputxGradient: [Simonyan et al. 2013, Deep Inside Convolutional Networks: Visualising Image Classification Models and Saliency Maps](https://arxiv.org/abs/1312.6034).
+- Integrated Gradient: [Sundararajan et al. 2017, Axiomatic Attribution for Deep Networks](http://proceedings.mlr.press/v70/sundararajan17a.html).
+- DeepLift: [Shrikumar et al. 2017, Learning Important Features Through Propagating Activation Differences](http://proceedings.mlr.press/v70/shrikumar17a).
+- SmoothGrad: [Smilkov et al. 2017, SmoothGrad: removing noise by adding noise](https://arxiv.org/abs/1706.03825)
+- VarGrad: [Richter et al. 2020, VarGrad: A Low-Variance Gradient Estimator for Variational Inference](https://proceedings.neurips.cc/paper/2020/hash/9c22c0b51b3202246463e986c7e205df-Abstract.html)
+</details>
+
+### Concept-Based Methods
+<details>
+
+<summary> Concept-based explanations aim to provide high-level interpretations of latent model representations. </summary>
+
+Interpreto generalizes these methods through three core steps:
+1. Concept Discovery (e.g., from latent embeddings)
+2. Concept Interpretation (mapping discovered concepts to human-understandable elements)
+3. Concept-to-Output Attribution (assessing concept relevance to model outputs)
+
+**Available Concept Discovery Techniques** (via [Overcomplete](https://github.com/KempnerInstitute/overcomplete)):
+- NMF, Semi-NMF, ConvexNMF
+- ICA, SVD, PCA
+- SAE variants (Vanilla SAE, TopK SAE, JumpReLU SAE, BatchTopK SAE)
+
+**Concept Interpretation Techniques:**
+- Top-k tokens from tokenizer vocabulary
+- Top-k tokens/words/clauses/sentences from specific datasets
+- Input-to-concept attribution from dataset examples ([Jourdan et al. 2023](https://aclanthology.org/2023.findings-acl.317/))
+- Theme prediction via LLMs from top-k tokens/sentences
+
+Later:
+- OpenAI Interpretation ([Bills et al. 2023](https://openai.com/index/language-models-can-explain-neurons-in-language-models/))
+- Aligning concepts with human labels ([Sajjad et al. 2022](https://aclanthology.org/2022.naacl-main.225/))
+- Word cloud visualizations of concepts ([Dalvi et al. 2022](https://arxiv.org/abs/2205.07237))
+- VocabProj & TokenChange ([Gur-Arieh et al. 2025](https://arxiv.org/abs/2501.08319))
+
+**Concept-to-Output Attribution:** 
+
+All attribution methods described above are applicable here. 
+
+*Note that only methods with a concept extraction that has an encoder (input to concept) AND a decoder (concept to output) can use this function.* 
+
+**Specific methods:**
+
+Thanks to this generalization encompassing all concept-based methods and our highly flexible architecture, we can easily obtain a large number of concept-based methods:
+- CAV and TCAV: [Kim et al. 2018, Interpretability Beyond Feature Attribution: Quantitative Testing with Concept Activation Vectors (TCAV)](http://proceedings.mlr.press/v80/kim18d.html)
+- ConceptSHAP: [Yeh et al. 2020, On Completeness-aware Concept-Based Explanations in Deep Neural Networks](https://proceedings.neurips.cc/paper/2020/hash/ecb287ff763c169694f682af52c1f309-Abstract.html)
+- COCKATIEL: [Jourdan et al. 2023, COCKATIEL: COntinuous Concept ranKed ATtribution with Interpretable ELements for explaining neural net classifiers on NLP](https://aclanthology.org/2023.findings-acl.317/)
+- Yun et al. 2021, [Transformer visualization via dictionary learning: contextualized embedding as a linear superposition of transformer factors](https://arxiv.org/abs/2103.15949)
+- FFN values interpretation: [Geva et al. 2022, Transformer Feed-Forward Layers Build Predictions by Promoting Concepts in the Vocabulary Space](https://aclanthology.org/2022.emnlp-main.3/)
+- SparseCoding: [Cunningham et al. 2023, Sparse Autoencoders Find Highly Interpretable Features in Language Models](https://arxiv.org/abs/2309.08600)
+- Parameter Interpretation: [Dar et al. 2023, Analyzing Transformers in Embedding Space](https://aclanthology.org/2023.acl-long.893/)
+</details>
+
+### Evaluation Metrics
+TODO
 
 ## 👍 Contributing
 
@@ -49,10 +114,10 @@ Feel free to propose your ideas or come and contribute with us on the Libname to
 
 More from the DEEL project:
 
-- [Xplique](https://github.com/deel-ai/xplique) a Python library dedicated to explaining neural networks (Images, Time Series, Tabular data) on TF.
+- [Xplique](https://github.com/deel-ai/xplique) a Python library dedicated to explaining neural networks (Images, Time Series, Tabular data) on TensorFlow.
 - [Puncc](https://github.com/deel-ai/puncc) a Python library for predictive uncertainty quantification using conformal prediction.
 - [oodeel](https://github.com/deel-ai/oodeel) a Python library that performs post-hoc deep Out-of-Distribution (OOD) detection on already trained neural network image classifiers.
-- [deel-lip](https://github.com/deel-ai/deel-lip) a Python library for training k-Lipschitz neural networks on TF.
+- [deel-lip](https://github.com/deel-ai/deel-lip) a Python library for training k-Lipschitz neural networks on TensorFlow.
 - [deel-torchlip](https://github.com/deel-ai/deel-torchlip) a Python library for training k-Lipschitz neural networks on PyTorch.
 - [Influenciae](https://github.com/deel-ai/influenciae) a Python library dedicated to computing influence values for the discovery of potentially problematic samples in a dataset.
 - [DEEL White paper](https://arxiv.org/abs/2103.10529) a summary of the DEEL team on the challenges of certifiable AI and the role of data quality, representativity and explainability for this purpose.
