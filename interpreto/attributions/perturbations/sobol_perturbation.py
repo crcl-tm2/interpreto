@@ -61,7 +61,7 @@ class SobolTokenPerturbator(TokenMaskBasedPerturbator):
         self,
         tokenizer: PreTrainedTokenizer,
         inputs_embedder: torch.nn.Module | None = None,
-        nb_token_perturbations: int = 30,
+        n_token_perturbations: int = 30,
         granularity_level: str = "token",
         baseline: str = "[MASK]",
         sobol_indices_order: SobolIndicesOrders = SobolIndicesOrders.FIRST_ORDER,
@@ -85,16 +85,16 @@ class SobolTokenPerturbator(TokenMaskBasedPerturbator):
             tokenizer=tokenizer,
             inputs_embedder=inputs_embedder,
             n_perturbations=None,
+            mask_token=baseline,
             granularity_level=granularity_level,
             device=device,
         )
         self.tokenizer = tokenizer
-        self.baseline = baseline
-        self.nb_token_perturbations = nb_token_perturbations
+        self.n_token_perturbations = n_token_perturbations
         self.sobol_indices_order = sobol_indices_order
         self.sampler = sampler
 
-    def get_single_input_masks(self, l: int):
+    def get_single_input_mask(self, l: int):
         """
         Generates a binary mask for each token in the sequence.
 
@@ -104,7 +104,7 @@ class SobolTokenPerturbator(TokenMaskBasedPerturbator):
         Returns:
             masks (torch.Tensor): A tensor of shape ((l + 1) * k, l).
         """
-        k = self.nb_token_perturbations
+        k = self.n_token_perturbations
         # Initial random mask. Shape:(k, l)
         initial_mask = torch.Tensor(self.sampler(l).random(k), device=self.device)
 
@@ -125,7 +125,7 @@ class SobolTokenPerturbator(TokenMaskBasedPerturbator):
 
         return mask
 
-    def get_masks(self, sizes: tuple | list[int]) -> list[torch.Tensor]:
+    def get_mask(self, sizes: tuple | list[int]) -> list[torch.Tensor]:
         """
         Generates a binary mask for each token in the sequence.
 

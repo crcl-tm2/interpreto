@@ -34,8 +34,8 @@ class SobolAggregator(Aggregator):
     Aggregates Sobol indices from model outputs.
     """
 
-    def __init__(self, nb_token_perturbations: int):
-        self.nb_token_perturbations = nb_token_perturbations
+    def __init__(self, n_token_perturbations: int):
+        self.n_token_perturbations = n_token_perturbations
 
     def single_input_aggregate(self, scores: torch.Tensor, _) -> torch.Tensor:
         """
@@ -47,7 +47,7 @@ class SobolAggregator(Aggregator):
         Returns:
             token_importance (torch.Tensor): The Sobol attribution indices for each token. Shape: (l,)
         """
-        k = self.nb_token_perturbations
+        k = self.n_token_perturbations
 
         # Compute token-wise variance on the initial mask
         initial_scores = scores[:k]  # Shape: (k,)
