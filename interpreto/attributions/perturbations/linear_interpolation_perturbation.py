@@ -26,11 +26,11 @@ from __future__ import annotations
 
 import torch
 
-from interpreto.attributions.perturbations.base import Perturbator
+from interpreto.attributions.perturbations.base import BasePerturbator
 from interpreto.typing import TensorBaseline
 
 
-class LinearInterpolationPerturbator(Perturbator):
+class LinearInterpolationPerturbator(BasePerturbator):
     """
     Perturbation using linear interpolation between a reference point (baseline) and the input.
     """
