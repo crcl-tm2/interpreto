@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from collections.abc import Sequence as SequenceABC
-from typing import Any
+from typing import Any, overload
 
 import torch
 from nnsight.intervention import Envoy
@@ -56,7 +56,7 @@ class InitializationError(ValueError):
     """Raised to signal a problem with model initialization."""
 
 
-class ModelSplitter(LanguageModel):
+class ModelWithSplitPoints(LanguageModel):
     """Generalized NNsight.LanguageModel wrapper around encoder-only, decoder-only and encoder-decoder language models.
     Handles splitting model at specified locations and activation extraction.
 
@@ -68,28 +68,29 @@ class ModelSplitter(LanguageModel):
     Attributes:
         model_autoclass (type): The [AutoClass](https://huggingface.co/docs/transformers/en/model_doc/auto#natural-language-processing)
             corresponding to the loaded model type.
-        splits (list[str]): Getter/setters for model paths corresponding to split points inside the loaded model.
+        split_points (list[str]): Getter/setters for model paths corresponding to split points inside the loaded model.
             Automatically handle validation, sorting and resolving int paths to strings.
         repo_id (str): Either the model id in the HF Hub, or the path from which the model was loaded.
         generator (nnsight.Envoy | None): If the model is generative, a generator is provided to handle multi-step
             inference. None for encoder-only models.
         _model (transformers.PreTrainedModel): Huggingface transformers model wrapped by NNSight.
-        _model_paths (list[str]): List of cached valid paths inside `_model`, used to validate `splits`.
-        _splits (list[str]): List of splits, should be accessed with getter/setter.
-
+        _model_paths (list[str]): List of cached valid paths inside `_model`, used to validate `split_points`.
+        _split_points (list[str]): List of split points, should be accessed with getter/setter.
     """
+
+    _example_input = "hello"
 
     def __init__(
         self,
         model_or_repo_id: str | PreTrainedModel,
-        splits: str | int | Sequence[str | int],
+        split_points: str | int | Sequence[str | int],
         *args: tuple[Any],
         model_autoclass: str | type[AutoModel] | None = None,
         tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast | None = None,
         config: PretrainedConfig | None = None,
         **kwargs,
     ) -> None:
-        """Initialize a ModelSplitter object.
+        """Initialize a ModelWithSplitPoints object.
 
         Args:
             model_or_repo_id (str | transformers.PreTrainedModel): One of:
@@ -98,9 +99,9 @@ class ModelSplitter(LanguageModel):
                 * A `str` corresponding to the local path of a folder containing a compatible checkpoint.
                 * A preloaded `transformers.PreTrainedModel` object.
                 If a string is provided, a model_autoclass should also be provided.
-            splits (str | Sequence[str] | int | Sequence[int]): One or more to split locations inside the model.
+            split_points (str | Sequence[str] | int | Sequence[int]): One or more to split locations inside the model.
                 Either the path is provided explicitly (`str`), or an `int` is used as shorthand for splitting at
-                the n-th layer. Example: `splits='cls.predictions.transform.LayerNorm'` correspond to a split
+                the n-th layer. Example: `split_points='cls.predictions.transform.LayerNorm'` correspond to a split
                 after the LayerNorm layer in the MLM head (assuming a `BertForMaskedLM` model in input).
             model_autoclass (Type): Huggingface [AutoClass](https://huggingface.co/docs/transformers/en/model_doc/auto#natural-language-processing)
                 corresponding to the desired type of model (e.g. `AutoModelForSequenceClassification`).
@@ -118,7 +119,7 @@ class ModelSplitter(LanguageModel):
                     "Model autoclass not found.\n"
                     "The model class can be omitted if a pre-loaded model is passed to `model_or_repo_id` "
                     "param.\nIf an HF Hub ID is used, the corresponding autoclass must be specified in `model_type`.\n"
-                    "Example: ModelSplitter('bert-base-cased', model_type=AutoModelForMaskedLM, ...)"
+                    "Example: ModelWithSplitPoints('bert-base-cased', model_type=AutoModelForMaskedLM, ...)"
                 )
             if isinstance(model_autoclass, str):
                 supported_autoclasses = get_supported_hf_transformer_autoclasses()
@@ -147,7 +148,7 @@ class ModelSplitter(LanguageModel):
             **kwargs,
         )
         self._model_paths = list(walk_modules(self._model))
-        self.splits = splits
+        self.split_points = split_points
         self._model: PreTrainedModel
         if self.repo_id is None:
             self.repo_id = self._model.config.name_or_path
@@ -156,27 +157,27 @@ class ModelSplitter(LanguageModel):
             self.generator = None  # type: ignore
 
     @property
-    def splits(self) -> list[str]:
-        return self._splits
+    def split_points(self) -> list[str]:
+        return self._split_points
 
-    @splits.setter
-    def splits(self, splits: str | int | Sequence[str | int]):
-        """Splits are automatically validated and sorted upon setting"""
-        pre_conversion_splits: Sequence[str | int] = splits if isinstance(splits, Sequence) else [splits]
-        post_conversion_splits: list[str] = []
-        for split in pre_conversion_splits:
+    @split_points.setter
+    def split_points(self, split_points: str | int | Sequence[str | int]):
+        """Split points are automatically validated and sorted upon setting"""
+        pre_conversion_split_points = split_points if isinstance(split_points, Sequence) else [split_points]
+        post_conversion_split_points: list[str] = []
+        for split in pre_conversion_split_points:
             # Handle conversion of layer idx to full path
             if isinstance(split, int):
                 str_split = get_layer_by_idx(split, model_paths=self._model_paths)
             else:
                 str_split = split
-            post_conversion_splits.append(str_split)
+            post_conversion_split_points.append(str_split)
 
             # Validate whether the split exists in the model
             validate_path(self._model, str_split)
 
-        # Sort splits to match execution order
-        self._splits: list[str] = sort_paths(post_conversion_splits, model_paths=self._model_paths)
+        # Sort split points to match execution order
+        self._split_points: list[str] = sort_paths(post_conversion_split_points, model_paths=self._model_paths)
 
     def _generate(
         self,
@@ -195,33 +196,33 @@ class ModelSplitter(LanguageModel):
         super()._generate(inputs=inputs, max_new_tokens=max_new_tokens, streamer=streamer, **kwargs)
 
     def get_activations(self, inputs: str | list[str] | BatchEncoding, **kwargs) -> dict[str, LatentActivations]:
-        """Get intermediate activations for all model splits
+        """Get intermediate activations for all model split points
 
         Args:
             inputs (str | list[str] | BatchEncoding): Inputs to the model forward pass before or after tokenzation.
 
         Returns:
             Dictionary having one key, value pair for each split point defined for the model. Keys correspond to split
-                names in `self.splits`, while values correspond to the extracted activations for the split point for the
-                given `inputs`.
+                names in `self.split_points`, while values correspond to the extracted activations for the split point
+                for the given `inputs`.
         """
-        # TODO: Extend to generation settings
         activations = {}
-        if not self.splits:
+        if not self.split_points:
             raise RuntimeError(
-                "No splits are currently defined for the model. Please set splits before calling get_activations."
+                "No split points are currently defined for the model. "
+                "Please set split points before calling get_activations."
             )
 
         # Compute activations
         with self.trace(inputs, **kwargs):
-            for idx, split in enumerate(self.splits):
-                curr_module: Envoy = fetch_attr(self, split)
+            for idx, split_point in enumerate(self.split_points):
+                curr_module: Envoy = fetch_attr(self, split_point)
                 # Handle case in which module has .output attribute, and .nns_output gets overridden instead
                 if hasattr(curr_module, "nns_output"):
-                    activations[split] = curr_module.nns_output.save()
+                    activations[split_point] = curr_module.nns_output.save()
                 else:
-                    activations[split] = curr_module.output.save()
-                if idx == len(self.splits) - 1:
+                    activations[split_point] = curr_module.output.save()
+                if idx == len(self.split_points) - 1:
                     # Early stopping at the last splitting layer
                     curr_module.output.stop()
 
@@ -236,3 +237,36 @@ class ModelSplitter(LanguageModel):
                         f"Invalid output for layer '{layer}'. Expected torch.Tensor activation, got {type(act)}: {act}"
                     )
         return activations
+
+    @overload
+    def get_latent_shape(self, split_point: None = None, **kwargs) -> dict[str, torch.Size]: ...
+
+    @overload
+    def get_latent_shape(self, split_point: str, **kwargs) -> torch.Size: ...
+
+    def get_latent_shape(self, split_point: str | None = None, **kwargs) -> torch.Size | dict[str, torch.Size]:
+        """Get the shape of the latent activations for one or more split points.
+
+        Args:
+            split_point (str | None): The split point to get the shape of. If None, the shape of all split points is
+                returned.
+
+        Returns:
+            The shape of the latent activations for the specified split point for an example input,
+                or a dictionary of shapes for all split points.
+        """
+        with self.scan(self._example_input, **kwargs):
+            if split_point is None:
+                out_dict = {}
+                for split in self.split_points:
+                    curr_module = fetch_attr(self, split)
+                    if hasattr(curr_module, "nns_output"):
+                        out_dict[split] = curr_module.nns_output.shape
+                    else:
+                        out_dict[split] = curr_module.output.shape
+                return out_dict
+            curr_module = fetch_attr(self, split_point)
+            if hasattr(curr_module, "nns_output"):
+                return curr_module.nns_output.shape
+            else:
+                return curr_module.output.shape

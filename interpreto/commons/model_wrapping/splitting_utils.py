@@ -107,20 +107,20 @@ def get_layer_by_idx(layer_idx: int, model_paths: list[str] | None = None, modul
     if len(matches) == 0:
         raise ModelPathError(
             f"No model path matching layer {layer_idx} was found. If your model does not contain a ModuleList, "
-            "please specify your splits as dot-separated string paths like: path.to.my.module"
+            "please specify your path as dot-separated string paths like: path.to.my.module"
         )
     if len(matches) > 1:
         raise ModelPathError(
             f"Multiple matches found for layer index {layer_idx}: {', '.join(matches)}. "
-            "Specify your module name as a string to univocally identify the desired split point."
+            "Specify your module name as a string to univocally identify the desired module."
         )
     return matches[0]
 
 
 def sort_paths(
-    splits: str | list[str], model_paths: list[str] | None = None, module: nn.Module | None = None
+    paths: str | list[str], model_paths: list[str] | None = None, module: nn.Module | None = None
 ) -> list[str]:
     """Order model paths according to their actual occurrence in the model's forward pass."""
     model_paths = _get_paths_from_module(model_paths, module)
-    splits = splits if isinstance(splits, list) else [splits]
-    return sorted(splits, key=lambda split: get_path_idx(split, model_paths=model_paths))
+    paths = paths if isinstance(paths, list) else [paths]
+    return sorted(paths, key=lambda split: get_path_idx(split, model_paths=model_paths))

@@ -5,10 +5,11 @@ from collections.abc import Callable
 from typing import Any
 
 import torch
+from nnsight import NNsight
 
 
-class ClassificationInferenceWrapperPlaceholder:  # TODO: remove this class
-    def __init__(self, model: torch.nn.Module, batch_size: int, device: torch.device | None = None):
+class ClassificationInferenceWrapper:  # TODO: remove this class
+    def __init__(self, model: NNsight, batch_size: int, device: torch.device | None = None):
         self.model = model
         assert batch_size > 0
         self.batch_size = batch_size

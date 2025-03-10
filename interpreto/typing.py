@@ -32,8 +32,8 @@ from typing import Any, Optional, Union
 
 import torch
 
-TokenEmbedding = Any
-Activation = Any
+TokenEmbedding = torch.Tensor
 LatentActivations = torch.Tensor
+ConceptsActivations = torch.Tensor
 ModelInput = Any
 TensorBaseline = Optional[Union[torch.Tensor, float, int]]  # noqa: UP007
