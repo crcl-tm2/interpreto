@@ -1,3 +1,27 @@
+# MIT License
+#
+# Copyright (c) 2025 IRT Antoine de Saint Exupéry et Université Paul Sabatier Toulouse III - All
+# rights reserved. DEEL and FOR are research programs operated by IVADO, IRT Saint Exupéry,
+# CRIAQ and ANITI - https://www.deel.ai/.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 """
 Basic standard classes for attribution methods
 """
@@ -9,10 +33,49 @@ from collections.abc import Callable
 from typing import Any
 
 import torch
+from jaxtyping import Float
 
 from interpreto.attributions.aggregations.base import Aggregator
-from interpreto.attributions.perturbations.base import Perturbator
+from interpreto.attributions.perturbations.base import BasePerturbator
 from interpreto.typing import ModelInput
+
+SingleAttribution = (
+    Float[torch.Tensor, "l"]
+    | Float[torch.Tensor, "l", "c"]
+    | Float[torch.Tensor, "l", "l_g"]
+    | Float[torch.Tensor, "l", "l_t"]
+)
+
+
+class AttributionOutput:
+    """
+    Class to store the output of an attribution method.
+    """
+
+    def __init__(
+        self,
+        attributions: SingleAttribution,
+        elements: list[str] | torch.Tensor | None = None,
+    ):
+        """
+        Initializes an AttributionOutput instance.
+
+        Args:
+            attributions (Iterable[SingleAttribution]): A list (n elements, with n the number of samples) of attribution score tensors:
+                - `l` represents the number of elements for which attribution is computed (for NLP tasks: can be the total sequence length).
+                - Shapes depend on the task:
+                    - Classification (single class): `(l,)`
+                    - Classification (all classes): `(l, c)`, where `c` is the number of classes.
+                    - Generative models: `(l, l_g)`, where `l_g` is the length of the generated part.
+                        - For non-generated elements, there are `l_g` attribution scores.
+                        - For generated elements, scores are zero for previously generated tokens.
+                    - Token classification: `(l, l_t)`, where `l_t` is the number of token classes. When the tokens are disturbed, l = l_t.
+
+            elements (Iterable[list[str]] | Iterable[torch.Tensor] | None, optional): A list or tensor representing the elements for which attributions are computed.
+                - These elements can be tokens, words, sentences, or tensors of size `l`.
+        """
+        self.attributions = attributions
+        self.elements = elements
 
 
 class AttributionExplainer:
@@ -24,7 +87,7 @@ class AttributionExplainer:
         self,
         inference_wrapper: Callable,
         batch_size: int,
-        perturbator: Perturbator | None = None,
+        perturbator: BasePerturbator | None = None,
         aggregator: Aggregator | None = None,
         device: torch.device | None = None,
     ):
@@ -79,7 +142,7 @@ class InferenceExplainer(AttributionExplainer):
     Black box model explainer
     """
 
-    def explain(self, inputs: ModelInput, targets: torch.Tensor | None=None) -> Any:
+    def explain(self, inputs: ModelInput, targets: torch.Tensor | None = None) -> Any:
         """
         main process of attribution method
         """
@@ -99,12 +162,14 @@ class InferenceExplainer(AttributionExplainer):
                 if isinstance(inputs, torch.Tensor):
                     targets = self.inference_wrapper.call_model(inputs)
                 else:
-                    tokens = self.perturbator.tokenizer(inputs,
-                            truncation=True,
-                            return_tensors='pt',
-                            padding="max_length",
-                            max_length=512,
-                            return_offsets_mapping=True)
+                    tokens = self.perturbator.tokenizer(
+                        inputs,
+                        truncation=True,
+                        return_tensors="pt",
+                        padding="max_length",
+                        max_length=512,
+                        return_offsets_mapping=True,
+                    )
                     target_embeddings = self.inference_wrapper.model.get_input_embeddings()(tokens["input_ids"])
                     targets = self.inference_wrapper.call_model(target_embeddings)
         # repeat target along the p dimension

@@ -24,5 +24,4 @@
 
 from .base import GaussianNoisePerturbator
 from .linear_interpolation_perturbation import LinearInterpolationPerturbator
-from .occlusion import TokenOcclusionPerturbator, WordOcclusionPerturbator
 from .sobol_perturbation import SobolTokenPerturbator

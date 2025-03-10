@@ -109,7 +109,6 @@ class ClassificationInferenceWrapper:
     def inference(self, inputs: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         logits = self.call_model(inputs)
 
-
         return torch.sum(logits * target, dim=-1)
 
     def gradients(self, inputs: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
