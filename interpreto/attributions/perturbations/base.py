@@ -21,7 +21,6 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-
 """
 Base classes for perturbations used in attribution methods
 """
@@ -48,6 +47,51 @@ class GranularityLevel(Enum):
     DEFAULT = TOKEN
 
     @staticmethod
+    def __all_tokens_assoc_matrix(tokens_ids):
+        n, l_p = tokens_ids["input_ids"].shape
+        return torch.eye(l_p).unsqueeze(0).expand(n, -1, -1)
+
+    @staticmethod
+    def __token_assoc_matrix(tokens_ids):
+        # TODO : remake this using only tensor operation (if possible ?)
+        n, l_p = tokens_ids["input_ids"].shape
+        perturbable_matrix = torch.diag_embed(1 - tokens_ids["special_tokens_mask"])
+        non_empty_rows_mask = perturbable_matrix.sum(dim=2) != 0
+        l_t = non_empty_rows_mask.sum(dim=1)
+        result = torch.zeros(n, l_t.max(), l_p)
+        for i in range(n):
+            result[i, : l_t[i], :] = perturbable_matrix[i, non_empty_rows_mask[i]]
+        return result
+
+    @staticmethod
+    def __word_assoc_matrix(tokens_ids):
+        # TODO : implement word granularity level
+        raise NotImplementedError("Word granularity level not implemented")
+
+    @staticmethod
+    def get_length(tokens_ids:Mapping[str, torch.Tensor], granularity_level: GranularityLevel = DEFAULT) -> torch.Tensor:
+        """
+        Returns the length of the sequences according to the granularity level
+
+        Args:
+            tokens_ids (Mapping[str, torch.Tensor]): tensors to measure
+            granularity_level (GranularityLevel, optional): granularity level. Defaults to DEFAULT.
+
+        Returns:
+            torch.Tensor: length of the sequences
+        """
+        match granularity_level:
+            case GranularityLevel.ALL_TOKENS:
+                return tokens_ids["input_ids"].shape[1]
+            case GranularityLevel.TOKEN:
+                return (1 - tokens_ids["special_tokens_mask"]).sum(dim=1)
+            case GranularityLevel.WORD:
+                # TODO : implement word granularity level
+                raise NotImplementedError("Word granularity level not implemented")
+            case _:
+                raise NotImplementedError(f"Granularity level {granularity_level} not implemented")
+
+    @staticmethod
     def get_association_matrix(
         tokens_ids: Mapping[str, torch.Tensor], granularity_level: GranularityLevel = DEFAULT
     ) -> torch.Tensor:
@@ -65,24 +109,15 @@ class GranularityLevel(Enum):
         Returns:
             torch.Tensor: the matrix used to transform a specific granularity mask to a general mask that can be used on tokens
         """
-        granularity_level = granularity_level or GranularityLevel.DEFAULT
-        n, l_p = tokens_ids["input_ids"].shape
-
-        if granularity_level == GranularityLevel.ALL_TOKENS:
-            return torch.eye(l_p).unsqueeze(0).expand(n, -1, -1)
-
-        if granularity_level == GranularityLevel.TOKEN:
-            # TODO : remake this using only tensor operation (if possible ?)
-            perturbable_mask = tokens_ids["offset_mapping"].sum(dim=-1).bool().long()
-            perturbable_matrix = torch.diag_embed(perturbable_mask)
-            non_empty_rows_mask = perturbable_matrix.sum(dim=2) != 0
-            l_t = non_empty_rows_mask.sum(dim=1)
-            result = torch.zeros(n, l_t.max(), l_p)
-            for i in range(n):
-                result[i, : l_t[i], :] = perturbable_matrix[i, non_empty_rows_mask[i]]
-            return result
-        raise NotImplementedError(f"Granularity level {granularity_level} not implemented")
-
+        match granularity_level:
+            case GranularityLevel.ALL_TOKENS:
+                return GranularityLevel.__all_tokens_assoc_matrix(tokens_ids)
+            case GranularityLevel.TOKEN:
+                return GranularityLevel.__token_assoc_matrix(tokens_ids)
+            case GranularityLevel.WORD:
+                return GranularityLevel.__word_assoc_matrix(tokens_ids)
+            case _:
+                raise NotImplementedError(f"Granularity level {granularity_level} not implemented")
 
 class BasePerturbator:
     """
@@ -150,7 +185,12 @@ class BasePerturbator:
 
         # Call the tokenizer on the produced strings
         tokens = self.tokenizer(
-            perturbed_strings, truncation=True, return_tensors="pt", padding=True, return_offsets_mapping=True
+            perturbed_strings,
+            truncation=True,
+            return_tensors="pt",
+            padding=True,
+            return_offsets_mapping=True,
+            return_special_tokens_mask=True,
         )
 
         # Call the next perturbation step (identity if no further perturbation has been defined)
@@ -295,7 +335,8 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
         """
         return self.tokenizer.convert_tokens_to_ids(self.mask_token)
 
-    def get_mask(self, model_inputs: Mapping[str, torch.Tensor]) -> torch.Tensor:
+    # TODO : rename "perturbation_dimension" to better name
+    def get_mask(self, batch_size, perturbation_dimension)->torch.Tensor:#self, model_inputs: Mapping[str, torch.Tensor]) -> torch.Tensor:
         """
         Method returning a perturbation mask for a given set of inputs
         This method should be implemented in subclasses
@@ -310,15 +351,7 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
             torch.Tensor: mask to apply
         """
         # Exemple implementation that returns a no-perturbation mask
-        mask_dimension = (
-            GranularityLevel.get_association_matrix(model_inputs, self.granularity_level)
-            .sum(dim=(-1, -2))
-            .max()
-            .int()
-            .item()
-        )
-        batch_size = model_inputs["input_ids"].shape[0]
-        return torch.zeros((batch_size, self.n_perturbations, mask_dimension))
+        return torch.zeros((batch_size, self.n_perturbations, perturbation_dimension))
 
     @staticmethod
     def get_gran_mask_from_real_mask(
@@ -370,7 +403,9 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
         Returns:
             torch.Tensor: real general mask
         """
-        gran_mask = self.get_mask(model_inputs)
+        perturbation_dimension = GranularityLevel.get_length(model_inputs, self.granularity_level).max()
+        batch_size = model_inputs["input_ids"].shape[0]
+        gran_mask = self.get_mask(batch_size, perturbation_dimension)
         model_inputs["mask"] = gran_mask
         return self.get_real_mask_from_gran_mask(model_inputs, gran_mask, self.granularity_level)
 
@@ -390,7 +425,7 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
             inputs=model_inputs["input_ids"].unsqueeze(-1),
             mask=real_mask,
             mask_value=torch.Tensor([self.mask_token_id]),
-        )
+        ).squeeze(-1)
         return model_inputs
 
 
@@ -443,11 +478,12 @@ class OcclusionPerturbator(TokenMaskBasedPerturbator):
         super().__init__(tokenizer=tokenizer, inputs_embedder=inputs_embedder, n_perturbations=-1)
         self.granularity_level = granularity_level
 
-    def get_mask(self, model_inputs: Mapping) -> torch.Tensor:
-        # TODO : add sugar to get mask dimensions
-        # TODO : find more efficient formula for occlusion
-        assoc_matrix = GranularityLevel.get_association_matrix(model_inputs, self.granularity_level)
-        return torch.diag_embed(torch.einsum("ntl,nl->nt", assoc_matrix, model_inputs["attention_mask"].float()))
+    def get_mask(self, batch_size, perturbation_dimension)->torch.Tensor:
+        # TODO : use torch diag embed of attention mask instead of torch eye
+        return torch.eye(perturbation_dimension).unsqueeze(0).repeat(batch_size, 1, 1)
+
+        #assoc_matrix = GranularityLevel.get_association_matrix(model_inputs, self.granularity_level)
+        #return torch.diag_embed(torch.einsum("ntl,nl->nt", assoc_matrix, model_inputs["attention_mask"].float()))
 
 
 class GaussianNoisePerturbator(BasePerturbator):

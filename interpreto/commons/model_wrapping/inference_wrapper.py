@@ -25,12 +25,127 @@
 from __future__ import annotations
 
 import functools
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 import torch
 from nnsight import NNsight
 from transformers.utils.generic import ModelOutput
+from transformers import PreTrainedModel
+
+class BaseInferenceWrapper:
+    def __init__(self, model:PreTrainedModel,
+                 batch_size:int,
+                 device:torch.device|None=None):
+        self.model = model
+        self.model.to(device or torch.device("cpu"))
+        self.batch_size = batch_size
+
+        self.__buffer_indexes = []
+        self.__buffer = torch.empty(0, 0, 0)
+        self.__rest = None
+        self.__rest_mask = None
+
+    @property
+    def __n_finished(self):
+        return len(self.__buffer_indexes)
+
+    @property
+    def device(self):
+        return self.model.device
+
+    @device.setter
+    def device(self, device:torch.device):
+        self.model.to(device)
+
+    def to(self, device:torch.device):
+        self.device = device
+
+    def cpu(self):
+        self.device = torch.device("cpu")
+
+    def cuda(self):
+        self.device = torch.device("cuda")
+
+    def call_model(self, model_inputs:Mapping[str,torch.Tensor]) -> ModelOutput:
+        print("calling model !")
+        print(model_inputs)
+        print("input batch size : ", model_inputs["input_ids"].shape[0], " required batch size : ", self.batch_size)
+        return self.model(**model_inputs)
+
+    def inference(self, inputs:Iterable[Mapping[str,torch.Tensor]]) -> torch.Tensor:
+
+        # TODO : generalize to other tokenizers
+        pad_token_id = 0
+
+        while True:
+            while not self.__n_finished:
+                if self.__rest is not None:
+                    p = self.__rest.shape[1]
+                    batchs = self.__rest.split(self.batch_size)
+                    batch_masks = self.__rest_mask.split(self.batch_size)
+                    self.__rest = None
+                    self.__rest_mask = None
+                else:
+                    # TODO : handle stop iteration
+                    try:
+                        item = next(inputs)
+                    except StopIteration:
+                        # check that everything is finished
+                        #TODO : remove and raise
+                        assert self.__buffer.shape[0] == 0
+                        assert self.__rest is None
+                        raise
+                    # TODO : allow inputs_embeds
+                    # TODO : use attention mask and give it to the model
+                    assert item["input_ids"].shape[0] == 1, "WTF ?"
+
+                    input_ids = item["input_ids"][0]
+                    p = input_ids.shape[0]
+                    # TODO : do this mask repetition in the perturbator
+                    att_mask = item["attention_mask"].repeat(p, 1)
+                    # TODO : handle case where no attention mask
+                    batchs = list(input_ids.split(self.batch_size))
+                    batch_masks = list(att_mask.split(self.batch_size))
+                new_indexes = [self.__buffer.shape[0] + p]
+                while len(batchs[-1]) < self.batch_size:
+                    try:
+                        other_item = next(inputs)
+                        other_input_ids = item["input_ids"][0]
+                        other_att_mask = item["attention_mask"].repeat(other_input_ids.shape[0], 1)
+                    except StopIteration:
+                        break
+                    
+                    
+                    # TODO : do this mask repetition in the perturbator
+                    att_mask = item["attention_mask"].repeat(p, 1)
+
+                    other_item_length = len(other_input_ids)
+                    missing_length = self.batch_size - len(batchs[-1])
+
+                    # padding of shorter sequences
+                    batch_seq_length = batchs[-1].shape[1]
+                    other_item_seq_length = other_input_ids.shape[1]
+                    if other_item_seq_length != batch_seq_length:
+                        pad = torch.full((batchs[-1].shape[0], other_item_seq_length - batch_seq_length), pad_token_id)
+                        batchs[-1] = torch.cat([batchs[-1], pad], dim=-1)
+                        batch_masks[-1] = torch.cat([batch_masks[-1], torch.zeros_like(pad)], dim=-1)
+                    batchs[-1] = torch.cat([batchs[-1], other_input_ids[:missing_length]])
+                    batch_masks[-1] = torch.cat([batch_masks[-1], other_att_mask[:missing_length]])
+                    if other_item_length > missing_length:
+                        self.__rest = other_input_ids[missing_length:]
+                    else:
+                        new_indexes += [new_indexes[-1] + other_item_length]
+                for batch, attention_mask in zip(batchs, batch_masks):
+                    model_inputs = {"input_ids":batch, "attention_mask":attention_mask}
+                    result = self.call_model(model_inputs).logits
+                    self.__buffer = torch.cat([self.__buffer, result], dim=0)
+                self.__buffer_indexes += new_indexes
+            index = self.__buffer_indexes.pop(0)
+            res = self.__buffer[:index]
+            self.__buffer = self.__buffer[index:]
+            yield res
+
 
 
 class ClassificationInferenceWrapper:

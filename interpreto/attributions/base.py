@@ -47,7 +47,6 @@ class AttributionExplainer:
     def __init__(
         self,
         inference_wrapper: Callable,
-        batch_size: int,
         perturbator: BasePerturbator | None = None,
         aggregator: Aggregator | None = None,
         device: torch.device | None = None,
@@ -55,7 +54,6 @@ class AttributionExplainer:
         self.perturbator = perturbator
         self.inference_wrapper = inference_wrapper
         self.aggregator = aggregator
-        self.batch_size = batch_size
         self.device = device
 
     @abstractmethod
@@ -107,9 +105,21 @@ class InferenceExplainer(AttributionExplainer):
         """
         main process of attribution method
         """
-        embeddings, mask = self.perturbator.perturb(inputs)
+        tokens = [self.perturbator.tokenizer.encode(item) for item in inputs]
+        token_count = [len(item) for item in tokens]
+        sorted_indices = sorted(range(len(token_count)), key=lambda k: token_count[k], reverse=False)
+        sorted_inputs = [inputs[i] for i in sorted_indices]
 
-        print(embeddings.shape, mask.shape)
+        unsorted_inputs = [None] * len(sorted_inputs)
+        for idx, original_idx in enumerate(sorted_indices):
+            unsorted_inputs[original_idx] = sorted_inputs[idx]
+
+
+        pert_per_input_generator = (self.perturbator.perturb(item) for item in sorted_inputs)
+        inference_res = self.inference_wrapper.inference(pert_per_input_generator)
+        print(next(inference_res))
+
+
 
         # embeddings.shape : (n, p, l, d)
         # target.shape : (n, o)
@@ -129,6 +139,7 @@ class InferenceExplainer(AttributionExplainer):
                         return_tensors="pt",
                         padding="max_length",
                         max_length=512,
+                        return_special_tokens_mask=True,
                         return_offsets_mapping=True,
                     )
                     target_embeddings = self.inference_wrapper.model.get_input_embeddings()(tokens["input_ids"])
