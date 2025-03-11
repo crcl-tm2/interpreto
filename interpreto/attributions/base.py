@@ -41,9 +41,9 @@ from interpreto.typing import ModelInput
 
 SingleAttribution = (
     Float[torch.Tensor, "l"]
-    | Float[torch.Tensor, "l", "c"]
-    | Float[torch.Tensor, "l", "l_g"]
-    | Float[torch.Tensor, "l", "l_t"]
+    | Float[torch.Tensor, "l c"]
+    | Float[torch.Tensor, "l l_g"]
+    | Float[torch.Tensor, "l l_t"]
 )
 
 

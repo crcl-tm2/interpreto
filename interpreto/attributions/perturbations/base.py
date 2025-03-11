@@ -392,7 +392,7 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
         for k in model_inputs.keys():
             if k != "input_ids":
                 repeats = [1] * (model_inputs[k].dim() + 1)
-                repeats[1] = self.n_perturbations
+                repeats[1] = model_inputs["input_ids"].shape[1]
                 model_inputs[k] = model_inputs[k].unsqueeze(1).repeat(*repeats)
 
         return model_inputs, gran_mask
