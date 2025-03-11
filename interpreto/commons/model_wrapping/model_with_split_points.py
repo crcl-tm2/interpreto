@@ -24,13 +24,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from collections.abc import Sequence as SequenceABC
-from typing import Any, overload
+from enum import Enum
+from typing import Any
 
 import torch
+from nnsight import list as nnsight_list
 from nnsight.intervention import Envoy
-from nnsight.intervention.graph import InterventionProxy
 from nnsight.modeling.language import LanguageModel
 from nnsight.util import fetch_attr
 from transformers import (
@@ -54,6 +53,17 @@ from .transformers_classes import (
 
 class InitializationError(ValueError):
     """Raised to signal a problem with model initialization."""
+
+
+class ActivationSelectionStrategy(Enum):
+    """Activation selection strategies for ModelWithSplitPoints.get_activations."""
+
+    ALL = "all"
+    FLATTEN = "flatten"
+
+    @staticmethod
+    def is_match(a: str | ActivationSelectionStrategy, b: ActivationSelectionStrategy) -> bool:
+        return a == b.value if isinstance(a, str) else a == b
 
 
 class ModelWithSplitPoints(LanguageModel):
@@ -83,7 +93,7 @@ class ModelWithSplitPoints(LanguageModel):
     def __init__(
         self,
         model_or_repo_id: str | PreTrainedModel,
-        split_points: str | int | Sequence[str | int],
+        split_points: str | int | list[str | int] | tuple[str | int],
         *args: tuple[Any],
         model_autoclass: str | type[AutoModel] | None = None,
         tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast | None = None,
@@ -161,9 +171,9 @@ class ModelWithSplitPoints(LanguageModel):
         return self._split_points
 
     @split_points.setter
-    def split_points(self, split_points: str | int | Sequence[str | int]):
+    def split_points(self, split_points: str | int | list[str | int] | tuple[str | int]) -> None:
         """Split points are automatically validated and sorted upon setting"""
-        pre_conversion_split_points = split_points if isinstance(split_points, Sequence) else [split_points]
+        pre_conversion_split_points = split_points if isinstance(split_points, list | tuple) else [split_points]
         post_conversion_split_points: list[str] = []
         for split in pre_conversion_split_points:
             # Handle conversion of layer idx to full path
@@ -195,78 +205,83 @@ class ModelWithSplitPoints(LanguageModel):
             )
         super()._generate(inputs=inputs, max_new_tokens=max_new_tokens, streamer=streamer, **kwargs)
 
-    def get_activations(self, inputs: str | list[str] | BatchEncoding, **kwargs) -> dict[str, LatentActivations]:
+    def get_activations(
+        self,
+        inputs: str | list[str] | BatchEncoding,
+        select_strategy: str | ActivationSelectionStrategy = ActivationSelectionStrategy.ALL,
+        select_indices: int | list[int] | tuple[int] | None = None,
+        **kwargs,
+    ) -> dict[str, LatentActivations]:
         """Get intermediate activations for all model split points
 
         Args:
             inputs (str | list[str] | BatchEncoding): Inputs to the model forward pass before or after tokenzation.
+            select_strategy (str | ActivationSelectionStrategy): Selection strategy for activations.
+
+                Options are:
+
+                * `all`: All sequence activations are returned, keeping the original shape `(batch, seq_len, d_model)`.
+                * `flatten`: Every token activation is treated as a separate element - `(batch x seq_len, d_model)`.
+
+            select_indices (list[int] | tuple[int] | None): Specifies indices that should be selected from the
+                activation sequence. Can be combined with `select_strategy` to obtain several behaviors. E.g.
+                `select_strategy="all", select_indices=mask_idxs` can be used to extract only activations corresponding
+                to [MASK] input ids with shape `(batch, len(masx_idxs), d_model)`, or
+                `select_strategy="flatten", select_indices=0` can be used to extract activations for the `[CLS]` token
+                only across all sequences, with shape `(batch, d_model)`. By default, all positions are selected.
 
         Returns:
             Dictionary having one key, value pair for each split point defined for the model. Keys correspond to split
                 names in `self.split_points`, while values correspond to the extracted activations for the split point
                 for the given `inputs`.
         """
-        activations = {}
+        activations_dict = {}
         if not self.split_points:
             raise RuntimeError(
                 "No split points are currently defined for the model. "
                 "Please set split points before calling get_activations."
             )
+        select_indices = [select_indices] if isinstance(select_indices, int) else select_indices
 
         # Compute activations
         with self.trace(inputs, **kwargs):
+            activations = nnsight_list().save()  # type: ignore
             for idx, split_point in enumerate(self.split_points):
                 curr_module: Envoy = fetch_attr(self, split_point)
                 # Handle case in which module has .output attribute, and .nns_output gets overridden instead
-                if hasattr(curr_module, "nns_output"):
-                    activations[split_point] = curr_module.nns_output.save()
-                else:
-                    activations[split_point] = curr_module.output.save()
+                module_out_name = "nns_output" if hasattr(curr_module, "nns_output") else "output"
+                activations.append(getattr(curr_module, module_out_name))
+                # Early stopping at the last splitting layer
                 if idx == len(self.split_points) - 1:
-                    # Early stopping at the last splitting layer
-                    curr_module.output.stop()
+                    getattr(curr_module, module_out_name).stop()
+
+        for idx, split in enumerate(self.split_points):
+            act = activations.value[idx]
+            activations_dict[split] = act[0] if isinstance(act, tuple) else act
 
         # Validate that activations have the expected type
-        for layer, act in activations.items():
+        for layer, act in activations_dict.items():
             if not isinstance(act, torch.Tensor):
-                # Handles case in which activations are wrapped by a tuple
-                if isinstance(act, (SequenceABC | InterventionProxy)) and isinstance(act[0], torch.Tensor):
-                    activations[layer] = act[0]
-                else:
+                raise RuntimeError(
+                    f"Invalid output for layer '{layer}'. Expected torch.Tensor activation, got {type(act)}: {act}"
+                )
+            if len(activations_dict[layer].shape) != 3:
+                raise RuntimeError(
+                    f"Invalid output for layer '{layer}'. Expected a torch.Tensor activation with shape"
+                    f"(batch_size, sequence_length, model_dim), got {activations_dict[layer].shape}"
+                )
+
+            # Apply selection rule
+            if ActivationSelectionStrategy.is_match(select_strategy, ActivationSelectionStrategy.ALL):
+                if select_indices:
+                    activations_dict[layer] = activations_dict[layer][:, select_indices, :]
+            if ActivationSelectionStrategy.is_match(select_strategy, ActivationSelectionStrategy.FLATTEN):
+                if select_indices:
+                    activations_dict[layer] = activations_dict[layer][:, select_indices, :]
+                activations_dict[layer] = activations_dict[layer].flatten(0, 1)
+                if len(activations_dict[layer].shape) != 2:
                     raise RuntimeError(
-                        f"Invalid output for layer '{layer}'. Expected torch.Tensor activation, got {type(act)}: {act}"
+                        f"Invalid output for layer '{layer}'. Expected a torch.Tensor activation with shape"
+                        f"(batch_size x sequence_length, model_dim), got {activations[layer].shape}"
                     )
-        return activations
-
-    @overload
-    def get_latent_shape(self, split_point: None = None, **kwargs) -> dict[str, torch.Size]: ...
-
-    @overload
-    def get_latent_shape(self, split_point: str, **kwargs) -> torch.Size: ...
-
-    def get_latent_shape(self, split_point: str | None = None, **kwargs) -> torch.Size | dict[str, torch.Size]:
-        """Get the shape of the latent activations for one or more split points.
-
-        Args:
-            split_point (str | None): The split point to get the shape of. If None, the shape of all split points is
-                returned.
-
-        Returns:
-            The shape of the latent activations for the specified split point for an example input,
-                or a dictionary of shapes for all split points.
-        """
-        with self.scan(self._example_input, **kwargs):
-            if split_point is None:
-                out_dict = {}
-                for split in self.split_points:
-                    curr_module = fetch_attr(self, split)
-                    if hasattr(curr_module, "nns_output"):
-                        out_dict[split] = curr_module.nns_output.shape
-                    else:
-                        out_dict[split] = curr_module.output.shape
-                return out_dict
-            curr_module = fetch_attr(self, split_point)
-            if hasattr(curr_module, "nns_output"):
-                return curr_module.nns_output.shape
-            else:
-                return curr_module.output.shape
+        return activations_dict

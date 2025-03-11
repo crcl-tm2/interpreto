@@ -31,13 +31,21 @@ from __future__ import annotations
 import pytest
 import torch
 from overcomplete import optimization as oc_opt
+from overcomplete import sae as oc_sae
 from pytest import fixture
 from transformers import AutoModelForMaskedLM
 
 from interpreto.commons.model_wrapping.model_with_split_points import ModelWithSplitPoints
-from interpreto.concepts.methods.overcomplete import OvercompleteDictionaryLearning
+from interpreto.concepts import (
+    OvercompleteDictionaryLearning,
+    OvercompleteOptimClasses,
+    OvercompleteSAE,
+    OvercompleteSAEClasses,
+)
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+ALL_CONCEPT_METHODS = list(OvercompleteSAEClasses) + list(OvercompleteOptimClasses)
 
 
 @fixture
@@ -69,35 +77,35 @@ def test_overcomplete_cbe(encoder_lm_splitter: ModelWithSplitPoints):
 
     txt = ["Hello, my dog is cute", "The cat is on the [MASK]"]
     split = "bert.encoder.layer.1"
-    # n_concepts = 7
+    nb_concepts = 3
     encoder_lm_splitter.split_points = split
-    activations = encoder_lm_splitter.get_activations(txt)
-    assert activations[split].shape == (2, 8, 312)
+    activations = encoder_lm_splitter.get_activations(txt, select_strategy="flatten")
+    assert activations[split].shape == (16, 312)
 
     # iterate over all methods from the namedtuple listing them
-    # for method in OvercompleteMethods:
-    #    if issubclass(method.value, oc_sae.SAE):
-    #        cbe = OvercompleteSAE(encoder_lm_splitter, method.value, n_concepts=n_concepts, device=DEVICE)
-    #        cbe.fit(activations, nb_epochs=1, batch_size=1, device=DEVICE)
-    #    else:
-    #        cbe = OvercompleteDictionaryLearning(
-    #            encoder_lm_splitter,
-    #            method.value,
-    #            n_concepts=n_concepts,
-    #            device=DEVICE,
-    #        )
-    #        cbe.fit(activations)
+    for method in ALL_CONCEPT_METHODS:
+        if issubclass(method.value, oc_sae.SAE):
+            cbe = OvercompleteSAE(encoder_lm_splitter, method.value, nb_concepts=nb_concepts, device=DEVICE)
+            cbe.fit(activations, nb_epochs=1, batch_size=1, device=DEVICE)
+        else:
+            cbe = OvercompleteDictionaryLearning(
+                encoder_lm_splitter,
+                method.value,
+                nb_concepts=nb_concepts,
+                device=DEVICE,
+            )
+            cbe.fit(activations)
+        try:
+            assert hasattr(cbe, "concept_model")
+            assert hasattr(cbe, "model_with_split_points")
+            assert cbe.is_fitted
+            assert cbe.split_point == split
+            assert hasattr(cbe, "has_differentiable_concept_encoder")
+            assert hasattr(cbe, "has_differentiable_concept_decoder")
 
-
-#
-#    assert hasattr(cbe, "concept_encoder_decoder")
-#    assert hasattr(cbe, "model_with_split_points")
-#    assert cbe.is_fitted
-#    assert cbe.split == split
-#    assert hasattr(cbe, "has_differentiable_concept_encoder")
-#    assert hasattr(cbe, "has_differentiable_concept_decoder")
-#
-#    concepts = cbe.encode_activations(activations)
-#    assert concepts.shape == (2, n_concepts)
-#    reconstructed_activations = cbe.decode_concepts(concepts)
-#    assert reconstructed_activations.shape == (2, 8, 312)
+            concepts = cbe.encode_activations(activations[cbe.split_point])
+            assert concepts.shape == (16, nb_concepts)
+            reconstructed_activations = cbe.decode_concepts(concepts)
+            assert reconstructed_activations.shape == (16, 312)
+        except Exception as e:
+            raise AssertionError(f"Error with {method}") from e

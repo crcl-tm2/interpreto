@@ -78,7 +78,7 @@ class Cockatiel(OvercompleteDictionaryLearning):
         """
         super().__init__(
             model_with_split_points=model_with_split_points,
-            concept_model_class=OvercompleteOptimClasses.NMF.value,
+            concept_model_class=OvercompleteOptimClasses.SemiNMF.value,
             nb_concepts=nb_concepts,
             split_point=split_point,
             device=device,
@@ -114,11 +114,10 @@ class Cockatiel(OvercompleteDictionaryLearning):
             inputs (ModelInput): An input datapoint for the model.
             concepts (torch.Tensor): Concept activation tensor.
             target (int): The target class for which the concept output attribution should be computed.
-            attribution_method: The attribution method to obtain importance scores for input elements.
 
         Returns:
             A list of attribution scores for each concept.
         """
-        super().concept_output_attribution(
+        return super().concept_output_attribution(
             inputs, concepts, target, attribution_method="SobolAttribution", **attribution_kwargs
         )  # TODO: add sobol class when it exists

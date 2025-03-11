@@ -163,7 +163,7 @@ class OvercompleteOptimClasses(Enum):
         Proceedings of the 26th Annual International Conference on Machine Learning, 2009, pp. 689-696.
     """
 
-    NMF = oc_opt.NMF
+    # NMF = oc_opt.NMF # TODO: Add treatment to manage activations to ensure they are strictly positive
     SemiNMF = oc_opt.SemiNMF
     ConvexNMF = oc_opt.ConvexNMF
     PCA = oc_opt.SkPCA
@@ -234,8 +234,11 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
             )
         self.model_with_split_points = model_with_split_points
         split: str = self.get_and_verify_split_point(split_point)
+        input_shape = self.model_with_split_points.get_activations(self.model_with_split_points._example_input, split)[
+            split
+        ].shape
         concept_model = concept_model_class(
-            input_shape=self.model_with_split_points.get_latent_shape(split)[-1],
+            input_shape=input_shape[-1],
             nb_concepts=nb_concepts,
             encoder_module=encoder_module,
             dictionary_params=dictionary_params,
@@ -245,6 +248,16 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
         super().__init__(model_with_split_points, concept_model, split)
         self.has_differentiable_concept_encoder = True
         self.has_differentiable_concept_decoder = True
+
+    @property
+    def device(self) -> torch.device:
+        """Get the device on which the concept model is stored."""
+        return next(self.concept_model.parameters()).device
+
+    @device.setter
+    def device(self, device: torch.device) -> None:
+        """Set the device on which the concept model is stored."""
+        self.concept_model.to(device)
 
     def fit(
         self,
@@ -288,22 +301,21 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
         """
         split_activations = self.prepare_fit(activations, overwrite=overwrite)
         dataloader = DataLoader(TensorDataset(split_activations.detach()), batch_size=batch_size, shuffle=True)
-        optimizer = optimizer_class(
-            self.concept_model.parameters(),
-            defaults={"lr": lr},
-        )
-
+        optimizer_kwargs = {"lr": lr}
+        optimizer = optimizer_class(self.concept_model.parameters(), **optimizer_kwargs)  # type: ignore
         train_params = {
             "model": self.concept_model,
             "dataloader": dataloader,
-            "criterion": criterion,
+            "criterion": criterion(),
             "optimizer": optimizer,
-            "scheduler_class": scheduler_class,
             "nb_epochs": nb_epochs,
             "clip_grad": clip_grad,
             "monitoring": monitoring,
             "device": device,
         }
+        if scheduler_class is not None:
+            scheduler = scheduler_class(optimizer)
+            train_params["scheduler"] = scheduler
 
         if use_amp:
             train_method = oc_sae.train.train_sae_amp
@@ -325,8 +337,20 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
             The encoded concept activations.
         """
         # SAEs.encode returns both codes (concepts activations) and pre_codes (before relu)
-        _, codes = super().encode_activations(activations)
+        _, codes = super().encode_activations(activations.to(self.device))
         return codes
+
+    @check_fitted
+    def decode_concepts(self, concepts: torch.Tensor) -> torch.Tensor:
+        """Decode the given concepts using the `concept_model` decoder.
+
+        Args:
+            concepts (torch.Tensor): The concepts to decode.
+
+        Returns:
+            The decoded concept activations.
+        """
+        return self.concept_model.decode(concepts.to(self.device))  # type: ignore
 
 
 class OvercompleteDictionaryLearning(ConceptBottleneckExplainer):

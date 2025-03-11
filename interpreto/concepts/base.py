@@ -105,19 +105,8 @@ class AbstractConceptExplainer(ABC, Generic[Module]):
                 split_point={self.split_point},
                 concept_model={type(self.concept_model).__name__},
                 is_fitted={self.is_fitted},
-                device={self.device},
                 has_differentiable_concept_encoder={self.has_differentiable_concept_encoder},
             )""")
-
-    @property
-    def device(self) -> torch.device:
-        """Get the device on which the concept model is stored."""
-        return next(self.concept_model.parameters()).device
-
-    @device.setter
-    def device(self, device: torch.device) -> None:
-        """Set the device on which the concept model is stored."""
-        self.concept_model.to(device)
 
     @abstractmethod
     def fit(self, activations: LatentActivations | dict[str, LatentActivations], *args, **kwargs) -> Any:
@@ -144,7 +133,6 @@ class AbstractConceptExplainer(ABC, Generic[Module]):
         """
         pass
 
-    @check_fitted
     def verify_activations(self, activations: dict[str, LatentActivations]) -> None:
         """
         Verify that the given activations are valid for the `model_with_split_points` and `self.split_point`.
@@ -282,18 +270,6 @@ class AbstractConceptExplainer(ABC, Generic[Module]):
         """
         raise NotImplementedError("Input-to-concept attribution method is not implemented yet.")
 
-    def to(self, device: torch.device | str):
-        """Move the concept model to a new device."""
-        self.concept_model.to(device)
-
-    def cpu(self):
-        """Move the concept bottleneck explainer to the CPU."""
-        self.concept_model.cpu()
-
-    def cuda(self, device: int = 0):
-        """Move the concept bottleneck explainer to the GPU."""
-        self.concept_model.cuda(device)
-
 
 class ConceptBottleneckExplainer(AbstractConceptExplainer[BaseDictionaryLearning], ABC):
     """A concept bottleneck explainer wraps a `concept_model` that should be able to encode activations into concepts
@@ -342,7 +318,6 @@ class ConceptBottleneckExplainer(AbstractConceptExplainer[BaseDictionaryLearning
                 split_point={self.split_point},
                 concept_model={type(self.concept_model).__name__},
                 is_fitted={self.is_fitted},
-                device={self.device},
                 has_differentiable_concept_encoder={self.has_differentiable_concept_encoder},
                 has_differentiable_concept_decoder={self.has_differentiable_concept_decoder},
             )""")
@@ -358,8 +333,7 @@ class ConceptBottleneckExplainer(AbstractConceptExplainer[BaseDictionaryLearning
             The encoded concept activations.
         """
         self.verify_activations({self.split_point: activations})
-        activations = activations.to(self.device)
-        return self.concept_model.encode(activations[self.split_point])  # type: ignore
+        return self.concept_model.encode(activations)  # type: ignore
 
     @check_fitted
     def decode_concepts(self, concepts: ConceptsActivations) -> torch.Tensor:  # LatentActivations
@@ -371,7 +345,6 @@ class ConceptBottleneckExplainer(AbstractConceptExplainer[BaseDictionaryLearning
         Returns:
             The decoded model activations.
         """
-        concepts = concepts.to(self.device)
         return self.concept_model.decode(concepts)  # type: ignore
 
     @check_fitted
