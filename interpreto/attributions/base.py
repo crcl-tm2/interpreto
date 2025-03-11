@@ -109,16 +109,21 @@ class InferenceExplainer(AttributionExplainer):
         token_count = [len(item) for item in tokens]
         sorted_indices = sorted(range(len(token_count)), key=lambda k: token_count[k], reverse=False)
         sorted_inputs = [inputs[i] for i in sorted_indices]
-
-        unsorted_inputs = [None] * len(sorted_inputs)
-        for idx, original_idx in enumerate(sorted_indices):
-            unsorted_inputs[original_idx] = sorted_inputs[idx]
+        # unsorted_inputs = [None] * len(sorted_inputs)
+        # for idx, original_idx in enumerate(sorted_indices):
+        #     unsorted_inputs[original_idx] = sorted_inputs[idx]
 
 
         pert_per_input_generator = (self.perturbator.perturb(item) for item in sorted_inputs)
-        inference_res = self.inference_wrapper.inference(pert_per_input_generator)
-        print(next(inference_res))
 
+            #print(next(pert_per_input_generator)["attention_mask"].shape)
+        inference_res = self.inference_wrapper.inference(pert_per_input_generator)
+        print(next(inference_res).shape)
+        print(next(inference_res).shape)
+        print(next(inference_res).shape)
+        print(next(inference_res).shape)
+        print(next(inference_res))
+        exit()
 
 
         # embeddings.shape : (n, p, l, d)

@@ -42,7 +42,7 @@ class BaseInferenceWrapper:
         self.batch_size = batch_size
 
         self.__buffer_indexes = []
-        self.__buffer = torch.empty(0, 0, 0)
+        self.__buffer = None
         self.__rest = None
         self.__rest_mask = None
 
@@ -68,13 +68,9 @@ class BaseInferenceWrapper:
         self.device = torch.device("cuda")
 
     def call_model(self, model_inputs:Mapping[str,torch.Tensor]) -> ModelOutput:
-        print("calling model !")
-        print(model_inputs)
-        print("input batch size : ", model_inputs["input_ids"].shape[0], " required batch size : ", self.batch_size)
         return self.model(**model_inputs)
 
     def inference(self, inputs:Iterable[Mapping[str,torch.Tensor]]) -> torch.Tensor:
-
         # TODO : generalize to other tokenizers
         pad_token_id = 0
 
@@ -95,6 +91,7 @@ class BaseInferenceWrapper:
                         #TODO : remove and raise
                         assert self.__buffer.shape[0] == 0
                         assert self.__rest is None
+                        assert self.__rest_mask is None
                         raise
                     # TODO : allow inputs_embeds
                     # TODO : use attention mask and give it to the model
@@ -107,18 +104,19 @@ class BaseInferenceWrapper:
                     # TODO : handle case where no attention mask
                     batchs = list(input_ids.split(self.batch_size))
                     batch_masks = list(att_mask.split(self.batch_size))
-                new_indexes = [self.__buffer.shape[0] + p]
+                # TODO : refaire ça
+                if self.__buffer is not None:
+                    new_indexes = [self.__buffer.shape[0] + p]
+                else:
+                    new_indexes = [p]
                 while len(batchs[-1]) < self.batch_size:
                     try:
                         other_item = next(inputs)
-                        other_input_ids = item["input_ids"][0]
-                        other_att_mask = item["attention_mask"].repeat(other_input_ids.shape[0], 1)
+                        other_input_ids = other_item["input_ids"][0]
+                        # TODO : do this mask repetition in the perturbator
+                        other_att_mask = other_item["attention_mask"].repeat(other_input_ids.shape[0], 1)
                     except StopIteration:
                         break
-                    
-                    
-                    # TODO : do this mask repetition in the perturbator
-                    att_mask = item["attention_mask"].repeat(p, 1)
 
                     other_item_length = len(other_input_ids)
                     missing_length = self.batch_size - len(batchs[-1])
@@ -134,14 +132,22 @@ class BaseInferenceWrapper:
                     batch_masks[-1] = torch.cat([batch_masks[-1], other_att_mask[:missing_length]])
                     if other_item_length > missing_length:
                         self.__rest = other_input_ids[missing_length:]
+                        self.__rest_mask = other_att_mask[missing_length:]
                     else:
                         new_indexes += [new_indexes[-1] + other_item_length]
-                for batch, attention_mask in zip(batchs, batch_masks):
-                    model_inputs = {"input_ids":batch, "attention_mask":attention_mask}
-                    result = self.call_model(model_inputs).logits
-                    self.__buffer = torch.cat([self.__buffer, result], dim=0)
+                for batch, attention_mask in zip(batchs, batch_masks, strict=True):
+                    # TODO : check necessity of .int()
+                    model_inputs = {"input_ids":batch.int(), "attention_mask":attention_mask}
+                    result = self.call_model(model_inputs)
+                    # TODO : remake this shit
+                    if self.__buffer is None:
+                        # TODO : generalize to models where "logits" is not the attribute
+                        self.__buffer = result.logits
+                    else:
+                        self.__buffer = torch.cat([self.__buffer, result.logits], dim=0)
                 self.__buffer_indexes += new_indexes
             index = self.__buffer_indexes.pop(0)
+            self.__buffer_indexes = [a - index for a in self.__buffer_indexes]
             res = self.__buffer[:index]
             self.__buffer = self.__buffer[index:]
             yield res
