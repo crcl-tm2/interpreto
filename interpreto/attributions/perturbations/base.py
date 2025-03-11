@@ -361,15 +361,14 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
             model_inputs (Mapping): mapping given by the tokenizer
 
         Returns:
-            torch.Tensor: real general mask
+            torch.Tensor, torch.Tensor: real general mask and specific granularity mask (theoretical mask)
         """
         gran_assoc_matrix = GranularityLevel.get_association_matrix(model_inputs, self.granularity_level)
         mask_dim = gran_assoc_matrix.sum(dim=(-1, -2)).max().int().item()
         num_sequences = model_inputs["input_ids"].shape[0]
 
         gran_mask = self.get_mask(num_sequences, mask_dim)
-        model_inputs["mask"] = gran_mask
-        return self.get_real_mask_from_gran_mask(gran_mask, gran_assoc_matrix)
+        return self.get_real_mask_from_gran_mask(gran_mask, gran_assoc_matrix), gran_mask
 
     def perturb_ids(self, model_inputs: Mapping) -> Mapping[str, torch.Tensor]:
         """
@@ -379,9 +378,9 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
             model_inputs (Mapping): mapping given by the tokenizer
 
         Returns:
-            dict[str, torch.Tensor]: _description_
+            tuple: model_inputs with perturbations and the specific granularity mask
         """
-        real_mask = self.get_model_inputs_mask(model_inputs)
+        real_mask, gran_mask = self.get_model_inputs_mask(model_inputs)
 
         model_inputs["input_ids"] = self.apply_mask(
             inputs=model_inputs["input_ids"].unsqueeze(-1),
@@ -396,7 +395,7 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
                 repeats[1] = self.n_perturbations
                 model_inputs[k] = model_inputs[k].unsqueeze(1).repeat(*repeats)
 
-        return model_inputs
+        return model_inputs, gran_mask
 
 
 class EmbeddingsMaskBasedPerturbator(MaskBasedPerturbator):
