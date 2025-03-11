@@ -447,11 +447,10 @@ class OcclusionPerturbator(TokenMaskBasedPerturbator):
         super().__init__(tokenizer=tokenizer, inputs_embedder=inputs_embedder, n_perturbations=-1)
         self.granularity_level = granularity_level
 
-    def get_mask(self, model_inputs: Mapping) -> torch.Tensor:
+    def get_mask(self, num_sequences: int, mask_dim: int) -> torch.Tensor:
         # TODO : add sugar to get mask dimensions
         # TODO : find more efficient formula for occlusion
-        assoc_matrix = GranularityLevel.get_association_matrix(model_inputs, self.granularity_level)
-        return torch.diag_embed(torch.einsum("ntl,nl->nt", assoc_matrix, model_inputs["attention_mask"].float()))
+        return torch.diag_embed(torch.ones(num_sequences, mask_dim))
 
 
 class GaussianNoisePerturbator(BasePerturbator):
