@@ -87,7 +87,7 @@ class GranularityLevel(Enum):
 class BasePerturbator:
     """
     Base class for perturbators
-    If this class is instanciated, it behaves as a no-op perturbator
+    If this class is instantiated, it behaves as a no-op perturbator
     Perturbators can be defined by subclassing this class and implementing one (or many) of the following methods :
     - perturb_strings
     - perturb_ids
@@ -264,7 +264,6 @@ class MaskBasedPerturbator(BasePerturbator):
         return base + masked
 
 
-
 class TokenMaskBasedPerturbator(MaskBasedPerturbator):
     """
     Base class for perturbations consisting in applying masks on token (or groups of tokens)
@@ -291,13 +290,11 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
 
     @property
     def mask_token_id(self) -> int:
-    def mask_token_id(self) -> int:
         """
         Returns the mask token id
         """
         return self.tokenizer.convert_tokens_to_ids(self.mask_token)
 
-    def get_mask(self, model_inputs: Mapping[str, torch.Tensor]) -> torch.Tensor:
     def get_mask(self, model_inputs: Mapping[str, torch.Tensor]) -> torch.Tensor:
         """
         Method returning a perturbation mask for a given set of inputs
@@ -312,7 +309,7 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
         Returns:
             torch.Tensor: mask to apply
         """
-        # Exemple implementation that returns a no-perturbation mask
+        # Example implementation that returns a no-perturbation mask
         mask_dimension = (
             GranularityLevel.get_association_matrix(model_inputs, self.granularity_level)
             .sum(dim=(-1, -2))
@@ -327,10 +324,6 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
 
     @staticmethod
     def get_gran_mask_from_real_mask(
-        model_inputs: Mapping[str, torch.Tensor],
-        real_mask: torch.Tensor,
-        granularity_level: GranularityLevel = GranularityLevel.DEFAULT,
-    ) -> torch.Tensor:
         model_inputs: Mapping[str, torch.Tensor],
         real_mask: torch.Tensor,
         granularity_level: GranularityLevel = GranularityLevel.DEFAULT,
@@ -353,8 +346,6 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
     def get_real_mask_from_gran_mask(
         model_inputs: Mapping[str, torch.Tensor], gran_mask: torch.Tensor, granularity_level: GranularityLevel.DEFAULT
     ) -> torch.Tensor:
-        model_inputs: Mapping[str, torch.Tensor], gran_mask: torch.Tensor, granularity_level: GranularityLevel.DEFAULT
-    ) -> torch.Tensor:
         """
         Transforms a specific granularity mask to a general token-wise mask
 
@@ -372,7 +363,7 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
     def get_model_inputs_mask(self, model_inputs: Mapping[str, torch.Tensor]) -> torch.Tensor:
         """
         Method returning the real mask to apply on the model inputs
-        This method may be overriden in subclasses to provide a more specific mask
+        This method may be overwritten in subclasses to provide a more specific mask
         default implementation gets the real mask from the specific granularity mask
 
         Args:
