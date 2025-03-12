@@ -97,7 +97,7 @@ class VarianceAggregator(TorchAggregator):
     _method = torch.var
 
 
-class MaskwiseMeanAggregation(Aggregator):
+class MaskwiseMeanAggregator(Aggregator):
     """
     TODO : add docstring
     """

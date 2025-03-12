@@ -33,10 +33,49 @@ from collections.abc import Callable
 from typing import Any
 
 import torch
+from jaxtyping import Float
 
 from interpreto.attributions.aggregations.base import Aggregator
 from interpreto.attributions.perturbations.base import BasePerturbator
 from interpreto.typing import ModelInput
+
+SingleAttribution = (
+    Float[torch.Tensor, "l"]
+    | Float[torch.Tensor, "l c"]
+    | Float[torch.Tensor, "l l_g"]
+    | Float[torch.Tensor, "l l_t"]
+)
+
+
+class AttributionOutput:
+    """
+    Class to store the output of an attribution method.
+    """
+
+    def __init__(
+        self,
+        attributions: SingleAttribution,
+        elements: list[str] | torch.Tensor | None = None,
+    ):
+        """
+        Initializes an AttributionOutput instance.
+
+        Args:
+            attributions (Iterable[SingleAttribution]): A list (n elements, with n the number of samples) of attribution score tensors:
+                - `l` represents the number of elements for which attribution is computed (for NLP tasks: can be the total sequence length).
+                - Shapes depend on the task:
+                    - Classification (single class): `(l,)`
+                    - Classification (all classes): `(l, c)`, where `c` is the number of classes.
+                    - Generative models: `(l, l_g)`, where `l_g` is the length of the generated part.
+                        - For non-generated elements, there are `l_g` attribution scores.
+                        - For generated elements, scores are zero for previously generated tokens.
+                    - Token classification: `(l, l_t)`, where `l_t` is the number of token classes. When the tokens are disturbed, l = l_t.
+
+            elements (Iterable[list[str]] | Iterable[torch.Tensor] | None, optional): A list or tensor representing the elements for which attributions are computed.
+                - These elements can be tokens, words, sentences, or tensors of size `l`.
+        """
+        self.attributions = attributions
+        self.elements = elements
 
 
 class AttributionExplainer:
@@ -105,57 +144,42 @@ class InferenceExplainer(AttributionExplainer):
         """
         main process of attribution method
         """
+        self.inference_wrapper.to(self.device)
+
         tokens = [self.perturbator.tokenizer.encode(item) for item in inputs]
         token_count = [len(item) for item in tokens]
-        sorted_indices = sorted(range(len(token_count)), key=lambda k: token_count[k], reverse=False)
-        sorted_inputs = [inputs[i] for i in sorted_indices]
-        # unsorted_inputs = [None] * len(sorted_inputs)
-        # for idx, original_idx in enumerate(sorted_indices):
-        #     unsorted_inputs[original_idx] = sorted_inputs[idx]
 
+        if targets is None:
+            # split in batchs
+            chunks = [tokens[i : i + self.inference_wrapper.batch_size] for i in range(0, len(tokens), self.inference_wrapper.batch_size)]
+            predictions = []
+            with torch.no_grad():
+                for chunk in chunks:
+                    padded_sequences = torch.nn.utils.rnn.pad_sequence([torch.tensor(c) for c in chunk], batch_first=True, padding_value=self.perturbator.tokenizer.pad_token_id)
+                    attention_mask = (padded_sequences != self.perturbator.tokenizer.pad_token_id).int()
+                    predictions += [self.inference_wrapper.call_model({"input_ids": padded_sequences, "attention_mask": attention_mask})]
+                targets = torch.cat(predictions, dim=0)
+
+        sorted_indices = sorted(range(len(token_count)), key=lambda k: token_count[k], reverse=True)
+        sorted_inputs = [inputs[i] for i in sorted_indices]
 
         pert_per_input_generator = (self.perturbator.perturb(item) for item in sorted_inputs)
 
-            #print(next(pert_per_input_generator)["attention_mask"].shape)
-        inference_res = self.inference_wrapper.inference(pert_per_input_generator)
-        print(next(inference_res).shape)
-        print(next(inference_res).shape)
-        print(next(inference_res).shape)
-        print(next(inference_res).shape)
-        print(next(inference_res))
-        exit()
+        scores, masks = zip(*self.inference_wrapper.inference(pert_per_input_generator, targets), strict=True)
 
+        # Unsort
+        unsorted_masks = [None] * len(masks)
+        unsorted_scores = [None] * len(scores)
+        for idx, original_idx in enumerate(sorted_indices):
+            unsorted_masks[original_idx] = masks[idx]
+            unsorted_scores[original_idx] = scores[idx]
 
-        # embeddings.shape : (n, p, l, d)
-        # target.shape : (n, o)
+        explanations = []
 
-        self.inference_wrapper.to(self.device)
+        for score, mask in zip(unsorted_scores, unsorted_masks, strict=True):
+            # TODO : this line must be done in inference wrapper
+            #results = torch.sum(score * target.unsqueeze(0).repeat(score.shape[0], 1), dim=-1)
+            explanation = self.aggregator(score.unsqueeze(0), mask)
+            explanations.append(explanation)
 
-        if targets is None:
-            with torch.no_grad():
-                # Put this in NLP_explainer_mixin
-
-                if isinstance(inputs, torch.Tensor):
-                    targets = self.inference_wrapper.call_model(inputs)
-                else:
-                    tokens = self.perturbator.tokenizer(
-                        inputs,
-                        truncation=True,
-                        return_tensors="pt",
-                        padding="max_length",
-                        max_length=512,
-                        return_special_tokens_mask=True,
-                        return_offsets_mapping=True,
-                    )
-                    target_embeddings = self.inference_wrapper.model.get_input_embeddings()(tokens["input_ids"])
-                    targets = self.inference_wrapper.call_model(target_embeddings)
-        # repeat target along the p dimension
-        targets = targets.unsqueeze(1).repeat(1, embeddings.shape[1], 1)
-
-        # TODO : remake inference with adaptation to mask
-        results = self.inference_wrapper.batch_inference(embeddings, targets, flatten=True)
-        self.inference_wrapper.cpu()  # TODO: check if we need to do this
-
-        explanation = self.aggregator(results, mask)
-
-        return explanation
+        return explanations

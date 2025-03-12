@@ -21,11 +21,10 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-
 from __future__ import annotations
 
 import functools
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Generator, Iterable, Mapping
 from typing import Any
 
 import torch
@@ -33,22 +32,15 @@ from nnsight import NNsight
 from transformers.utils.generic import ModelOutput
 from transformers import PreTrainedModel
 
+
 class BaseInferenceWrapper:
     def __init__(self, model:PreTrainedModel,
                  batch_size:int,
                  device:torch.device|None=None):
         self.model = model
         self.model.to(device or torch.device("cpu"))
+
         self.batch_size = batch_size
-
-        self.__buffer_indexes = []
-        self.__buffer = None
-        self.__rest = None
-        self.__rest_mask = None
-
-    @property
-    def __n_finished(self):
-        return len(self.__buffer_indexes)
 
     @property
     def device(self):
@@ -68,90 +60,70 @@ class BaseInferenceWrapper:
         self.device = torch.device("cuda")
 
     def call_model(self, model_inputs:Mapping[str,torch.Tensor]) -> ModelOutput:
-        return self.model(**model_inputs)
+        return self.model(**model_inputs).logits
 
-    def inference(self, inputs:Iterable[Mapping[str,torch.Tensor]]) -> torch.Tensor:
-        # TODO : generalize to other tokenizers
+    def inference(self, inputs:Iterable[Mapping[str,torch.Tensor]], targets:torch.Tensor) -> Generator:
+        def concat_and_pad(t1:torch.Tensor|None,
+                               t2:torch.Tensor,
+                               pad_value:int|None=None,
+                               dim:int=0) -> torch.Tensor:
+            if t1 is not None:
+                if pad_value is not None and t1.shape[1] > t2.shape[1] :
+                    t2 = torch.nn.functional.pad(t2, (0, t1.shape[1] - t2.shape[1]), value=pad_value)
+                return torch.cat([t1, t2], dim=dim)
+            return t2
+
+        # TODO : Check that tokenizers other than bert also use 0 as pad_token_id, otherwise, fix this
         pad_token_id = 0
 
+        result_buffer:torch.Tensor|None = None
+        result_indexes:list[int] = []
+
+        batch:torch.Tensor|None = None
+        batch_mask:torch.Tensor|None = None
+
+        input_buffer = torch.zeros(0)
+        mask_buffer = torch.zeros(0)
+
+        perturbation_masks = []
+
+        last_item = False
+
         while True:
-            while not self.__n_finished:
-                if self.__rest is not None:
-                    p = self.__rest.shape[1]
-                    batchs = self.__rest.split(self.batch_size)
-                    batch_masks = self.__rest_mask.split(self.batch_size)
-                    self.__rest = None
-                    self.__rest_mask = None
-                else:
-                    # TODO : handle stop iteration
-                    try:
-                        item = next(inputs)
-                    except StopIteration:
-                        # check that everything is finished
-                        #TODO : remove and raise
-                        assert self.__buffer.shape[0] == 0
-                        assert self.__rest is None
-                        assert self.__rest_mask is None
-                        raise
-                    # TODO : allow inputs_embeds
-                    # TODO : use attention mask and give it to the model
-                    assert item["input_ids"].shape[0] == 1, "WTF ?"
+            if result_buffer is not None and len(result_buffer) >= result_indexes[0]:
+                index = result_indexes.pop(0)
+                res = result_buffer[:index]
 
-                    input_ids = item["input_ids"][0]
-                    p = input_ids.shape[0]
-                    # TODO : do this mask repetition in the perturbator
-                    att_mask = item["attention_mask"].repeat(p, 1)
-                    # TODO : handle case where no attention mask
-                    batchs = list(input_ids.split(self.batch_size))
-                    batch_masks = list(att_mask.split(self.batch_size))
-                # TODO : refaire ça
-                if self.__buffer is not None:
-                    new_indexes = [self.__buffer.shape[0] + p]
-                else:
-                    new_indexes = [p]
-                while len(batchs[-1]) < self.batch_size:
-                    try:
-                        other_item = next(inputs)
-                        other_input_ids = other_item["input_ids"][0]
-                        # TODO : do this mask repetition in the perturbator
-                        other_att_mask = other_item["attention_mask"].repeat(other_input_ids.shape[0], 1)
-                    except StopIteration:
-                        break
+                target = targets[0].unsqueeze(0).repeat(res.shape[0], 1)
+                targets = targets[1:]
 
-                    other_item_length = len(other_input_ids)
-                    missing_length = self.batch_size - len(batchs[-1])
+                result_buffer = result_buffer[index:]
 
-                    # padding of shorter sequences
-                    batch_seq_length = batchs[-1].shape[1]
-                    other_item_seq_length = other_input_ids.shape[1]
-                    if other_item_seq_length != batch_seq_length:
-                        pad = torch.full((batchs[-1].shape[0], other_item_seq_length - batch_seq_length), pad_token_id)
-                        batchs[-1] = torch.cat([batchs[-1], pad], dim=-1)
-                        batch_masks[-1] = torch.cat([batch_masks[-1], torch.zeros_like(pad)], dim=-1)
-                    batchs[-1] = torch.cat([batchs[-1], other_input_ids[:missing_length]])
-                    batch_masks[-1] = torch.cat([batch_masks[-1], other_att_mask[:missing_length]])
-                    if other_item_length > missing_length:
-                        self.__rest = other_input_ids[missing_length:]
-                        self.__rest_mask = other_att_mask[missing_length:]
-                    else:
-                        new_indexes += [new_indexes[-1] + other_item_length]
-                for batch, attention_mask in zip(batchs, batch_masks, strict=True):
-                    # TODO : check necessity of .int()
-                    model_inputs = {"input_ids":batch.int(), "attention_mask":attention_mask}
-                    result = self.call_model(model_inputs)
-                    # TODO : remake this shit
-                    if self.__buffer is None:
-                        # TODO : generalize to models where "logits" is not the attribute
-                        self.__buffer = result.logits
-                    else:
-                        self.__buffer = torch.cat([self.__buffer, result.logits], dim=0)
-                self.__buffer_indexes += new_indexes
-            index = self.__buffer_indexes.pop(0)
-            self.__buffer_indexes = [a - index for a in self.__buffer_indexes]
-            res = self.__buffer[:index]
-            self.__buffer = self.__buffer[index:]
-            yield res
+                yield (torch.sum(res * target, dim=-1), perturbation_masks.pop(0))
+                if last_item:
+                    break
+                continue
+            if last_item or batch is not None and len(batch) == self.batch_size:
+                exec_result = self.call_model({"input_ids":batch, "attention_mask":batch_mask})
+                result_buffer = concat_and_pad(result_buffer, exec_result)
+                batch = batch_mask = None
+                continue
+            if input_buffer.numel():
+                missing_length = self.batch_size - len(batch if batch is not None else ())
+                batch = concat_and_pad(batch, input_buffer[:missing_length], pad_token_id)
+                batch_mask = concat_and_pad(batch_mask, mask_buffer[:missing_length], 0)
+                input_buffer = input_buffer[missing_length:]
+                mask_buffer = mask_buffer[missing_length:]
+                continue
+            try:
+                next_item, perturbation_mask = next(inputs)
+                perturbation_masks.append(perturbation_mask)
+                input_buffer = next_item["input_ids"][0]
+                mask_buffer = next_item["attention_mask"][0]
 
+                result_indexes += [len(input_buffer)]
+            except StopIteration:
+                last_item = True
 
 
 class ClassificationInferenceWrapper:
