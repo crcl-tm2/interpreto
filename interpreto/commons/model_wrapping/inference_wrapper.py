@@ -23,20 +23,15 @@
 # SOFTWARE.
 from __future__ import annotations
 
-import functools
-from collections.abc import Callable, Generator, Iterable, Mapping
-from typing import Any
+from collections.abc import Generator, Iterable, Mapping
 
 import torch
-from nnsight import NNsight
-from transformers.utils.generic import ModelOutput
 from transformers import PreTrainedModel
+from transformers.utils.generic import ModelOutput
 
 
-class BaseInferenceWrapper:
-    def __init__(self, model:PreTrainedModel,
-                 batch_size:int,
-                 device:torch.device|None=None):
+class ClassificationInferenceWrapper:
+    def __init__(self, model: PreTrainedModel, batch_size: int, device: torch.device | None = None):
         self.model = model
         self.model.to(device or torch.device("cpu"))
 
@@ -47,10 +42,10 @@ class BaseInferenceWrapper:
         return self.model.device
 
     @device.setter
-    def device(self, device:torch.device):
+    def device(self, device: torch.device):
         self.model.to(device)
 
-    def to(self, device:torch.device):
+    def to(self, device: torch.device):
         self.device = device
 
     def cpu(self):
@@ -59,16 +54,15 @@ class BaseInferenceWrapper:
     def cuda(self):
         self.device = torch.device("cuda")
 
-    def call_model(self, model_inputs:Mapping[str,torch.Tensor]) -> ModelOutput:
+    def call_model(self, model_inputs: Mapping[str, torch.Tensor]) -> ModelOutput:
         return self.model(**model_inputs).logits
 
-    def inference(self, inputs:Iterable[Mapping[str,torch.Tensor]], targets:torch.Tensor) -> Generator:
-        def concat_and_pad(t1:torch.Tensor|None,
-                               t2:torch.Tensor,
-                               pad_value:int|None=None,
-                               dim:int=0) -> torch.Tensor:
+    def inference(self, inputs: Iterable[Mapping[str, torch.Tensor]], targets: torch.Tensor) -> Generator:
+        def concat_and_pad(
+            t1: torch.Tensor | None, t2: torch.Tensor, pad_value: int | None = None, dim: int = 0
+        ) -> torch.Tensor:
             if t1 is not None:
-                if pad_value is not None and t1.shape[1] > t2.shape[1] :
+                if pad_value is not None and t1.shape[1] > t2.shape[1]:
                     t2 = torch.nn.functional.pad(t2, (0, t1.shape[1] - t2.shape[1]), value=pad_value)
                 return torch.cat([t1, t2], dim=dim)
             return t2
@@ -76,11 +70,11 @@ class BaseInferenceWrapper:
         # TODO : Check that tokenizers other than bert also use 0 as pad_token_id, otherwise, fix this
         pad_token_id = 0
 
-        result_buffer:torch.Tensor|None = None
-        result_indexes:list[int] = []
+        result_buffer: torch.Tensor | None = None
+        result_indexes: list[int] = []
 
-        batch:torch.Tensor|None = None
-        batch_mask:torch.Tensor|None = None
+        batch: torch.Tensor | None = None
+        batch_mask: torch.Tensor | None = None
 
         input_buffer = torch.zeros(0)
         mask_buffer = torch.zeros(0)
@@ -104,7 +98,7 @@ class BaseInferenceWrapper:
                     break
                 continue
             if last_item or batch is not None and len(batch) == self.batch_size:
-                exec_result = self.call_model({"input_ids":batch, "attention_mask":batch_mask})
+                exec_result = self.call_model({"input_ids": batch, "attention_mask": batch_mask})
                 result_buffer = concat_and_pad(result_buffer, exec_result)
                 batch = batch_mask = None
                 continue
@@ -125,113 +119,9 @@ class BaseInferenceWrapper:
             except StopIteration:
                 last_item = True
 
-
-class ClassificationInferenceWrapper:
-    def __init__(self, model: NNsight | torch.nn.Module, batch_size: int, device: torch.device | None = None):
-        if isinstance(model, torch.nn.Module):
-            model = NNsight(model)
-        self.model = model
-        self.model.to(device)
-        assert batch_size > 0, "Batch size must be a positive integer."
-        self.batch_size = batch_size
-        self.device = device if device is not None else torch.device("cpu")
-
-    def to(self, device: torch.device):
-        self.model.to(device)
-
-    def cpu(self):
-        self.model.cpu()
-
-    def cuda(self):
-        self.model.cuda()
-
-    @staticmethod
-    def flatten_unflatten(func: Callable) -> Callable:
-        """
-        A decorator that flattens multiple batch dimensions before calling the function
-        and unflattens the output back to the original shape.
-
-        It introduces a 'flatten' argument to control this behavior.
-
-        Args:
-            func (Callable): The function to wrap.
-
-        Returns:
-            Callable: The wrapped function.
-        """
-
-        @functools.wraps(func)
-        def wrapper(
-            self, inputs: torch.Tensor, target: torch.Tensor, *args: Any, flatten: bool = False, **kwargs: Any
-        ) -> torch.Tensor:
-            """
-            Wrapper that flattens and unflattens the inputs tensor based on the 'flatten' flag.
-
-            Args:
-                inputs (torch.Tensor): Inputs tensor of shape (n, p, ...).
-                flatten (bool): Whether to flatten before and unflatten after.
-
-            Returns:
-                torch.Tensor: Processed tensor with restored shape if flatten=True.
-            """
-            if not isinstance(inputs, torch.Tensor) or not isinstance(target, torch.Tensor):
-                raise TypeError("Expected 'inputs' and 'targets' to be a PyTorch tensor.")
-
-            dims_to_flatten = inputs.shape[:2]  # Store original shape
-
-            # Flatten if requested
-            if flatten:
-                inputs = inputs.flatten(start_dim=0, end_dim=1)  # Shape: (n*p, ...)
-                target = target.flatten(start_dim=0, end_dim=1)  # Shape: (n*p, ...)
-
-            # Call the original function
-            outputs = func(self, inputs, target, *args, **kwargs)
-
-            # Unflatten if needed
-            if flatten and isinstance(outputs, torch.Tensor):
-                outputs = outputs.unflatten(dim=0, sizes=dims_to_flatten)  # Restore shape: (n, p, output_dim)
-            return outputs
-
-        return wrapper
-
-    # Temporary
-    # TODO : eventually deal with that in a better way (automatic model wrapping or decorating ?)
-    def call_model(self, inputs: torch.Tensor) -> torch.Tensor:
-        return self.model(inputs.to(self.device))
-
-    def inference(self, inputs: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        logits = self.call_model(inputs)
-
-        return torch.sum(logits * target, dim=-1)
-
-    def gradients(self, inputs: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        inputs = inputs.clone().detach().requires_grad_(True)  # TODO: verify the clone, not sure useful
-        scores = self.inference(inputs, target)
-        scores.backward(torch.ones_like(scores))  # Allow multiple sample dimensions (n, p)
-        return inputs.grad
-
-    @flatten_unflatten
-    def batch_inference(self, inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        scores = []
-        for i in range(0, inputs.shape[0], self.batch_size):
-            batch = inputs[i : i + self.batch_size].to(self.device)
-            target = targets[i : i + self.batch_size].to(self.device)
-            batch_scores = self.inference(batch, target).cpu()
-            scores.append(batch_scores)
-        return torch.cat(scores, dim=0)
-
-    @flatten_unflatten
-    def batch_gradients(self, inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        gradients = []
-        for i in range(0, inputs.shape[0], self.batch_size):
-            batch = inputs[i : i + self.batch_size].to(self.device)
-            target = targets[i : i + self.batch_size].to(self.device)
-            batch_gradients = self.gradients(batch, target).detach().cpu()
-            gradients.append(batch_gradients)
-        return torch.cat(gradients, dim=0)
-
-
-class HuggingFaceClassifierWrapper(ClassificationInferenceWrapper):
-    def call_model(self, inputs: torch.Tensor) -> ModelOutput:
-        # TODO : deal with cases where logits is in "start_logits" or "end_logit" attributes
-        return self.model(inputs_embeds=inputs).logits
+    def gradients(self, inputs: Iterable[Mapping[str, torch.Tensor]], targets: torch.Tensor) -> Generator:
+        # TODO : check
+        results = self.inference(inputs, targets)
+        for result, mask in results:
+            result.backward(torch.ones_like(result))
+            yield result.grad, mask

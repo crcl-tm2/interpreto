@@ -29,7 +29,7 @@ Basic standard classes for attribution methods
 from __future__ import annotations
 
 from abc import abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Any
 
 import torch
@@ -40,10 +40,7 @@ from interpreto.attributions.perturbations.base import BasePerturbator
 from interpreto.typing import ModelInput
 
 SingleAttribution = (
-    Float[torch.Tensor, "l"]
-    | Float[torch.Tensor, "l c"]
-    | Float[torch.Tensor, "l l_g"]
-    | Float[torch.Tensor, "l l_t"]
+    Float[torch.Tensor, "l"] | Float[torch.Tensor, "l c"] | Float[torch.Tensor, "l l_g"] | Float[torch.Tensor, "l l_t"]
 )
 
 
@@ -96,7 +93,7 @@ class AttributionExplainer:
         self.device = device
 
     @abstractmethod
-    def explain(self, inputs: ModelInput, target: torch.Tensor | None = None) -> Any:
+    def explain(self, inputs: ModelInput, targets: torch.Tensor | None = None) -> Any:
         # TODO : give more generic type for model output / target
         """
         main process of attribution method
@@ -107,38 +104,14 @@ class AttributionExplainer:
         return self.explain(inputs, targets)
 
 
-class GradientExplainer(AttributionExplainer):
-    """
-    Explainer using differentiability of model to produce explanations (integrated gradients, deeplift...)
-    Can be fully constructed from a perturbation and an aggregation
-    Subclasses of this explainer are mostly reductions to a specific perturbation or aggregation
-    """
-
-    def explain(self, inputs: ModelInput, targets: torch.Tensor | None = None) -> Any:
-        """
-        main process of attribution method
-        """
-        embeddings, _ = self.perturbator.perturb(inputs)
-
-        self.inference_wrapper.to(self.device)
-
-        if targets is None:
-            with torch.no_grad():
-                targets = self.inference_wrapper.call_model(inputs)
-        # repeat target along the p dimension
-        targets = targets.unsqueeze(1).repeat(1, embeddings.shape[1], 1)
-        results = self.inference_wrapper.batch_gradients(embeddings, targets, flatten=True)
-        self.inference_wrapper.cpu()  # TODO: check if we need to do this
-
-        explanation = self.aggregator(results, _)
-
-        return explanation
-
-
 class InferenceExplainer(AttributionExplainer):
     """
     Black box model explainer
     """
+
+    def call_inference_wrapper(self, inputs: Iterable, targets: torch.Tensor) -> Any:
+        pert_per_input_generator = (self.perturbator.perturb(item) for item in inputs)
+        return zip(*self.inference_wrapper.inference(pert_per_input_generator, targets), strict=True)
 
     def explain(self, inputs: ModelInput, targets: torch.Tensor | None = None) -> Any:
         """
@@ -151,21 +124,30 @@ class InferenceExplainer(AttributionExplainer):
 
         if targets is None:
             # split in batchs
-            chunks = [tokens[i : i + self.inference_wrapper.batch_size] for i in range(0, len(tokens), self.inference_wrapper.batch_size)]
+            chunks = [
+                tokens[i : i + self.inference_wrapper.batch_size]
+                for i in range(0, len(tokens), self.inference_wrapper.batch_size)
+            ]
             predictions = []
             with torch.no_grad():
                 for chunk in chunks:
-                    padded_sequences = torch.nn.utils.rnn.pad_sequence([torch.tensor(c) for c in chunk], batch_first=True, padding_value=self.perturbator.tokenizer.pad_token_id)
+                    padded_sequences = torch.nn.utils.rnn.pad_sequence(
+                        [torch.tensor(c) for c in chunk],
+                        batch_first=True,
+                        padding_value=self.perturbator.tokenizer.pad_token_id,
+                    )
                     attention_mask = (padded_sequences != self.perturbator.tokenizer.pad_token_id).int()
-                    predictions += [self.inference_wrapper.call_model({"input_ids": padded_sequences, "attention_mask": attention_mask})]
+                    predictions += [
+                        self.inference_wrapper.call_model(
+                            {"input_ids": padded_sequences, "attention_mask": attention_mask}
+                        )
+                    ]
                 targets = torch.cat(predictions, dim=0)
 
         sorted_indices = sorted(range(len(token_count)), key=lambda k: token_count[k], reverse=True)
         sorted_inputs = [inputs[i] for i in sorted_indices]
 
-        pert_per_input_generator = (self.perturbator.perturb(item) for item in sorted_inputs)
-
-        scores, masks = zip(*self.inference_wrapper.inference(pert_per_input_generator, targets), strict=True)
+        scores, masks = self.call_inference_wrapper(sorted_inputs, targets)
 
         # Unsort
         unsorted_masks = [None] * len(masks)
@@ -178,8 +160,20 @@ class InferenceExplainer(AttributionExplainer):
 
         for score, mask in zip(unsorted_scores, unsorted_masks, strict=True):
             # TODO : this line must be done in inference wrapper
-            #results = torch.sum(score * target.unsqueeze(0).repeat(score.shape[0], 1), dim=-1)
+            # results = torch.sum(score * target.unsqueeze(0).repeat(score.shape[0], 1), dim=-1)
             explanation = self.aggregator(score.unsqueeze(0), mask)
             explanations.append(explanation)
 
         return explanations
+
+
+class GradientExplainer(InferenceExplainer):
+    """
+    Explainer using differentiability of model to produce explanations (integrated gradients, deeplift...)
+    Can be fully constructed from a perturbation and an aggregation
+    Subclasses of this explainer are mostly reductions to a specific perturbation or aggregation
+    """
+
+    def call_inference_wrapper(self, inputs: Iterable, targets: torch.Tensor) -> Any:
+        pert_per_input_generator = (self.perturbator.perturb(item) for item in inputs)
+        return zip(*self.inference_wrapper.gradients(pert_per_input_generator, targets), strict=True)
