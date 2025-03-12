@@ -11,12 +11,16 @@ nav:
   - Tutorials:
     - "Training a concept explainer": notebooks/concept_explainer_training.ipynb
   - API Reference:
+    - Model Wrapping: api/commons/model_wrapping.md
+    - Concept Explainers:
+      - Overview: api/concepts/overview.md
+      - Base Classes: api/concepts/base.md
+      - Sparse Autoencoders: api/concepts/sae.md
+      - Optimization Methods: api/concepts/optim.md
+      - Cockatiel: api/concepts/cockatiel.md
     - Attribution Explainers:
       - Overview: api/attributions/overview.md
       - Raw Gradients: api/attributions/raw_gradients.md
-    - Concept Explainers:
-      - Overview: api/concepts/overview.md
-      - NMF: api/concepts/nmf.md
   - Roadmap: roadmap.md
   - Contributing: contributing.md
   - About: about.md
@@ -48,10 +52,6 @@ plugins:
               - "!^_"
               - "^__init__$"
               - "!^can_replace$"
-              # Hide some methods that Widget subclasses implement but that we don't want
-              # to be shown in the docs.
-              # This is then overridden in widget.md and app.md so that it shows in the
-              # base class.
               - "!^compose$"
               - "!^render$"
               - "!^render_line$"
@@ -59,8 +59,6 @@ plugins:
               - "!^get_content_width$"
               - "!^get_content_height$"
               - "!^compose_add_child$"
-      watch:
-        - interpreto/
 
 # hooks: TODO create files to automate the generation of method tables
 #   - docs/generate_attribution_explainers_overview_table.py
@@ -112,6 +110,9 @@ markdown_extensions:
       anchor_linenums: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - pymdownx.superfences:
       preserve_tabs: true
       custom_fences:
@@ -135,6 +136,7 @@ markdown_extensions:
   - toc:
       baselevel: 1
       permalink: true
+      toc_depth: 3
   - def_list
 
 extra_css:

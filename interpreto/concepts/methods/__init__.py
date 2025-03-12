@@ -24,4 +24,25 @@
 
 from .cockatiel import Cockatiel
 from .neurons_as_concepts import NeuronsAsConcepts
-from .overcomplete_cbe import OvercompleteDictionaryLearning, OvercompleteMethods, OvercompleteSAE
+from .overcomplete import (
+    DeadNeuronsReanimationLoss,
+    MSELoss,
+    OvercompleteDictionaryLearning,
+    OvercompleteOptimClasses,
+    OvercompleteSAE,
+    OvercompleteSAEClasses,
+    SAELoss,
+    SAELossClasses,
+)
+
+__all__ = [
+    "Cockatiel",
+    "DeadNeuronsReanimationLoss",
+    "MSELoss",
+    "NeuronsAsConcepts",
+    "OvercompleteDictionaryLearning",
+    "OvercompleteSAE",
+    "OvercompleteOptimClasses",
+    "OvercompleteSAEClasses",
+    "SAELossClasses",
+]

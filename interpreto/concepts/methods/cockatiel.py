@@ -28,45 +28,68 @@ Implementation of the Cockatiel concept explainer
 
 from __future__ import annotations
 
-# from interpreto.attributions import Occlusion, SobolAttribution
-from interpreto.commons.model_wrapping.model_splitter import ModelSplitterPlaceholder
-from interpreto.concepts.methods.overcomplete_cbe import OvercompleteDictionaryLearning, OvercompleteMethods
+import torch
+
+from interpreto.commons.model_wrapping.model_with_split_points import ModelWithSplitPoints
+from interpreto.concepts.methods.overcomplete import OvercompleteDictionaryLearning, OvercompleteOptimClasses
 from interpreto.typing import ConceptsActivations, ModelInput
 
 
 class Cockatiel(OvercompleteDictionaryLearning):
     """
-    Implementation of the Cockatiel concept explainer
+    Implementation of the Cockatiel concept explainer by Jourdan et al. (2023)[^1].
 
-    Jourdan et al. - ACL 2023 - COCKATIEL: COntinuous Concept ranKed ATtribution with Interpretable ELements for explaining neural net classifiers on NLP
-    https://aclanthology.org/2023.findings-acl.317/
+    [^1]:
+        Jourdan F., Picard A., Fel T., Risser A., Loubes JM., and Asher N. [COCKATIEL: COntinuous Concept ranKed ATtribution with Interpretable ELements for explaining neural net classifiers on NLP.](https://aclanthology.org/2023.findings-acl.317/)
+        Findings of the Association for Computational Linguistics (ACL 2023), pp. 5120–5136, 2023.
 
     Attributes:
-        splitted_model (ModelSplitterPlaceholder): Model splitter
-        concept_encoder_decoder (oc_opt.NMF): Overcomplete NMF concept encoder decoder
-        fitted (bool): Whether the model has been fitted
-        _differentiable_concept_encoder (bool): Whether the concept encoder is differentiable.
-        _differentiable_concept_decoder (bool): Whether the concept decoder is differentiable.
+        model_with_split_points (ModelWithSplitPoints): The model to apply the explanation on.
+            It should have at least one split point on which `concept_model` can be fitted.
+        split_point (str | None): The split point used to train the `concept_model`. Default: `None`, set only when
+            the concept explainer is fitted.
+        concept_model (oc_sae.SAE): An [Overcomplete NMF](https://github.com/KempnerInstitute/overcomplete/blob/main/overcomplete/optimization/nmf.py) encoder-decoder.
+        is_fitted (bool): Whether the `concept_model` was fit on model activations.
+        has_differentiable_concept_encoder (bool): Whether the `encode_activations` operation is differentiable.
+        has_differentiable_concept_decoder (bool): Whether the `decode_concepts` operation is differentiable.
     """
 
-    def __init__(self, splitted_model: ModelSplitterPlaceholder, n_concepts: int, device: str = "cpu"):
+    def __init__(
+        self,
+        model_with_split_points: ModelWithSplitPoints,
+        *,
+        nb_concepts: int,
+        split_point: str | None = None,
+        device: torch.device | str = "cpu",
+        **kwargs,
+    ):
         """
-        Initialize the concept bottleneck explainer based on the Overcomplete concept-encoder-decoder framework.
+        Initialize the Cockatiel bottleneck explainer using the NMF concept extraction method.
 
         Args:
-            splitted_model (ModelSplitterPlaceholder): The model to apply the explanation on. It should be splitted between at least two parts.
-            n_concepts (int): Number of concepts to explain.
-            device (str): Device to use for the concept encoder-decoder.
+            model_with_split_points (ModelWithSplitPoints): The model to apply the explanation on.
+                It should have at least one split point on which a concept explainer can be trained.
+            nb_concepts (int): Size of the SAE concept space.
+            split_point (str | None): The split point used to train the `concept_model`. If None, tries to use the
+                split point of `model_with_split_points` if a single one is defined.
+            device (torch.device | str): Device to use for the `concept_module`.
+            **kwargs (dict): Additional keyword arguments to pass to the `concept_module`.
+                See the Overcomplete documentation of the provided `concept_model_class` for more details.
         """
         super().__init__(
-            splitted_model=splitted_model,
-            ConceptEncoderDecoder=OvercompleteMethods.NMF,
-            n_concepts=n_concepts,
+            model_with_split_points=model_with_split_points,
+            concept_model_class=OvercompleteOptimClasses.SemiNMF.value,
+            nb_concepts=nb_concepts,
+            split_point=split_point,
             device=device,
+            **kwargs,
         )
 
     def input_concept_attribution(
-        self, inputs: ModelInput, concept: int | list[int], **attribution_kwargs
+        self,
+        inputs: ModelInput,
+        concept: int,
+        **attribution_kwargs,
     ) -> list[float]:
         """
         Computes the attribution of each input to a given concept.
@@ -82,16 +105,19 @@ class Cockatiel(OvercompleteDictionaryLearning):
             inputs, concept, "Occlusion", **attribution_kwargs
         )  # TODO: add occlusion class when it exists
 
-    def concept_output_attribution(self, concepts: ConceptsActivations, **attribution_kwargs):
-        """
-        Computes the attribution of each concept to a given example.
+    def concept_output_attribution(
+        self, inputs: ModelInput, concepts: ConceptsActivations, target: int, **attribution_kwargs
+    ) -> list[float]:
+        """Computes the attribution of each concept for the logit of a target output element.
 
         Args:
-            concepts (ConceptsActivations): The concepts to analyze.
+            inputs (ModelInput): An input datapoint for the model.
+            concepts (torch.Tensor): Concept activation tensor.
+            target (int): The target class for which the concept output attribution should be computed.
 
         Returns:
             A list of attribution scores for each concept.
         """
-        super().concept_output_attribution(
-            concepts, attribution_method="SobolAttribution", **attribution_kwargs
+        return super().concept_output_attribution(
+            inputs, concepts, target, attribution_method="SobolAttribution", **attribution_kwargs
         )  # TODO: add sobol class when it exists

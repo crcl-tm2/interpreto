@@ -30,7 +30,7 @@ All contributors with write rights (commit rights) are maintainers.
 
 ### Contributions
 
-Contributions rules are defined and developed in [docs/contributing.md](docs/contributing.md).
+Contributions rules are defined and developed in [docs/contributing.md](./contributing.md).
 
 Pull requests with major changes must be approved by at least two members of the governance committee.
 

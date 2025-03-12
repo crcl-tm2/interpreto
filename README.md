@@ -49,10 +49,12 @@ Feel free to propose your ideas or come and contribute with us on the Libname to
 
 More from the DEEL project:
 
-- [Xplique](https://github.com/deel-ai/xplique) a Python library exclusively dedicated to explaining neural networks.
+- [Xplique](https://github.com/deel-ai/xplique) a Python library dedicated to explaining neural networks (Images, Time Series, Tabular data) on TF.
+- [Puncc](https://github.com/deel-ai/puncc) a Python library for predictive uncertainty quantification using conformal prediction.
+- [oodeel](https://github.com/deel-ai/oodeel) a Python library that performs post-hoc deep Out-of-Distribution (OOD) detection on already trained neural network image classifiers.
 - [deel-lip](https://github.com/deel-ai/deel-lip) a Python library for training k-Lipschitz neural networks on TF.
-- [Influenciae](https://github.com/deel-ai/influenciae) Python toolkit dedicated to computing influence values for the discovery of potentially problematic samples in a dataset.
 - [deel-torchlip](https://github.com/deel-ai/deel-torchlip) a Python library for training k-Lipschitz neural networks on PyTorch.
+- [Influenciae](https://github.com/deel-ai/influenciae) a Python library dedicated to computing influence values for the discovery of potentially problematic samples in a dataset.
 - [DEEL White paper](https://arxiv.org/abs/2103.10529) a summary of the DEEL team on the challenges of certifiable AI and the role of data quality, representativity and explainability for this purpose.
 
 ## 🙏 Acknowledgments
