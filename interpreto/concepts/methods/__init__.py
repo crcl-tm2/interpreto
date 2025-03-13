@@ -23,4 +23,24 @@
 # SOFTWARE.
 
 from .cockatiel import Cockatiel
-from .overcomplete_cbe import OvercompleteDictionaryLearning, OvercompleteMethods, OvercompleteSAE
+from .overcomplete import (
+    DeadNeuronsReanimationLoss,
+    MSELoss,
+    OvercompleteDictionaryLearning,
+    OvercompleteOptimClasses,
+    OvercompleteSAE,
+    OvercompleteSAEClasses,
+    SAELoss,
+    SAELossClasses,
+)
+
+__all__ = [
+    "Cockatiel",
+    "DeadNeuronsReanimationLoss",
+    "MSELoss",
+    "OvercompleteDictionaryLearning",
+    "OvercompleteSAE",
+    "OvercompleteOptimClasses",
+    "OvercompleteSAEClasses",
+    "SAELossClasses",
+]
