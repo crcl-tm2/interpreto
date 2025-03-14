@@ -28,10 +28,10 @@ from enum import Enum
 from typing import Any
 
 import torch
-from nnsight import list as nnsight_list
+from nnsight import dict as nnsight_dict
 from nnsight.intervention import Envoy
+from nnsight.intervention.graph import InterventionProxy
 from nnsight.modeling.language import LanguageModel
-from nnsight.util import fetch_attr
 from transformers import (
     AutoModel,
     BatchEncoding,
@@ -240,7 +240,6 @@ class ModelWithSplitPoints(LanguageModel):
                 names in `self.split_points`, while values correspond to the extracted activations for the split point
                 for the given `inputs`.
         """
-        activations_dict = {}
         if not self.split_points:
             raise RuntimeError(
                 "No split points are currently defined for the model. "
@@ -250,41 +249,50 @@ class ModelWithSplitPoints(LanguageModel):
 
         # Compute activations
         with self.trace(inputs, **kwargs):
-            activations = nnsight_list().save()  # type: ignore
+            activations: dict[str, LatentActivations] = nnsight_dict().save()  # type: ignore
             for idx, split_point in enumerate(self.split_points):
-                curr_module: Envoy = fetch_attr(self, split_point)
+                curr_module: Envoy = self.get(split_point)
                 # Handle case in which module has .output attribute, and .nns_output gets overridden instead
                 module_out_name = "nns_output" if hasattr(curr_module, "nns_output") else "output"
-                activations.append(getattr(curr_module, module_out_name))
+                activations[split_point] = getattr(curr_module, module_out_name)
                 # Early stopping at the last splitting layer
                 if idx == len(self.split_points) - 1:
                     getattr(curr_module, module_out_name).stop()
 
-        # TODO: Ideally we would not need to unpack tuples, check if necessary
-        for idx, split in enumerate(self.split_points):
-            act = activations.value[idx]
-            activations_dict[split] = act[0] if isinstance(act, tuple) else act
-
         # Validate that activations have the expected type
-        for layer, act in activations_dict.items():
+        for layer, act in activations.items():
             if not isinstance(act, torch.Tensor):
                 raise RuntimeError(
                     f"Invalid output for layer '{layer}'. Expected torch.Tensor activation, got {type(act)}: {act}"
                 )
-            if len(activations_dict[layer].shape) != 3:
+            if len(activations[layer].shape) != 3:
                 raise RuntimeError(
                     f"Invalid output for layer '{layer}'. Expected a torch.Tensor activation with shape"
-                    f"(batch_size, sequence_length, model_dim), got {activations_dict[layer].shape}"
+                    f"(batch_size, sequence_length, model_dim), got {activations[layer].shape}"
                 )
 
             # Apply selection rule
             if select_indices:
-                activations_dict[layer] = activations_dict[layer][:, select_indices, :]
+                activations[layer] = activations[layer][:, select_indices, :]
             if ActivationSelectionStrategy.is_match(select_strategy, ActivationSelectionStrategy.FLATTEN):
-                activations_dict[layer] = activations_dict[layer].flatten(0, 1)
-                if len(activations_dict[layer].shape) != 2:
+                activations[layer] = activations[layer].flatten(0, 1)
+                if len(activations[layer].shape) != 2:
                     raise RuntimeError(
                         f"Invalid output for layer '{layer}'. Expected a torch.Tensor activation with shape"
                         f"(batch_size x sequence_length, model_dim), got {activations[layer].shape}"
                     )
-        return activations_dict
+        return activations
+
+    def get_latent_shape(
+        self,
+        inputs: str | list[str] | BatchEncoding | None = None,
+    ) -> dict[str, torch.Size]:
+        """Get the shape of the latent activations at the specified split point."""
+        with self.scan(self._example_input if inputs is None else inputs):
+            sizes = {}
+            for split_point in self.split_points:
+                curr_module = self.get(split_point)
+                module_out_name = "nns_output" if hasattr(curr_module, "nns_output") else "output"
+                module: InterventionProxy = getattr(curr_module, module_out_name)
+                sizes[split_point] = module.shape
+        return sizes

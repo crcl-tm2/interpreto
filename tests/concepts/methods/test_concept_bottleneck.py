@@ -76,7 +76,7 @@ def test_overcomplete_cbe(encoder_lm_splitter: ModelWithSplitPoints):
     """Test OvercompleteSAE and OvercompleteDictionaryLearning"""
 
     txt = ["Hello, my dog is cute", "The cat is on the [MASK]"]
-    split = "bert.encoder.layer.1"
+    split = "bert.encoder.layer.1.output"
     nb_concepts = 3
     encoder_lm_splitter.split_points = split
     activations = encoder_lm_splitter.get_activations(txt, select_strategy="flatten")
