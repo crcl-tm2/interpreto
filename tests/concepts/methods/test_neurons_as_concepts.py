@@ -28,65 +28,50 @@ Tests for `NeuronsAsConcepts` concept explainer
 
 from __future__ import annotations
 
+import pytest
 import torch
-from torch import nn
-from torch.nn import functional as F
+from pytest import fixture
+from transformers import AutoModelForMaskedLM
 
-from interpreto.commons.model_wrapping.model_splitter import ModelSplitterPlaceholder
+from interpreto.commons.model_wrapping.model_with_split_points import ModelWithSplitPoints
 from interpreto.concepts import NeuronsAsConcepts
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-class EasilySplittableModel(nn.Module):
-    """
-    Dummy model with two parts for testing purposes
-    """
-
-    def __init__(self, input_size: int = 10, hidden_size: int = 20, output_size: int = 2):
-        super().__init__()
-        self.fc1 = nn.Linear(input_size, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, hidden_size)
-        self.fc3 = nn.Linear(hidden_size, hidden_size)
-        self.fc4 = nn.Linear(hidden_size, output_size)
-
-    def input_to_latent(self, x: torch.Tensor) -> torch.Tensor:
-        x = F.relu(self.fc1(x))
-        return F.relu(self.fc2(x))
-
-    def end_model(self, x: torch.Tensor) -> torch.Tensor:
-        x = F.relu(self.fc3(x))
-        return F.relu(self.fc4(x))
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.input_to_latent(x)
-        return self.end_model(x)
+@fixture
+def encoder_lm_splitter() -> ModelWithSplitPoints:
+    return ModelWithSplitPoints(
+        "huawei-noah/TinyBERT_General_4L_312D",
+        split_points=[],
+        model_autoclass=AutoModelForMaskedLM,  # type: ignore
+    )
 
 
-def test_identity_concepts_encoding_decoding():
+def test_overcomplete_cbe(encoder_lm_splitter: ModelWithSplitPoints):
     """
     Test that the concept encoding and decoding of the `NeuronsAsConcepts` is the identity
     """
-    n_samples = 20
-    input_size = 5
-    hidden_size = 10
 
-    model = EasilySplittableModel(input_size=input_size, hidden_size=hidden_size, output_size=2)
-    split = "input_to_latent"
-    splitted_model = ModelSplitterPlaceholder(model, split)
+    txt = ["Hello, my dog is cute", "The cat is on the [MASK]"]
+    split = "bert.encoder.layer.1"
+    encoder_lm_splitter.split_points = split
+    activations = encoder_lm_splitter.get_activations(txt, select_strategy="flatten")
+    assert activations[split].shape == (16, 312)
 
-    inputs = torch.randn(n_samples, input_size)
-    activations = splitted_model.get_activations(inputs)[split]
+    concept_explainer = NeuronsAsConcepts(model_with_split_points=encoder_lm_splitter, split_point=split)
 
-    concept_explainer = NeuronsAsConcepts(splitted_model)
+    assert concept_explainer.is_fitted is True  # splitted_model has a single split so it is fitted
+    assert concept_explainer.split_point == split
+    assert hasattr(concept_explainer, "has_differentiable_concept_encoder")
+    assert hasattr(concept_explainer, "has_differentiable_concept_decoder")
+    assert concept_explainer.concept_model.nb_concepts == 312
 
-    assert concept_explainer.fitted is True  # splitted_model has a single split so it is fitted
-    assert concept_explainer.split == split
-    assert hasattr(concept_explainer, "_differentiable_concept_encoder")
-    assert hasattr(concept_explainer, "_differentiable_concept_decoder")
-
-    concepts = concept_explainer.encode_activations(activations)
+    concepts = concept_explainer.encode_activations(activations[split])
     reconstructed_activations = concept_explainer.decode_concepts(concepts)
 
-    assert torch.allclose(concepts, activations)
-    assert torch.allclose(reconstructed_activations, activations)
+    assert torch.allclose(concepts, activations[split])
+    assert torch.allclose(reconstructed_activations, activations[split])
+
+    with pytest.raises(NotImplementedError):
+        concept_explainer.fit(activations[split])

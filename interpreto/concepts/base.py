@@ -37,9 +37,10 @@ from typing import Any, Generic, TypeVar
 import torch
 from overcomplete.base import BaseDictionaryLearning
 from torch import nn
+from transformers import BatchEncoding
 
 from interpreto.attributions.base import AttributionExplainer
-from interpreto.commons.model_wrapping.model_with_split_points import ModelWithSplitPoints
+from interpreto.commons.model_wrapping.model_with_split_points import ActivationSelectionStrategy, ModelWithSplitPoints
 from interpreto.typing import ConceptsActivations, LatentActivations, ModelInput
 
 Module = TypeVar("Module", bound=nn.Module)
@@ -96,8 +97,12 @@ class AbstractConceptExplainer(ABC, Generic[Module]):
         self.model_with_split_points: ModelWithSplitPoints = model_with_split_points
         self.concept_model: Module = concept_model
         self.split_point: str = self.get_and_verify_split_point(split_point)
-        self.is_fitted: bool = False
+        self.__is_fitted: bool = False
         self.has_differentiable_concept_encoder = False
+
+    @property
+    def is_fitted(self) -> bool:
+        return self.__is_fitted
 
     def __repr__(self):
         return dedent(f"""\
@@ -195,15 +200,19 @@ class AbstractConceptExplainer(ABC, Generic[Module]):
         return split_activations
 
     @check_fitted
-    def top_k_inputs_for_concept(self, inputs: ModelInput, concept_id: int, k: int = 5) -> list[tuple[str, float]]:
+    def top_k_inputs_for_concept(
+        self,
+        inputs: str | list[str] | BatchEncoding,
+        concepts_indices: int | list[int] | Literal[all] = "all",
+        k: int = 5,
+    ) -> list[tuple[str, float]]:
         """
         Retrieves the top-k most important input elements (tokens/words/clauses/phrases) related to a given concept.
 
         Args:
             inputs (ModelInput): The input data, which can be a string, a list of tokens/words/clauses/sentences
                 or a dataset.
-            concept_id (int): Index identifying the position of the concept of interest (score in the
-                `ConceptActivations` tensor) for which relevant elements should be retrieved.
+            concepts_indices (int | list[int] | Literal["all"]): The concept index (or list of concepts indices) to analyze. Defaults to "all".
             k: The number of input elements to retrieve. Defaults to 5.
 
         Returns:
@@ -211,15 +220,22 @@ class AbstractConceptExplainer(ABC, Generic[Module]):
                 for the specified concept and its importance scores.
         """
         self.split_point: str  # Verified by check_fitted
-        activations = self.model_with_split_points.get_activations(inputs)
-        return self.top_k_inputs_for_concept_from_activations(inputs, activations[self.split_point], concept_id, k)
+        activations = self.model_with_split_points.get_activations(
+            inputs, select_strategy=ActivationSelectionStrategy.FLATTEN
+        )
+        splitted_inputs = [
+            self.model_with_split_points.tokenizer.tokenize(input_sentence) for input_sentence in inputs
+        ]  # TODO: see if we do not wrap this function in the model_with_split_points
+        return self.top_k_inputs_for_concept_from_activations(
+            splitted_inputs, activations[self.split_point], concepts_indices, k
+        )
 
     @check_fitted
     def top_k_inputs_for_concept_from_activations(
         self,
-        inputs: ModelInput,
-        activations: LatentActivations,
-        concepts_indices: int | list[int] | Literal["all"] = "all",
+        splitted_inputs: list[list[str]],
+        activations: LatentActivations | dict[str, LatentActivations],
+        concepts_indices: int | list[int] | Literal[all] = "all",
         k: int = 5,
     ) -> dict[int, list[tuple[str, float]]]:
         """
@@ -229,16 +245,23 @@ class AbstractConceptExplainer(ABC, Generic[Module]):
         Args:
             inputs (ModelInput): The input data, which can be a string, a list of tokens/words/clauses/sentences
                 or a dataset.
-            activations (LatentActivations): The activations to use for the analysis. They should correspond to the inputs. Shape: (n, l, d)
+            activations (LatentActivations | dict[str, LatentActivations]): The activations to use for the analysis. They should correspond to the inputs. Shape: (n*l, d)
             concepts_indices (int | list[int] | Literal["all"]): The concept index (or list of concepts indices) to analyze. Defaults to "all".
             k (int): The number of important textual elements to retrieve. Defaults to 5.
 
         Returns:
             interpretation_dict (dict[int, list[tuple[str, float]]]): A dictionary with keys corresponding to the `concept` index and values containing the top-k most relevant textual elements and their importance scores.
         """
-        assert self.fitted, "Concept explainer has not been fitted yet."
-        assert len(inputs) == len(activations), "Number of inputs and activations should be the same."
-        n_tokens = len(inputs[0])
+        if isinstance(activations, dict):
+            self.verify_activations(activations)
+            split_activations = activations[self.split_point]
+        else:
+            split_activations = activations
+        if not len(split_activations) % len(splitted_inputs) == 0:
+            raise ValueError(
+                f"Number of inputs and activations should be the same. Got {len(splitted_inputs)} inputs and {len(split_activations)} activations."
+            )
+        n_tokens = len(split_activations) // len(splitted_inputs)
 
         # Shape: (n*l, d)
         flattened_activations: LatentActivations = activations.view(-1, activations.shape[-1])
@@ -268,19 +291,23 @@ class AbstractConceptExplainer(ABC, Generic[Module]):
 
         # extract indices of the top-k input tokens for each specified concept
         topk_output = torch.topk(concepts_activations, k=k, dim=0)
-        topk_activations: Float[torch.Tensor, "cpt_of_interest k"] = topk_output[0].T
-        topk_indices: Int[torch.Tensor, "cpt_of_interest k"] = topk_output[1].T
+        topk_activations = topk_output[0].T  # Shape: (cpt_of_interest, k)
+        topk_indices = topk_output[1].T  # Shape: (cpt_of_interest, k)
 
         interpretation_dict = {}
         # iterate over required concepts
         for c, top_indices, top_activations in zip(concepts_indices, topk_indices, topk_activations, strict=True):
             interpretation_dict[c] = [
                 (
-                    inputs[top_indices[rank] // n_tokens][top_indices[rank] % n_tokens],  # the token
+                    splitted_inputs[top_indices[rank] // n_tokens][top_indices[rank] % n_tokens],  # the token
                     top_activations[rank].item(),  # the corresponding concept activation
                 )
+                if top_indices[rank] % n_tokens < len(splitted_inputs[top_indices[rank] // n_tokens])
+                else "[PAD]"
                 for rank in range(k)
             ]
+
+        # TODO: find a way to remove duplicate in the topk inputs but keep k outputs
 
         return interpretation_dict
 
@@ -348,6 +375,10 @@ class ConceptBottleneckExplainer(AbstractConceptExplainer[BaseDictionaryLearning
         super().__init__(model_with_split_points, concept_model, split_point)
         self.has_differentiable_concept_decoder = False
 
+    @property
+    def is_fitted(self) -> bool:
+        return self.concept_model.fitted
+
     def __repr__(self):
         return dedent(f"""\
             {self.__class__.__name__}(
@@ -384,7 +415,7 @@ class ConceptBottleneckExplainer(AbstractConceptExplainer[BaseDictionaryLearning
         return self.concept_model.decode(concepts)  # type: ignore
 
     @check_fitted
-    def get_dictionary(self) -> torch.Tensor:
+    def get_dictionary(self) -> torch.Tensor:  # TODO: add this to tests
         """Get the dictionary learned by the fitted `concept_model`.
 
         Returns:

@@ -37,6 +37,8 @@ from transformers import AutoModelForMaskedLM
 
 from interpreto.commons.model_wrapping.model_with_split_points import ModelWithSplitPoints
 from interpreto.concepts import (
+    # Cockatiel,
+    NeuronsAsConcepts,
     OvercompleteDictionaryLearning,
     OvercompleteOptimClasses,
     OvercompleteSAE,
@@ -45,7 +47,7 @@ from interpreto.concepts import (
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-ALL_CONCEPT_METHODS = list(OvercompleteSAEClasses) + list(OvercompleteOptimClasses)
+ALL_CONCEPT_METHODS = list(OvercompleteSAEClasses) + list(OvercompleteOptimClasses) + [NeuronsAsConcepts]
 
 
 @fixture
@@ -84,10 +86,12 @@ def test_overcomplete_cbe(encoder_lm_splitter: ModelWithSplitPoints):
 
     # iterate over all methods from the namedtuple listing them
     for method in ALL_CONCEPT_METHODS:
-        if issubclass(method.value, oc_sae.SAE):
+        if method == NeuronsAsConcepts:
+            cbe = method(encoder_lm_splitter, split_point=split)
+        elif issubclass(method.value, oc_sae.SAE):
             cbe = OvercompleteSAE(encoder_lm_splitter, method.value, nb_concepts=nb_concepts, device=DEVICE)
             cbe.fit(activations, nb_epochs=1, batch_size=1, device=DEVICE)
-        else:
+        elif issubclass(method.value, oc_opt.BaseOptimDictionaryLearning):
             cbe = OvercompleteDictionaryLearning(
                 encoder_lm_splitter,
                 method.value,
@@ -95,17 +99,26 @@ def test_overcomplete_cbe(encoder_lm_splitter: ModelWithSplitPoints):
                 device=DEVICE,
             )
             cbe.fit(activations)
+        else:
+            raise ValueError(f"Unknown method {method}")
         try:
             assert hasattr(cbe, "concept_model")
+            assert hasattr(cbe.concept_model, "nb_concepts")
             assert hasattr(cbe, "model_with_split_points")
+            assert cbe.concept_model.fitted
             assert cbe.is_fitted
             assert cbe.split_point == split
             assert hasattr(cbe, "has_differentiable_concept_encoder")
             assert hasattr(cbe, "has_differentiable_concept_decoder")
 
             concepts = cbe.encode_activations(activations[cbe.split_point])
-            assert concepts.shape == (16, nb_concepts)
             reconstructed_activations = cbe.decode_concepts(concepts)
             assert reconstructed_activations.shape == (16, 312)
+            if method == NeuronsAsConcepts:
+                assert cbe.concept_model.nb_concepts == 312
+                assert concepts.shape == (16, 312)
+            else:
+                assert cbe.concept_model.nb_concepts == nb_concepts
+                assert concepts.shape == (16, nb_concepts)
         except Exception as e:
             raise AssertionError(f"Error with {method}") from e

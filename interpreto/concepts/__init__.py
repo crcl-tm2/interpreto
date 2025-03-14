@@ -37,6 +37,7 @@ __all__ = [
     "AbstractConceptExplainer",
     "ConceptBottleneckExplainer",
     "Cockatiel",
+    "NeuronsAsConcepts",
     "OvercompleteDictionaryLearning",
     "OvercompleteSAE",
     "OvercompleteOptimClasses",

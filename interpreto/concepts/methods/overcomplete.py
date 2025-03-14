@@ -202,7 +202,6 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
         self,
         model_with_split_points: ModelWithSplitPoints,
         concept_model_class: type[oc_sae.SAE],
-        *,
         nb_concepts: int,
         split_point: str | None = None,
         encoder_module: nn.Module | str | None = None,
@@ -262,7 +261,6 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
     def fit(
         self,
         activations: LatentActivations | dict[str, LatentActivations],
-        *,
         use_amp: bool = False,
         batch_size: int = 1024,
         criterion: type[SAELoss] = MSELoss,
@@ -323,7 +321,7 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
         else:
             train_method = oc_sae.train_sae
         log = train_method(**train_params)
-        self.is_fitted = True
+        self.concept_model.fitted = True
         return log
 
     @check_fitted
@@ -375,7 +373,6 @@ class OvercompleteDictionaryLearning(ConceptBottleneckExplainer):
         self,
         model_with_split_points: ModelWithSplitPoints,
         concept_model_class: type[oc_opt.BaseOptimDictionaryLearning],
-        *,
         nb_concepts: int,
         split_point: str | None = None,
         device: torch.device | str = "cpu",
@@ -426,4 +423,3 @@ class OvercompleteDictionaryLearning(ConceptBottleneckExplainer):
         """
         split_activations = self.prepare_fit(activations, overwrite=overwrite)
         self.concept_model.fit(split_activations, **kwargs)
-        self.is_fitted = True

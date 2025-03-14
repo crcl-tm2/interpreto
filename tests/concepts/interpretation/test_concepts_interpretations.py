@@ -31,41 +31,25 @@ using the `NeuronsAsConcepts` concept explainer
 from __future__ import annotations
 
 import torch
-from torch import nn
-from torch.nn import functional as F
+from pytest import fixture
+from transformers import AutoModelForMaskedLM
 
-from interpreto.commons.model_wrapping.model_splitter import ModelSplitterPlaceholder
+from interpreto.commons.model_wrapping.model_with_split_points import ModelWithSplitPoints
 from interpreto.concepts import NeuronsAsConcepts
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-class EasilySplittableModel(nn.Module):
-    """
-    Dummy model with two parts for testing purposes
-    """
-
-    def __init__(self, input_size: int = 10, hidden_size: int = 20, output_size: int = 2):
-        super().__init__()
-        self.fc1 = nn.Linear(input_size, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, hidden_size)
-        self.fc3 = nn.Linear(hidden_size, hidden_size)
-        self.fc4 = nn.Linear(hidden_size, output_size)
-
-    def input_to_latent(self, x: torch.Tensor) -> torch.Tensor:
-        x = F.relu(self.fc1(x))
-        return F.relu(self.fc2(x))
-
-    def end_model(self, x: torch.Tensor) -> torch.Tensor:
-        x = F.relu(self.fc3(x))
-        return F.relu(self.fc4(x))
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.input_to_latent(x)
-        return self.end_model(x)
+@fixture
+def encoder_lm_splitter() -> ModelWithSplitPoints:
+    return ModelWithSplitPoints(
+        "huawei-noah/TinyBERT_General_4L_312D",
+        split_points=[],
+        model_autoclass=AutoModelForMaskedLM,  # type: ignore
+    )
 
 
-def test_topk_tokens_from_activations():
+def test_topk_inputs_from_activations(encoder_lm_splitter: ModelWithSplitPoints):
     """
     Test that the `top_k_tokens_for_concept_from_activations` method works as expected
     Fake activations are given to the `NeuronsAsConcepts` explainer
@@ -77,21 +61,27 @@ def test_topk_tokens_from_activations():
     n_samples = k * hidden_size
     assert k <= n_tokens  # otherwise the test will break
 
-    model = EasilySplittableModel(input_size=input_size, hidden_size=hidden_size, output_size=2)
-    split = "input_to_latent"
-    splitted_model = ModelSplitterPlaceholder(model, split)
-
+    # generating data and fake activations
+    # ['word_s0_t0', 'word_s0_t1',... 'word_s0_tn_tokens', 'word_s1_t0', 'word_s1_t1', ... 'word_s1_tn_tokens', ...]
+    # sentences_list = [" ".join([f"word_s{i}_t{j}" for j in range(n_tokens)]) for i in range(n_samples)]
+    words_list_list = [[f"word_s{i}_t{j}" for j in range(n_tokens)] for i in range(n_samples)]
     fake_activations = torch.zeros(n_samples, n_tokens, hidden_size)
     for i in range(hidden_size):
         for j in range(k):
             fake_activations[i, (i + j) % n_tokens, i] = k - j
+    fake_activations = fake_activations.view(-1, hidden_size)
 
-    words_list_list = [[f"word_s{i}_t{j}" for j in range(n_tokens)] for i in range(n_samples)]
+    # initializing the explainer
+    split = "bert.encoder.layer.1"
+    encoder_lm_splitter.split_points = split
+    concept_explainer = NeuronsAsConcepts(model_with_split_points=encoder_lm_splitter, split_point=split)
 
-    concept_explainer = NeuronsAsConcepts(splitted_model)
+    # forcing the input_size of the concept model
+    concept_explainer.concept_model.input_size = input_size
 
-    all_top_k_tokens = concept_explainer.top_k_tokens_for_concept_from_activations(
-        inputs=words_list_list, activations=fake_activations, k=k, concepts_indices="all"
+    # extracting concept interpretations
+    all_top_k_tokens = concept_explainer.top_k_inputs_for_concept_from_activations(
+        splitted_inputs=words_list_list, activations=fake_activations, k=k, concepts_indices="all"
     )
 
     assert isinstance(all_top_k_tokens, dict) and len(all_top_k_tokens) == hidden_size
@@ -110,8 +100,8 @@ def test_topk_tokens_from_activations():
             assert w[1] == k - i
 
     indices = [0, 2, 4]
-    subset_top_k_tokens = concept_explainer.top_k_tokens_for_concept_from_activations(
-        inputs=words_list_list, activations=fake_activations, k=k, concepts_indices=indices
+    subset_top_k_tokens = concept_explainer.top_k_inputs_for_concept_from_activations(
+        splitted_inputs=words_list_list, activations=fake_activations, k=k, concepts_indices=indices
     )
 
     assert isinstance(subset_top_k_tokens, dict) and len(subset_top_k_tokens) == 3
@@ -119,11 +109,54 @@ def test_topk_tokens_from_activations():
         assert subset_top_k_tokens[c] == all_top_k_tokens[c]
 
     index = 0
-    single_top_k_tokens = concept_explainer.top_k_tokens_for_concept_from_activations(
-        inputs=words_list_list, activations=fake_activations, k=k, concepts_indices=index
+    single_top_k_tokens = concept_explainer.top_k_inputs_for_concept_from_activations(
+        splitted_inputs=words_list_list, activations=fake_activations, k=k, concepts_indices=index
     )
     assert isinstance(single_top_k_tokens, dict) and len(single_top_k_tokens) == 1
     assert single_top_k_tokens[index] == all_top_k_tokens[index]
 
 
-test_topk_tokens_from_activations()  # TODO: remove
+def test_topk_tokens(encoder_lm_splitter: ModelWithSplitPoints):
+    """
+    Test that the `top_k_tokens_for_concept` method works as expected
+    Fake activations are given to the `NeuronsAsConcepts` explainer
+    """
+    hidden_size = 312
+    n_tokens = 6
+    k = 3
+    n_samples = k * 5
+    assert k <= n_tokens  # otherwise the test will break
+
+    # generating data (these have no importance)
+    joined_tokens_list = [" ".join([f"{i}{j}" for j in range(n_tokens)]) for i in range(n_samples)]
+    larger_input = " ".join(["test" for _ in range(2 * n_tokens)])
+    joined_tokens_list.append(larger_input)
+
+    # initializing the explainer
+    split = "bert.encoder.layer.1"
+    encoder_lm_splitter.split_points = split
+    concept_explainer = NeuronsAsConcepts(model_with_split_points=encoder_lm_splitter, split_point=split)
+
+    # extracting concept interpretations
+    all_top_k_tokens = concept_explainer.top_k_inputs_for_concept(joined_tokens_list, k=k, concepts_indices="all")
+
+    assert isinstance(all_top_k_tokens, dict) and len(all_top_k_tokens) == hidden_size
+
+    for c in range(hidden_size):
+        # correct format dict[int, list[tuple[str, float]]]
+        assert isinstance(all_top_k_tokens[c], list) and len(all_top_k_tokens[c]) == k
+
+        # no duplicates
+        # assert len(all_top_k_tokens[c]) == len(set(all_top_k_tokens[c]))  # TODO: add this test back
+
+    indices = [0, 2, 4]
+    subset_top_k_tokens = concept_explainer.top_k_inputs_for_concept(joined_tokens_list, k=k, concepts_indices=indices)
+
+    assert isinstance(subset_top_k_tokens, dict) and len(subset_top_k_tokens) == 3
+    for c in indices:
+        assert subset_top_k_tokens[c] == all_top_k_tokens[c]
+
+    index = 0
+    single_top_k_tokens = concept_explainer.top_k_inputs_for_concept(joined_tokens_list, k=k, concepts_indices=index)
+    assert isinstance(single_top_k_tokens, dict) and len(single_top_k_tokens) == 1
+    assert single_top_k_tokens[index] == all_top_k_tokens[index]
