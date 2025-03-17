@@ -5,7 +5,7 @@ from interpreto.attributions.perturbations.sobol_perturbation import SequenceSam
 
 
 @pytest.mark.parametrize(
-    "sobol_indices, sampler, expected_shape",
+    "sobol_indices, sampler",
     [
         (SobolIndicesOrders.FIRST_ORDER, SequenceSamplers.SOBOL),
         (SobolIndicesOrders.TOTAL_ORDER, SequenceSamplers.SOBOL),

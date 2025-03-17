@@ -1,5 +1,6 @@
 from itertools import product
 
+import pytest
 import torch
 from nnsight import NNsight
 from tests.fixtures.model_zoo import (
@@ -14,10 +15,21 @@ from tests.fixtures.model_zoo import (
     # SmallTextGenerator,
     SmallViTModel,
 )
+from transformers import (
+    AutoModelForCausalLM,
+    AutoModelForMaskedLM,
+    AutoModelForSeq2SeqLM,
+    AutoModelForSequenceClassification,
+    # AutoModelForMultipleChoice,
+    # AutoModelForQuestionAnswering,
+    # AutoModelForTokenClassification,
+    AutoTokenizer,
+)
 
 from interpreto.attributions import (
     IntegratedGradients,
 )
+from interpreto.attributions.base import AttributionOutput
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -66,29 +78,65 @@ def test_attribution_methods_with_3d_input_models():
         assert attributions.shape == input_shape
 
 
-# def test_attribution_methods_with_text_classifier():
-#     tokenizer = SimpleTokenizer()
-#     classifier = SmallTextClassifier()
+model_loader_combinations = [
+    ("hf-internal-testing/tiny-random-DebertaV2Model", AutoModelForSequenceClassification),
+    ("hf-internal-testing/tiny-random-DebertaV2Model", AutoModelForMaskedLM),
+    ("hf-internal-testing/tiny-random-xlm-roberta", AutoModelForSequenceClassification),
+    ("hf-internal-testing/tiny-random-xlm-roberta", AutoModelForMaskedLM),
+    ("hf-internal-testing/tiny-random-DistilBertModel", AutoModelForSequenceClassification),
+    ("hf-internal-testing/tiny-random-DistilBertModel", AutoModelForMaskedLM),
+    ("hf-internal-testing/tiny-random-t5", AutoModelForSequenceClassification),
+    ("hf-internal-testing/tiny-random-t5", AutoModelForSeq2SeqLM),
+    ("hf-internal-testing/tiny-random-LlamaForCausalLM", AutoModelForCausalLM),
+    ("hf-internal-testing/tiny-random-gpt2", AutoModelForCausalLM),
+]
+# Currently supported: AutoModelForSequenceClassification, AutoModelForMaskedLM, AutoModelForSeq2SeqLM, AutoModelForCausalLM.
+# To do later:
+# list_load_model = [
+#     AutoModelForMultipleChoice,
+#     AutoModelForQuestionAnswering,
+#     AutoModelForTokenClassification,
+# ]
 
-#     input_text = "word1 word5 word20"
-#     tokenized_text = tokenizer.encode(input_text).unsqueeze(0)  # (batch_size=1, seq_len)
-
-#     for attribution_explainer in attribution_methods_to_test:
-#         attributions = attribution_explainer(classifier, batch_size=3).explain(tokenized_text)
-
-#         assert attributions.shape == torch.Size([1, 10])
+all_combinations = list(product(model_loader_combinations, attribution_methods_to_test))
 
 
-# def test_attribution_methods_with_text_generator():  # TODO: add this test
-#     tokenizer = SimpleTokenizer()
-#     generator = SmallTextGenerator()
+@pytest.mark.parametrize("model_name, model_loader, attribution_explainer", all_combinations)
+def test_attribution_methods_with_text(model_name, model_loader, attribution_explainer):
+    """Tests all combinations of models and loaders with an attribution method"""
+    input_text = [
+        "I love this movie!",
+        "You are the best",
+        "The cat is on the mat.",
+        "My preferred film is Titanic",
+        "Sorry, I am late,",
+    ]
 
-#     input_text = "word1 word5 word20"
-#     tokenized_text = tokenizer.encode(input_text).unsqueeze(0)  # (batch_size=1, seq_len)
+    try:
+        model = model_loader.from_pretrained(model_name).to(DEVICE)
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-#     for attribution_explainer in attribution_methods_to_test:
-#         attributions = attribution_explainer(generator).explain(
-#             tokenized_text, tokenized_text
-#         )  # TODO: check if this is correct
+        assert model is not None, f"Model loading failed {model_name}"
+        assert tokenizer is not None, f"Tokenizer failed to load for {model_name}"
 
-#         assert attributions.shape == torch.Size([1, 20, 10])
+        # To be changed according to the final form of the explainer:
+        attributions = attribution_explainer(model, tokenizer=tokenizer, batch_size=3, device=DEVICE).explain(
+            input_text
+        )
+
+        # Checks:
+        assert isinstance(attributions, list), "The output of the attribution explainer must be a list"
+        assert len(attributions) == len(input_text), (
+            "The number of elements in the list must correspond to the number of inputs."
+        )
+        assert all(isinstance(attribution, AttributionOutput) for attribution in attributions), (
+            "The elements of the list must be of type AttributionOutput."
+        )
+        assert all(len(attribution.elements) == len(attribution.attributions) for attribution in attributions), (
+            "In the AttributionOutput class, elements and attributions must have the same length."
+        )
+
+    except Exception as e:
+        pytest.fail(
+            f"The test failed for {model_name} with {model_loader} and {attribution_explainer.__class__.__name__}: {str(e)}"
+        )
