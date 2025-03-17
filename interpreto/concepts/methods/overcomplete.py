@@ -37,7 +37,7 @@ from overcomplete import sae as oc_sae
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from interpreto.commons.model_wrapping.model_with_split_points import ActivationSelectionStrategy, ModelWithSplitPoints
+from interpreto.commons.model_wrapping.model_with_split_points import ModelWithSplitPoints
 from interpreto.concepts.base import ConceptBottleneckExplainer, check_fitted
 from interpreto.typing import LatentActivations
 
@@ -210,8 +210,6 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
         concept_model_class: type[oc_sae.SAE],
         *,
         nb_concepts: int,
-        activation_select_strategy: str | ActivationSelectionStrategy = ActivationSelectionStrategy.ALL,
-        activation_select_indices: int | list[int] | tuple[int] | None = None,
         split_point: str | None = None,
         encoder_module: nn.Module | str | None = None,
         dictionary_params: dict | None = None,
@@ -241,16 +239,12 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
                 "Use `interpreto.concepts.methods.OvercompleteSAEClasses` to get the list of available SAE methods."
             )
         self.model_with_split_points = model_with_split_points
-        self.split_point = split_point
+        self.split_point: str = split_point  # type: ignore
 
         # TODO: this will be replaced with a scan and a better way to select how to pick activations based on model class
-        activations = self.model_with_split_points.get_activations(
-            self.model_with_split_points._example_input,
-            select_strategy=activation_select_strategy,
-            select_indices=activation_select_indices,
-        )
+        shapes = self.model_with_split_points.get_latent_shape()
         concept_model = concept_model_class(
-            input_shape=activations[self.split_point].shape[-1],
+            input_shape=shapes[self.split_point][-1],
             nb_concepts=nb_concepts,
             encoder_module=encoder_module,
             dictionary_params=dictionary_params,
