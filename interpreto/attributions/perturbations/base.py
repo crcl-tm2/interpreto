@@ -47,12 +47,12 @@ class GranularityLevel(Enum):
     DEFAULT = TOKEN
 
     @staticmethod
-    def __all_tokens_assoc_matrix(tokens_ids):
+    def __all_tokens_assoc_matrix(tokens_ids:Mapping[str, torch.Tensor]):
         n, l_p = tokens_ids["input_ids"].shape
         return torch.eye(l_p).unsqueeze(0).expand(n, -1, -1)
 
     @staticmethod
-    def __token_assoc_matrix(tokens_ids):
+    def __token_assoc_matrix(tokens_ids:Mapping[str, torch.Tensor]):
         # TODO : remake this using only tensor operation (if possible ?)
         n, l_p = tokens_ids["input_ids"].shape
         perturbable_matrix = torch.diag_embed(1 - tokens_ids["special_tokens_mask"])
@@ -64,9 +64,13 @@ class GranularityLevel(Enum):
         return result
 
     @staticmethod
-    def __word_assoc_matrix(tokens_ids):
-        # TODO : implement word granularity level
-        raise NotImplementedError("Word granularity level not implemented")
+    def __word_assoc_matrix(tokens_ids:Mapping[str, torch.Tensor]):
+        n, l_p = tokens_ids["input_ids"].shape
+        l_t = GranularityLevel.get_length(tokens_ids, GranularityLevel.WORD).max()
+        index_tensor = torch.nn.utils.rnn.pad_sequence([torch.tensor([a if a is not None else l_t for a in elem]) for elem in [tokens_ids.word_ids(i) for i in range(n)]], batch_first=True, padding_value=l_t + 1)
+        reference = torch.diagonal_scatter(torch.zeros(l_t + 1, l_t), torch.ones(l_t))
+        res = torch.index_select(reference, 0, index_tensor.flatten()).reshape(index_tensor.shape + (reference.shape[1],)).transpose(-1, -2)
+        return res
 
     @staticmethod
     def get_length(
@@ -84,12 +88,11 @@ class GranularityLevel(Enum):
         """
         match granularity_level:
             case GranularityLevel.ALL_TOKENS:
-                return tokens_ids["input_ids"].shape[1]
+                return tokens_ids["input_ids"].shape[1] * torch.ones(tokens_ids["input_ids"].shape[0])
             case GranularityLevel.TOKEN:
                 return (1 - tokens_ids["special_tokens_mask"]).sum(dim=1)
             case GranularityLevel.WORD:
-                # TODO : implement word granularity level
-                raise NotImplementedError("Word granularity level not implemented")
+                return torch.tensor([max(filter(lambda x: x is not None, tokens_ids.word_ids(i))) for i in range(tokens_ids["input_ids"].shape[0])]) + 1
             case _:
                 raise NotImplementedError(f"Granularity level {granularity_level} not implemented")
 
@@ -392,7 +395,7 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
         Returns:
             torch.Tensor, torch.Tensor: real general mask and specific granularity mask (theoretical mask)
         """
-        perturbation_dimension = GranularityLevel.get_length(model_inputs, self.granularity_level).max()
+        perturbation_dimension = GranularityLevel.get_length(model_inputs, self.granularity_level).max().int().item()
         batch_size = model_inputs["input_ids"].shape[0]
         gran_mask = self.get_mask(batch_size, perturbation_dimension)
         model_inputs["mask"] = gran_mask
@@ -410,7 +413,7 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
             tuple: model_inputs with perturbations and the specific granularity mask
         """
         batch_size = model_inputs["input_ids"].shape[0]
-        mask_dim = GranularityLevel.get_length(model_inputs, self.granularity_level).max()
+        mask_dim = GranularityLevel.get_length(model_inputs, self.granularity_level).max().int().item()
         gran_mask = self.get_mask(batch_size, mask_dim)
         real_mask = self.get_real_mask_from_gran_mask(
             gran_mask, GranularityLevel.get_association_matrix(model_inputs, self.granularity_level)

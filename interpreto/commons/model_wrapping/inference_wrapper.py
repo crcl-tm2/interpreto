@@ -92,9 +92,8 @@ class ClassificationInferenceWrapper:
                 targets = targets[1:]
 
                 result_buffer = result_buffer[index:]
-
                 yield (torch.sum(res * target, dim=-1), perturbation_masks.pop(0))
-                if last_item:
+                if last_item and result_indexes == []:
                     break
                 continue
             if last_item or batch is not None and len(batch) == self.batch_size:
@@ -114,7 +113,6 @@ class ClassificationInferenceWrapper:
                 perturbation_masks.append(perturbation_mask)
                 input_buffer = next_item["input_ids"][0]
                 mask_buffer = next_item["attention_mask"][0]
-
                 result_indexes += [len(input_buffer)]
             except StopIteration:
                 last_item = True
