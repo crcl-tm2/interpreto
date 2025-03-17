@@ -28,10 +28,10 @@ from enum import Enum
 from typing import Any
 
 import torch
-from nnsight import list as nnsight_list
+from nnsight import dict as nnsight_dict
 from nnsight.intervention import Envoy
+from nnsight.intervention.graph import InterventionProxy
 from nnsight.modeling.language import LanguageModel
-from nnsight.util import fetch_attr
 from transformers import (
     AutoModel,
     BatchEncoding,
@@ -67,12 +67,17 @@ class ActivationSelectionStrategy(Enum):
 
 
 class ModelWithSplitPoints(LanguageModel):
-    """Generalized NNsight.LanguageModel wrapper around encoder-only, decoder-only and encoder-decoder language models.
+    """Code: [:octicons-mark-github-24: model_wrapping/model_with_split_points.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/commons/model_wrapping/model_with_split_points.py)
+
+    Generalized NNsight.LanguageModel wrapper around encoder-only, decoder-only and encoder-decoder language models.
     Handles splitting model at specified locations and activation extraction.
 
     Inputs can be in the form of:
+
         * One (`str`) or more (`list[str]`) prompts, including batched prompts (`list[list[str]]`).
+
         * One (`list[int] or torch.Tensor`) or more (`list[list[int]] or torch.Tensor`) tokenized prompts.
+
         * Direct model inputs: (`dic[str,Any]`)
 
     Attributes:
@@ -128,8 +133,8 @@ class ModelWithSplitPoints(LanguageModel):
                 raise InitializationError(
                     "Model autoclass not found.\n"
                     "The model class can be omitted if a pre-loaded model is passed to `model_or_repo_id` "
-                    "param.\nIf an HF Hub ID is used, the corresponding autoclass must be specified in `model_type`.\n"
-                    "Example: ModelWithSplitPoints('bert-base-cased', model_type=AutoModelForMaskedLM, ...)"
+                    "param.\nIf an HF Hub ID is used, the corresponding autoclass must be specified in `model_autoclass`.\n"
+                    "Example: ModelWithSplitPoints('bert-base-cased', model_autoclass=AutoModelForMaskedLM, ...)"
                 )
             if isinstance(model_autoclass, str):
                 supported_autoclasses = get_supported_hf_transformer_autoclasses()
@@ -211,11 +216,13 @@ class ModelWithSplitPoints(LanguageModel):
         select_strategy: str | ActivationSelectionStrategy = ActivationSelectionStrategy.ALL,
         select_indices: int | list[int] | tuple[int] | None = None,
         **kwargs,
-    ) -> dict[str, LatentActivations]:
+    ) -> dict[
+        str, LatentActivations
+    ]:  # Wrong output type, `nnsight_dict` returns an `InterventionProxy` which is not a dict, TODO: update
         """Get intermediate activations for all model split points
 
         Args:
-            inputs (str | list[str] | BatchEncoding): Inputs to the model forward pass before or after tokenzation.
+            inputs (str | list[str] | BatchEncoding): Inputs to the model forward pass before or after tokenization.
             select_strategy (str | ActivationSelectionStrategy): Selection strategy for activations.
 
                 Options are:
@@ -226,7 +233,7 @@ class ModelWithSplitPoints(LanguageModel):
             select_indices (list[int] | tuple[int] | None): Specifies indices that should be selected from the
                 activation sequence. Can be combined with `select_strategy` to obtain several behaviors. E.g.
                 `select_strategy="all", select_indices=mask_idxs` can be used to extract only activations corresponding
-                to [MASK] input ids with shape `(batch, len(masx_idxs), d_model)`, or
+                to [MASK] input ids with shape `(batch, len(mask_idxs), d_model)`, or
                 `select_strategy="flatten", select_indices=0` can be used to extract activations for the `[CLS]` token
                 only across all sequences, with shape `(batch, d_model)`. By default, all positions are selected.
 
@@ -235,7 +242,6 @@ class ModelWithSplitPoints(LanguageModel):
                 names in `self.split_points`, while values correspond to the extracted activations for the split point
                 for the given `inputs`.
         """
-        activations_dict = {}
         if not self.split_points:
             raise RuntimeError(
                 "No split points are currently defined for the model. "
@@ -245,43 +251,50 @@ class ModelWithSplitPoints(LanguageModel):
 
         # Compute activations
         with self.trace(inputs, **kwargs):
-            activations = nnsight_list().save()  # type: ignore
+            activations: dict[str, LatentActivations] = nnsight_dict().save()  # type: ignore
             for idx, split_point in enumerate(self.split_points):
-                curr_module: Envoy = fetch_attr(self, split_point)
+                curr_module: Envoy = self.get(split_point)
                 # Handle case in which module has .output attribute, and .nns_output gets overridden instead
                 module_out_name = "nns_output" if hasattr(curr_module, "nns_output") else "output"
-                activations.append(getattr(curr_module, module_out_name))
+                activations[split_point] = getattr(curr_module, module_out_name)
                 # Early stopping at the last splitting layer
                 if idx == len(self.split_points) - 1:
                     getattr(curr_module, module_out_name).stop()
 
-        for idx, split in enumerate(self.split_points):
-            act = activations.value[idx]
-            activations_dict[split] = act[0] if isinstance(act, tuple) else act
-
         # Validate that activations have the expected type
-        for layer, act in activations_dict.items():
+        for layer, act in activations.items():
             if not isinstance(act, torch.Tensor):
                 raise RuntimeError(
                     f"Invalid output for layer '{layer}'. Expected torch.Tensor activation, got {type(act)}: {act}"
                 )
-            if len(activations_dict[layer].shape) != 3:
+            if len(activations[layer].shape) != 3:
                 raise RuntimeError(
                     f"Invalid output for layer '{layer}'. Expected a torch.Tensor activation with shape"
-                    f"(batch_size, sequence_length, model_dim), got {activations_dict[layer].shape}"
+                    f"(batch_size, sequence_length, model_dim), got {activations[layer].shape}"
                 )
 
             # Apply selection rule
-            if ActivationSelectionStrategy.is_match(select_strategy, ActivationSelectionStrategy.ALL):
-                if select_indices:
-                    activations_dict[layer] = activations_dict[layer][:, select_indices, :]
+            if select_indices:
+                activations[layer] = activations[layer][:, select_indices, :]
             if ActivationSelectionStrategy.is_match(select_strategy, ActivationSelectionStrategy.FLATTEN):
-                if select_indices:
-                    activations_dict[layer] = activations_dict[layer][:, select_indices, :]
-                activations_dict[layer] = activations_dict[layer].flatten(0, 1)
-                if len(activations_dict[layer].shape) != 2:
+                activations[layer] = activations[layer].flatten(0, 1)
+                if len(activations[layer].shape) != 2:
                     raise RuntimeError(
                         f"Invalid output for layer '{layer}'. Expected a torch.Tensor activation with shape"
                         f"(batch_size x sequence_length, model_dim), got {activations[layer].shape}"
                     )
-        return activations_dict
+        return activations
+
+    def get_latent_shape(
+        self,
+        inputs: str | list[str] | BatchEncoding | None = None,
+    ) -> dict[str, torch.Size]:
+        """Get the shape of the latent activations at the specified split point."""
+        with self.scan(self._example_input if inputs is None else inputs):
+            sizes = {}
+            for split_point in self.split_points:
+                curr_module = self.get(split_point)
+                module_out_name = "nns_output" if hasattr(curr_module, "nns_output") else "output"
+                module: InterventionProxy = getattr(curr_module, module_out_name)
+                sizes[split_point] = module.shape
+        return sizes

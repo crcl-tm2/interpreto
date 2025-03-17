@@ -77,12 +77,13 @@ def test_cbe_fit_failure_cases(encoder_lm_splitter: ModelWithSplitPoints):
 def test_overcomplete_cbe(encoder_lm_splitter: ModelWithSplitPoints):
     """Test OvercompleteSAE and OvercompleteDictionaryLearning"""
 
+    latent_size = 312
     txt = ["Hello, my dog is cute", "The cat is on the [MASK]"]
-    split = "bert.encoder.layer.1"
+    split = "bert.encoder.layer.1.output"
     nb_concepts = 3
     encoder_lm_splitter.split_points = split
     activations = encoder_lm_splitter.get_activations(txt, select_strategy="flatten")
-    assert activations[split].shape == (16, 312)
+    assert activations[split].shape == (16, latent_size)
 
     # iterate over all methods from the namedtuple listing them
     for method in ALL_CONCEPT_METHODS:
@@ -113,12 +114,16 @@ def test_overcomplete_cbe(encoder_lm_splitter: ModelWithSplitPoints):
 
             concepts = cbe.encode_activations(activations[cbe.split_point])
             reconstructed_activations = cbe.decode_concepts(concepts)
-            assert reconstructed_activations.shape == (16, 312)
+            assert reconstructed_activations.shape == (16, latent_size)
+
+            dictionary = cbe.get_dictionary()
             if method == NeuronsAsConcepts:
-                assert cbe.concept_model.nb_concepts == 312
-                assert concepts.shape == (16, 312)
+                assert cbe.concept_model.nb_concepts == latent_size
+                assert concepts.shape == (16, latent_size)
+                assert torch.allclose(dictionary, torch.eye(latent_size))
             else:
                 assert cbe.concept_model.nb_concepts == nb_concepts
                 assert concepts.shape == (16, nb_concepts)
+                assert dictionary.shape == (nb_concepts, latent_size)
         except Exception as e:
             raise AssertionError(f"Error with {method}") from e

@@ -37,8 +37,12 @@ from interpreto.typing import ConceptsActivations, LatentActivations
 
 
 class IdentityConceptModel(BaseDictionaryLearning):
-    """
+    """Code: [:octicons-mark-github-24: `concepts/methods/neurons_as_concepts.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/neurons_as_concepts.py)
     Identity concept model that does not change the input activations.
+
+    Attributes:
+        nb_concepts (int): The number of concepts, which is the same as the input size.
+        fitted (bool): Whether the concept model has been fitted.
     """
 
     def __init__(self, input_size: int):
@@ -82,7 +86,7 @@ class IdentityConceptModel(BaseDictionaryLearning):
         Returns:
             torch.Tensor: The identity matrix as the dictionary.
         """
-        return torch.eye(self.input_size)
+        return torch.eye(self.nb_concepts)
 
 
 class NeuronsAsConcepts(ConceptBottleneckExplainer):
@@ -117,10 +121,7 @@ class NeuronsAsConcepts(ConceptBottleneckExplainer):
         """
         # extract the input size from the model activations
         self.model_with_split_points = model_with_split_points
-        split: str = self.get_and_verify_split_point(split_point)
-        input_size = self.model_with_split_points.get_activations(self.model_with_split_points._example_input, split)[
-            split
-        ].shape[-1]
+        input_size = self.model_with_split_points.get_latent_shape()[split_point][-1]
 
         # initialize
         super().__init__(

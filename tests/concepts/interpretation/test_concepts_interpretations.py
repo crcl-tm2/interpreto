@@ -72,7 +72,7 @@ def test_topk_inputs_from_activations(encoder_lm_splitter: ModelWithSplitPoints)
     fake_activations = fake_activations.view(-1, hidden_size)
 
     # initializing the explainer
-    split = "bert.encoder.layer.1"
+    split = "bert.encoder.layer.1.output"
     encoder_lm_splitter.split_points = split
     concept_explainer = NeuronsAsConcepts(model_with_split_points=encoder_lm_splitter, split_point=split)
 
@@ -133,7 +133,7 @@ def test_topk_tokens(encoder_lm_splitter: ModelWithSplitPoints):
     joined_tokens_list.append(larger_input)
 
     # initializing the explainer
-    split = "bert.encoder.layer.1"
+    split = "bert.encoder.layer.1.output"
     encoder_lm_splitter.split_points = split
     concept_explainer = NeuronsAsConcepts(model_with_split_points=encoder_lm_splitter, split_point=split)
 
