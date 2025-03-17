@@ -84,36 +84,24 @@ class LinearInterpolationPerturbator(BasePerturbator):
                 raise ValueError(f"Baseline dtype {baseline.dtype} does not match expected dtype {inputs.dtype}.")
         else:
             raise TypeError("Baseline must be None, a float, or a PyTorch tensor.")
-
         return baseline
 
-    def perturb(self, inputs: torch.Tensor) -> tuple[torch.Tensor, None]:
-        """
-        Generates perturbed samples by performing linear interpolation between the input tensor and the baseline tensor.
-
-        Args:
-            inputs (torch.Tensor): The input tensor to be perturbed.
-            n_samples (int, optional): The number of interpolation samples to generate. Defaults to 10.
-
-        Returns:
-            As no mask is required to understand perturbation, the second returned element is None.
-            tuple[torch.Tensor, None]: A tuple containing the interpolated tensor and None.
-        """
-        baseline = self.adjust_baseline(self.baseline, inputs)
-        assert inputs.shape[1:] == baseline.shape
+    def perturb_tensors(self, tensors: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor | None]:
+        baseline = self.adjust_baseline(self.baseline, tensors)
+        assert tensors.shape[1:] == baseline.shape
         # Shape: (1, steps, ...)
-        alphas = torch.linspace(0, 1, self.n_perturbations, device=inputs.device).view(
-            1, self.n_perturbations, *([1] * (inputs.dim() - 1))
+        alphas = torch.linspace(0, 1, self.n_perturbations, device=tensors.device).view(
+            1, self.n_perturbations, *([1] * (tensors.dim() - 1))
         )
 
         # Shape: (batch_size, steps:1, *input_shape)
-        inputs = inputs.unsqueeze(1)
+        tensors = tensors.unsqueeze(1)
 
         # Shape: (batch_size:1, steps:1, *input_shape)
-        baseline = baseline.to(inputs.device).view(1, 1, *baseline.shape)
+        baseline = baseline.to(tensors.device).view(1, 1, *baseline.shape)
 
         # Perform interpolation
-        interpolated = (1 - alphas) * inputs + alphas * baseline
+        interpolated = (1 - alphas) * tensors + alphas * baseline
 
         baseline = baseline.cpu()
 

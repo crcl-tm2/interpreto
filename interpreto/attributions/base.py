@@ -109,6 +109,7 @@ class InferenceExplainer(AttributionExplainer):
     Black box model explainer
     """
 
+    # TODO : faire ça différement
     def call_inference_wrapper(self, inputs: Iterable, targets: torch.Tensor) -> Any:
         pert_per_input_generator = (self.perturbator.perturb(item) for item in inputs)
         return zip(*self.inference_wrapper.inference(pert_per_input_generator, targets), strict=True)
@@ -159,8 +160,6 @@ class InferenceExplainer(AttributionExplainer):
         explanations = []
 
         for score, mask in zip(unsorted_scores, unsorted_masks, strict=True):
-            # TODO : this line must be done in inference wrapper
-            # results = torch.sum(score * target.unsqueeze(0).repeat(score.shape[0], 1), dim=-1)
             explanation = self.aggregator(score.unsqueeze(0), mask)
             explanations.append(explanation)
 
