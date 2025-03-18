@@ -21,6 +21,7 @@ icon: material/middleware-outline
     options:
       show_root_heading: true
       show_source: true
+      inherited_members: true
       members:
         - fit
         - encode_activations

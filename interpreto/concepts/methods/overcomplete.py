@@ -227,8 +227,8 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
             nb_concepts (int): Size of the SAE concept space.
             split_point (str | None): The split point used to train the `concept_model`. If None, tries to use the
                 split point of `model_with_split_points` if a single one is defined.
-            encoder_module (nn.Module | str | None): Encoder module to use for the `concept_module`.
-            dictionary_params (dict | None): Dictionary parameters to use for the `concept_module`.
+            encoder_module (nn.Module | str | None): Encoder module to use to construct the SAE, see [Overcomplete SAE documentation](https://kempnerinstitute.github.io/overcomplete/saes/vanilla/).
+            dictionary_params (dict | None): Dictionary parameters to use to construct the SAE, see [Overcomplete SAE documentation](https://kempnerinstitute.github.io/overcomplete/saes/vanilla/).
             device (torch.device | str): Device to use for the `concept_module`.
             **kwargs (dict): Additional keyword arguments to pass to the `concept_module`.
                 See the Overcomplete documentation of the provided `concept_model_class` for more details.

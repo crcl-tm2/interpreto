@@ -15,9 +15,10 @@ nav:
     - Concept Explainers:
       - Overview: api/concepts/overview.md
       - Base Classes: api/concepts/base.md
-      - Sparse Autoencoders: api/concepts/sae.md
-      - Optimization Methods: api/concepts/optim.md
       - Cockatiel: api/concepts/cockatiel.md
+      - Neurons as Concepts: api/concepts/neurons_as_concepts.md
+      - Optimization Methods: api/concepts/optim.md
+      - SAEs (Sparse AutoEncoders): api/concepts/sae.md
     - Attribution Explainers:
       - Overview: api/attributions/overview.md
       - Raw Gradients: api/attributions/raw_gradients.md

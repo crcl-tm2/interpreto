@@ -37,7 +37,7 @@ from interpreto.typing import ConceptsActivations, LatentActivations
 
 
 class IdentityConceptModel(BaseDictionaryLearning):
-    """Code: [:octicons-mark-github-24: `concepts/methods/neurons_as_concepts.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/neurons_as_concepts.py)
+    """
     Identity concept model that does not change the input activations.
 
     Attributes:
@@ -90,7 +90,7 @@ class IdentityConceptModel(BaseDictionaryLearning):
 
 
 class NeuronsAsConcepts(ConceptBottleneckExplainer):
-    """
+    """Code: [:octicons-mark-github-24: `concepts/methods/neurons_as_concepts.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/neurons_as_concepts.py)
     Concept Bottleneck Explainer where the latent space is considered as the concept space.
 
     # TODO: Add doc with papers we can redo with it.
