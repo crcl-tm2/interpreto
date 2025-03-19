@@ -29,7 +29,7 @@ Basic standard classes for attribution methods
 from __future__ import annotations
 
 from abc import abstractmethod
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from typing import Any
 
 import torch
@@ -37,11 +37,15 @@ from jaxtyping import Float
 
 from interpreto.attributions.aggregations.base import Aggregator
 from interpreto.attributions.perturbations.base import BasePerturbator
+from interpreto.commons.generator_tools import PersistentTupleGeneratorWrapper
 from interpreto.typing import ModelInput
 
 SingleAttribution = (
     Float[torch.Tensor, "l"] | Float[torch.Tensor, "l c"] | Float[torch.Tensor, "l l_g"] | Float[torch.Tensor, "l l_t"]
 )
+
+# TODO : move this in generator tools
+
 
 
 class AttributionOutput:
@@ -110,9 +114,8 @@ class InferenceExplainer(AttributionExplainer):
     """
 
     # TODO : faire ça différement
-    def call_inference_wrapper(self, inputs: Iterable, targets: torch.Tensor) -> Any:
-        pert_per_input_generator = (self.perturbator.perturb(item) for item in inputs)
-        return zip(*self.inference_wrapper.inference(pert_per_input_generator, targets), strict=True)
+    def call_inference_wrapper(self, inputs: Iterable[Mapping[str, torch.Tensor]], targets: torch.Tensor) -> Any:
+        return self.inference_wrapper.get_scores(inputs, targets)
 
     def explain(self, inputs: ModelInput, targets: torch.Tensor | None = None) -> Any:
         """
@@ -120,35 +123,19 @@ class InferenceExplainer(AttributionExplainer):
         """
         self.inference_wrapper.to(self.device)
 
-        tokens = [self.perturbator.tokenizer.encode(item) for item in inputs]
-        token_count = [len(item) for item in tokens]
+        tokens = [self.perturbator.tokenizer(item, return_tensors="pt") for item in inputs]
+        token_count = [len(item["input_ids"][0]) for item in tokens]
+        sorted_indices = sorted(range(len(token_count)), key=lambda k: token_count[k], reverse=True)
 
         if targets is None:
-            # split in batchs
-            chunks = [
-                tokens[i : i + self.inference_wrapper.batch_size]
-                for i in range(0, len(tokens), self.inference_wrapper.batch_size)
-            ]
-            predictions = []
-            with torch.no_grad():
-                for chunk in chunks:
-                    padded_sequences = torch.nn.utils.rnn.pad_sequence(
-                        [torch.tensor(c) for c in chunk],
-                        batch_first=True,
-                        padding_value=self.perturbator.tokenizer.pad_token_id,
-                    )
-                    attention_mask = (padded_sequences != self.perturbator.tokenizer.pad_token_id).int()
-                    predictions += [
-                        self.inference_wrapper.call_model(
-                            {"input_ids": padded_sequences, "attention_mask": attention_mask}
-                        )
-                    ]
-                targets = torch.cat(predictions, dim=0)
-
-        sorted_indices = sorted(range(len(token_count)), key=lambda k: token_count[k], reverse=True)
-        sorted_inputs = [inputs[i] for i in sorted_indices]
-
-        scores, masks = self.call_inference_wrapper(sorted_inputs, targets)
+            for t in tokens:
+                t["input_ids"] = t["input_ids"].unsqueeze(1)
+                t["attention_mask"] = t["attention_mask"].unsqueeze(1)
+            targets = torch.stack(list(self.inference_wrapper.get_targets([tokens[i] for i in sorted_indices])))
+        # Perturbation
+        pert_per_input_generator = PersistentTupleGeneratorWrapper(self.perturbator.perturb(inputs[i]) for i in sorted_indices)
+        scores = list(self.call_inference_wrapper(pert_per_input_generator.get_subgenerator(0), targets))
+        masks = list(pert_per_input_generator.get_subgenerator(1))
 
         # Unsort
         unsorted_masks = [None] * len(masks)
@@ -160,7 +147,7 @@ class InferenceExplainer(AttributionExplainer):
         explanations = []
 
         for score, mask in zip(unsorted_scores, unsorted_masks, strict=True):
-            explanation = self.aggregator(score.unsqueeze(0), mask)
+            explanation = self.aggregator(score, mask)
             explanations.append(explanation)
 
         return explanations
@@ -173,6 +160,5 @@ class GradientExplainer(InferenceExplainer):
     Subclasses of this explainer are mostly reductions to a specific perturbation or aggregation
     """
 
-    def call_inference_wrapper(self, inputs: Iterable, targets: torch.Tensor) -> Any:
-        pert_per_input_generator = (self.perturbator.perturb(item) for item in inputs)
-        return zip(*self.inference_wrapper.gradients(pert_per_input_generator, targets), strict=True)
+    def call_inference_wrapper(self, inputs: Iterable[Mapping[str, torch.Tensor]], targets: torch.Tensor) -> Any:
+        return self.inference_wrapper.get_gradients(inputs, targets)

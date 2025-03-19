@@ -141,7 +141,7 @@ class BasePerturbator:
         self.inputs_embedder = inputs_embedder
 
     @singledispatchmethod
-    def perturb(self, inputs) -> Mapping[str, torch.Tensor]:
+    def perturb(self, inputs) -> tuple[Mapping[str, torch.Tensor], torch.Tensor | None]:
         """
         Main method called to perturb an input before giving it to a model
         Output is a mapping that can be passed directly to the model as kwargs
@@ -164,7 +164,7 @@ class BasePerturbator:
         )
 
     @perturb.register(str)
-    def _(self, inputs: str) -> Mapping[str, torch.Tensor]:
+    def _(self, inputs: str) -> tuple[Mapping[str, torch.Tensor], torch.Tensor | None]:
         """
         perturbation of a single string (transformed as a collection of 1 string for convenience)
 
@@ -174,7 +174,7 @@ class BasePerturbator:
         return self.perturb([inputs])
 
     @perturb.register(Iterable)
-    def _(self, inputs: Iterable[str]) -> Mapping[str, torch.Tensor]:
+    def _(self, inputs: Iterable[str]) -> tuple[Mapping[str, torch.Tensor], torch.Tensor | None]:
         """
         perturbation of a single string (transformed as a collection of 1 string for convenience)
 
@@ -201,7 +201,7 @@ class BasePerturbator:
         return self.perturb(tokens)
 
     @perturb.register(Mapping)
-    def _(self, inputs: Mapping[str, torch.Tensor]) -> Mapping[str, torch.Tensor]:
+    def _(self, inputs: Mapping[str, torch.Tensor]) -> tuple[Mapping[str, torch.Tensor], torch.Tensor | None]:
         """
         Method called when we ask the perturbator to perturb a mapping of tensors, generally the output of a tokenizer
         The mapping should be similar to mappings returned by the tokenizer.
@@ -224,8 +224,12 @@ class BasePerturbator:
         # Check if an embedding perturbation has been defined
         try:
             # If perturb_tensors has been defined, call it on the embeddings
-            embeddings, mask = self.perturb_tensors(self.inputs_embedder(inputs))
-            return {"inputs_embeds": embeddings}, mask  # add complementary data in dict
+            
+            embeddings, perturbation_mask = self.perturb_tensors(self.inputs_embedder(inputs))
+            # TODO : perform smart combination of perturbation masks
+            attention_mask = inputs["attention_mask"].unsqueeze(1).repeat(1, embeddings.shape[1], 1)
+            
+            return {"inputs_embeds": embeddings, "attention_mask":attention_mask}, perturbation_mask  # add complementary data in dict
         except NotImplementedError:
             # If no embeddings perturbation has been defined to the, return the perturbed ids
             return inputs, mask
@@ -239,7 +243,7 @@ class BasePerturbator:
             inputs (torch.Tensor): inputs embeddings to perturb
         """
         perturbed_tensor, mask = self.perturb_tensors(inputs)
-        return {"inputs_embeds": perturbed_tensor}, mask
+        return {"inputs_embeds": perturbed_tensor, "attention_mask":torch.ones(perturbed_tensor.shape[:-1])}, mask
 
     def perturb_ids(self, model_inputs: Mapping) -> tuple[Mapping[str, torch.Tensor], torch.Tensor | None]:
         """
@@ -251,6 +255,9 @@ class BasePerturbator:
         Returns:
             Mapping[str, torch.Tensor]: Perturbed mapping
         """
+        # add perturbation dimension
+        model_inputs["input_ids"] = model_inputs["input_ids"].unsqueeze(1)
+        model_inputs["attention_mask"] = model_inputs["attention_mask"].unsqueeze(1)
         return model_inputs, torch.zeros_like(model_inputs["input_ids"])
 
     def perturb_tensors(self, tensors: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor | None]:
