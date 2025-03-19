@@ -38,7 +38,7 @@ from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
 from interpreto.commons.model_wrapping.model_with_split_points import ModelWithSplitPoints
-from interpreto.concepts.base import ConceptBottleneckExplainer, check_fitted
+from interpreto.concepts.base import ConceptAutoEncoderExplainer, check_fitted
 from interpreto.typing import LatentActivations
 
 
@@ -186,7 +186,7 @@ class SAELossClasses(Enum):
 
 
 # TODO: Rename, remove Overcomplete prefix
-class OvercompleteSAE(ConceptBottleneckExplainer):
+class OvercompleteSAE(ConceptAutoEncoderExplainer):
     """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
 
     Implementation of a concept explainer using a
@@ -305,7 +305,7 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
         Returns:
             A dictionary with training history logs.
         """
-        split_activations = self.prepare_fit(activations, overwrite=overwrite)
+        split_activations = self._prepare_fit(activations, overwrite=overwrite)
         dataloader = DataLoader(TensorDataset(split_activations.detach()), batch_size=batch_size, shuffle=True)
         optimizer_kwargs = {"lr": lr}
         optimizer = optimizer_class(self.concept_model.parameters(), **optimizer_kwargs)  # type: ignore
@@ -333,7 +333,7 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
         return log
 
     @check_fitted
-    def encode_activations(self, activations: LatentActivations) -> torch.Tensor:  # ConceptActivations
+    def encode_activations(self, activations: LatentActivations) -> torch.Tensor:  # ConceptsActivations
         """Encode the given activations using the `concept_model` encoder.
 
         Args:
@@ -360,7 +360,7 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
 
 
 # TODO: Rename, remove Overcomplete prefix
-class OvercompleteDictionaryLearning(ConceptBottleneckExplainer):
+class OvercompleteDictionaryLearning(ConceptAutoEncoderExplainer):
     """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
 
     Implementation of a concept explainer using an
@@ -434,5 +434,5 @@ class OvercompleteDictionaryLearning(ConceptBottleneckExplainer):
             **kwargs (dict): Additional keyword arguments to pass to the `concept_model`.
                 See the Overcomplete documentation of the provided `concept_model` for more details.
         """
-        split_activations = self.prepare_fit(activations, overwrite=overwrite)
+        split_activations = self._prepare_fit(activations, overwrite=overwrite)
         self.concept_model.fit(split_activations, **kwargs)

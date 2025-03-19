@@ -28,7 +28,7 @@ Generic type annotations for Interpreto
 
 from __future__ import annotations
 
-from typing import Any, Optional, Union
+from typing import Any, Optional, TypeVar, Union
 
 import torch
 from jaxtyping import Float
@@ -38,3 +38,7 @@ LatentActivations = Float[torch.Tensor, "n ..."]
 ConceptsActivations = Float[torch.Tensor, "n cpt"]
 ModelInput = Any
 TensorBaseline = Optional[Union[torch.Tensor, float, int]]  # noqa: UP007
+
+ConceptModel = TypeVar(
+    "ConceptModel"
+)  # find a way to better type this, it should have a method `encode` and a `nb_concepts` parameter

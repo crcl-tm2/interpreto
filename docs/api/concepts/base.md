@@ -4,7 +4,7 @@ icon: material/middleware-outline
 
 # Base Classes
 
-::: interpreto.concepts.AbstractConceptExplainer
+::: interpreto.concepts.ConceptEncoderExplainer
     handler: python
     options:
       show_root_heading: true
@@ -16,7 +16,7 @@ icon: material/middleware-outline
         - top_k_inputs_for_concept_from_activations
         - input_concept_attribution
 
-::: interpreto.concepts.ConceptBottleneckExplainer
+::: interpreto.concepts.ConceptAutoEncoderExplainer
     handler: python
     options:
       show_root_heading: true

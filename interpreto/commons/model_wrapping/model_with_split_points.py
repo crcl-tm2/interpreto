@@ -213,7 +213,8 @@ class ModelWithSplitPoints(LanguageModel):
     def get_activations(
         self,
         inputs: str | list[str] | BatchEncoding,
-        select_strategy: str | ActivationSelectionStrategy = ActivationSelectionStrategy.ALL,
+        select_strategy: str
+        | ActivationSelectionStrategy = ActivationSelectionStrategy.FLATTEN,  # TODO: discuss the default behavior, but if methods require flatten it should be the default
         select_indices: int | list[int] | tuple[int] | None = None,
         **kwargs,
     ) -> dict[

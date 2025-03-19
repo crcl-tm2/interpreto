@@ -22,7 +22,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from .base import AbstractConceptExplainer, ConceptBottleneckExplainer
+from .base import ConceptAutoEncoderExplainer, ConceptEncoderExplainer
 from .methods import (
     Cockatiel,
     NeuronsAsConcepts,
@@ -34,9 +34,10 @@ from .methods import (
 )
 
 __all__ = [
-    "AbstractConceptExplainer",
-    "ConceptBottleneckExplainer",
     "Cockatiel",
+    "ConceptAutoEncoderExplainer",
+    "ConceptEncoderExplainer",
+    "ConceptModel",
     "NeuronsAsConcepts",
     "OvercompleteDictionaryLearning",
     "OvercompleteSAE",

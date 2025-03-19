@@ -32,7 +32,7 @@ import torch
 from overcomplete.base import BaseDictionaryLearning
 
 from interpreto.commons.model_wrapping.model_with_split_points import ModelWithSplitPoints
-from interpreto.concepts.base import ConceptBottleneckExplainer
+from interpreto.concepts.base import ConceptAutoEncoderExplainer
 from interpreto.typing import ConceptsActivations, LatentActivations
 
 
@@ -89,7 +89,7 @@ class IdentityConceptModel(BaseDictionaryLearning):
         return torch.eye(self.nb_concepts)
 
 
-class NeuronsAsConcepts(ConceptBottleneckExplainer):
+class NeuronsAsConcepts(ConceptAutoEncoderExplainer):
     """Code: [:octicons-mark-github-24: `concepts/methods/neurons_as_concepts.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/neurons_as_concepts.py)
     Concept Bottleneck Explainer where the latent space is considered as the concept space.
 

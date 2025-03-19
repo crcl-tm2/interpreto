@@ -29,28 +29,27 @@ Bases Classes for Concept-based Explainers
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from functools import wraps
 from textwrap import dedent
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, Literal, TypeVar
 
 import torch
 from nnsight.intervention.graph import InterventionProxy
 from overcomplete.base import BaseDictionaryLearning
-from transformers import BatchEncoding
 
 from interpreto.attributions.base import AttributionExplainer
-from interpreto.commons.model_wrapping.model_with_split_points import ActivationSelectionStrategy, ModelWithSplitPoints
-from interpreto.typing import ConceptsActivations, LatentActivations, ModelInput
+from interpreto.commons.model_wrapping.model_with_split_points import ModelWithSplitPoints
+from interpreto.concepts.interpretations.base import BaseConceptInterpretationMethod
+from interpreto.typing import ConceptModel, ConceptsActivations, LatentActivations, ModelInput
 
-ConceptModel = TypeVar("ConceptModel")
 MethodOutput = TypeVar("MethodOutput")
 
 
 # Decorator that checks if the concept model is fitted before calling the method
 def check_fitted(func: Callable[..., MethodOutput]) -> Callable[..., MethodOutput]:
     @wraps(func)
-    def wrapper(self: AbstractConceptExplainer, *args, **kwargs) -> MethodOutput:
+    def wrapper(self: ConceptEncoderExplainer, *args, **kwargs) -> MethodOutput:
         if not self.is_fitted or self.split_point is None:
             raise RuntimeError("Concept encoder is not fitted yet. Use the .fit() method to fit the explainer.")
         return func(self, *args, **kwargs)
@@ -58,7 +57,7 @@ def check_fitted(func: Callable[..., MethodOutput]) -> Callable[..., MethodOutpu
     return wrapper
 
 
-class AbstractConceptExplainer(ABC, Generic[ConceptModel]):
+class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
     """Code: [:octicons-mark-github-24: `concepts/base.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/base.py)
 
     Abstract class defining an interface for concept explanation.
@@ -140,7 +139,7 @@ class AbstractConceptExplainer(ABC, Generic[ConceptModel]):
         """
         pass
 
-    def verify_activations(self, activations: dict[str, LatentActivations]) -> None:
+    def _verify_activations(self, activations: dict[str, LatentActivations]) -> None:
         """
         Verify that the given activations are valid for the `model_with_split_points` and `self.split_point`.
         Cases in which the activations are not valid include:
@@ -193,7 +192,24 @@ class AbstractConceptExplainer(ABC, Generic[ConceptModel]):
                 )
             self._split_point: str = split_point
 
-    def prepare_fit(
+    def _get_split_activations(
+        self,
+        activations: LatentActivations | dict[str, LatentActivations],
+    ) -> LatentActivations:
+        # TODO: find a better way to check if activations is a dict
+        if hasattr(activations, "keys"):
+            self._verify_activations(activations)
+            split_activations = activations[self.split_point]
+        else:
+            split_activations = activations
+        assert len(split_activations.shape) == 2, (
+            f"Input activations should be a 2D tensor of shape (batch_size, n_features) but got {split_activations.shape}. "
+            + "If you use `ModelWithSplitPoints.get_activations()`, "
+            + "make sure to set `select_strategy=ActivationSelectionStrategy.FLATTEN` to get a 2D activation tensor."
+        )
+        return split_activations
+
+    def _prepare_fit(
         self,
         activations: LatentActivations | dict[str, LatentActivations],
         overwrite: bool,
@@ -203,128 +219,53 @@ class AbstractConceptExplainer(ABC, Generic[ConceptModel]):
                 "Concept explainer has already been fitted. Refitting will overwrite the current model."
                 "If this is intended, use `overwrite=True` in fit(...)."
             )
-        # TODO: find a better way to check if activations is a dict
-        if hasattr(activations, "keys"):
-            self.verify_activations(activations)
-            split_activations = activations[self.split_point]
-        else:
-            split_activations = activations
-        assert len(split_activations.shape) == 2, (
-            f"Input activations should be a 2D tensor of shape (batch_size, n_features) but got {split_activations.shape}."
-        )
-        return split_activations
+        return self._get_split_activations(activations)
 
     @check_fitted
-    def top_k_inputs_for_concept(
+    def interpret(
         self,
-        inputs: str | list[str] | BatchEncoding,
-        concepts_indices: int | list[int] | Literal[all] = "all",
-        k: int = 5,
-    ) -> list[tuple[str, float]]:
+        interpretation_method: type[BaseConceptInterpretationMethod],
+        concepts_indices: int | list[int] | Literal["all"] = "all",
+        inputs: list[str] | None = None,
+        latent_activations: dict[str, LatentActivations] | LatentActivations | None = None,
+        concepts_activations: ConceptsActivations | None = None,
+        **kwargs,
+    ) -> Mapping[int, Any]:
         """
-        Retrieves the top-k most important input elements (tokens/words/clauses/phrases) related to a given concept.
+        Interpret the concepts dimensions in the latent space into a human-readable format.
+        The interpretation is a mapping between the concepts indices and an object allowing to interpret them.
+        It can be a label, a description, examples, etc.
 
         Args:
-            inputs (ModelInput): The input data, which can be a string, a list of tokens/words/clauses/sentences
-                or a dataset.
-            concepts_indices (int | list[int] | Literal["all"]): The concept index (or list of concepts indices) to analyze. Defaults to "all".
-            k: The number of input elements to retrieve. Defaults to 5.
+            interpretation_method: The interpretation method to use to interpret the concepts.
+            concepts_indices (int | list[int] | Literal["all"]): The indices of the concepts to interpret.
+                If "all", all concepts are interpreted.
+            **kwargs: Additional keyword arguments to pass to the interpretation method.
 
         Returns:
-            An ordered list of k tuples, each containing containing one of the top-k relevant input elements
-                for the specified concept and its importance scores.
+            Mapping[int, Any]: A mapping between the concepts indices and the interpretation of the concepts.
         """
-        self.split_point: str  # Verified by check_fitted
-        activations = self.model_with_split_points.get_activations(
-            inputs, select_strategy=ActivationSelectionStrategy.FLATTEN
-        )
-        splitted_inputs = [
-            self.model_with_split_points.tokenizer.tokenize(input_sentence) for input_sentence in inputs
-        ]  # TODO: see if we do not wrap this function in the model_with_split_points
-        return self.top_k_inputs_for_concept_from_activations(
-            splitted_inputs, activations[self.split_point], concepts_indices, k
-        )
-
-    @check_fitted
-    def top_k_inputs_for_concept_from_activations(
-        self,
-        splitted_inputs: list[list[str]],
-        activations: LatentActivations | dict[str, LatentActivations],
-        concepts_indices: int | list[int] | Literal[all] = "all",
-        k: int = 5,
-    ) -> dict[int, list[tuple[str, float]]]:
-        """
-        Retrieves the top-k most important input elements (tokens/words/clauses/phrases) related to a given concept.
-        This version of the method uses pre-computed activations
-
-        Args:
-            inputs (ModelInput): The input data, which can be a string, a list of tokens/words/clauses/sentences
-                or a dataset.
-            activations (LatentActivations | dict[str, LatentActivations]): The activations to use for the analysis. They should correspond to the inputs. Shape: (n*l, d)
-            concepts_indices (int | list[int] | Literal["all"]): The concept index (or list of concepts indices) to analyze. Defaults to "all".
-            k (int): The number of important textual elements to retrieve. Defaults to 5.
-
-        Returns:
-            interpretation_dict (dict[int, list[tuple[str, float]]]): A dictionary with keys corresponding to the `concept` index and values containing the top-k most relevant textual elements and their importance scores.
-        """
-        if isinstance(activations, dict):
-            self.verify_activations(activations)
-            split_activations = activations[self.split_point]
+        # verify
+        if latent_activations is not None:
+            split_latent_activations = self._get_split_activations(latent_activations)
         else:
-            split_activations = activations
-        if not len(split_activations) % len(splitted_inputs) == 0:
-            raise ValueError(
-                f"Number of inputs and activations should be the same. Got {len(splitted_inputs)} inputs and {len(split_activations)} activations."
-            )
-        n_tokens = len(split_activations) // len(splitted_inputs)
+            split_latent_activations = None
 
-        # Shape: (n*l, d)
-        flattened_activations: LatentActivations = activations.view(-1, activations.shape[-1])
+        # initialize the interpretation method
+        method = interpretation_method(
+            model_with_split_points=self.model_with_split_points,
+            concept_model=self.concept_model,
+            split_point=self.split_point,
+            **kwargs,
+        )
 
-        # Shape: (n*l, cpt)
-        concepts_activations: ConceptsActivations = self.encode_activations(flattened_activations)
-
-        # take subset of concepts as specified by the user
-        if concepts_indices != "all":
-            if isinstance(concepts_indices, int):
-                concepts_indices = [concepts_indices]
-
-            if not isinstance(concepts_indices, list) and not all(isinstance(c, int) for c in concepts_indices):
-                raise ValueError(
-                    f"`concepts_indices` should be 'all', an int, or a list of int. Received {concepts_indices}."
-                )
-
-            if max(concepts_indices) >= concepts_activations.shape[1]:
-                raise ValueError(
-                    f"At least one concept index out of bounds. `max(concepts_indices)`: {max(concepts_indices)} >= {concepts_activations.shape[1]}."
-                )
-
-            # Shape: (n*l, cpt_of_interest)
-            concepts_activations: ConceptsActivations = concepts_activations.T[concepts_indices].T
-        else:
-            concepts_indices = list(range(concepts_activations.shape[1]))
-
-        # extract indices of the top-k input tokens for each specified concept
-        topk_output = torch.topk(concepts_activations, k=k, dim=0)
-        topk_activations = topk_output[0].T  # Shape: (cpt_of_interest, k)
-        topk_indices = topk_output[1].T  # Shape: (cpt_of_interest, k)
-
-        interpretation_dict = {}
-        # iterate over required concepts
-        for c, top_indices, top_activations in zip(concepts_indices, topk_indices, topk_activations, strict=True):
-            interpretation_dict[c] = [
-                (
-                    splitted_inputs[top_indices[rank] // n_tokens][top_indices[rank] % n_tokens],  # the token
-                    top_activations[rank].item(),  # the corresponding concept activation
-                )
-                if top_indices[rank] % n_tokens < len(splitted_inputs[top_indices[rank] // n_tokens])
-                else "[PAD]"
-                for rank in range(k)
-            ]
-
-        # TODO: find a way to remove duplicate in the topk inputs but keep k outputs
-
-        return interpretation_dict
+        # compute the interpretation from inputs and activations
+        return method.interpret(
+            concepts_indices=concepts_indices,
+            inputs=inputs,
+            latent_activations=split_latent_activations,
+            concepts_activations=concepts_activations,
+        )
 
     @check_fitted
     def input_concept_attribution(
@@ -340,7 +281,7 @@ class AbstractConceptExplainer(ABC, Generic[ConceptModel]):
             inputs (ModelInput): The input data, which can be a string, a list of tokens/words/clauses/sentences
                 or a dataset.
             concept (int): Index identifying the position of the concept of interest (score in the
-                `ConceptActivations` tensor) for which relevant input elements should be retrieved.
+                `ConceptsActivations` tensor) for which relevant input elements should be retrieved.
             attribution_method: The attribution method to obtain importance scores for input elements.
 
         Returns:
@@ -349,7 +290,7 @@ class AbstractConceptExplainer(ABC, Generic[ConceptModel]):
         raise NotImplementedError("Input-to-concept attribution method is not implemented yet.")
 
 
-class ConceptBottleneckExplainer(AbstractConceptExplainer[BaseDictionaryLearning], ABC):
+class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning], ABC):
     """Code: [:octicons-mark-github-24: `concepts/base.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/base.py)
 
     A concept bottleneck explainer wraps a `concept_model` that should be able to encode activations into concepts
@@ -407,7 +348,7 @@ class ConceptBottleneckExplainer(AbstractConceptExplainer[BaseDictionaryLearning
             )""")
 
     @check_fitted
-    def encode_activations(self, activations: LatentActivations) -> torch.Tensor:  # ConceptActivations
+    def encode_activations(self, activations: LatentActivations) -> torch.Tensor:  # ConceptsActivations
         """Encode the given activations using the `concept_model` encoder.
 
         Args:
@@ -416,7 +357,7 @@ class ConceptBottleneckExplainer(AbstractConceptExplainer[BaseDictionaryLearning
         Returns:
             The encoded concept activations.
         """
-        self.verify_activations({self.split_point: activations})
+        self._verify_activations({self.split_point: activations})
         return self.concept_model.encode(activations)  # type: ignore
 
     @check_fitted
@@ -452,7 +393,7 @@ class ConceptBottleneckExplainer(AbstractConceptExplainer[BaseDictionaryLearning
         """Computes the attribution of each concept for the logit of a target output element.
 
         Args:
-            inputs (ModelInput): An input datapoint for the model.
+            inputs (ModelInput): An input data-point for the model.
             concepts (torch.Tensor): Concept activation tensor.
             target (int): The target class for which the concept output attribution should be computed.
             attribution_method: The attribution method to obtain importance scores for input elements.
