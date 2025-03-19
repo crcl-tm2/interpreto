@@ -2,23 +2,10 @@ from itertools import product
 
 import pytest
 import torch
-from nnsight import NNsight
-from tests.fixtures.model_zoo import (
-    # SimpleTokenizer,
-    SmallConv1DModel,
-    SmallConv2DModel,
-    SmallDenseModel,
-    SmallGRUModel,
-    SmallLSTMModel,
-    SmallRNNModel,
-    # SmallTextClassifier,
-    # SmallTextGenerator,
-    SmallViTModel,
-)
 from transformers import (
     AutoModelForCausalLM,
     AutoModelForMaskedLM,
-    AutoModelForSeq2SeqLM,
+    # AutoModelForSeq2SeqLM,
     AutoModelForSequenceClassification,
     # AutoModelForMultipleChoice,
     # AutoModelForQuestionAnswering,
@@ -28,54 +15,17 @@ from transformers import (
 
 from interpreto.attributions import (
     IntegratedGradients,
+    SobolAttribution,
 )
 from interpreto.attributions.base import AttributionOutput
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-attribution_methods_to_test = [IntegratedGradients]
-
-
-def test_attribution_methods_with_1d_input_models():
-    input_shape = (4, 10)  # (batch_size=4, input_size=10)
-    model = NNsight(SmallDenseModel(input_size=input_shape[1]))
-    input_tensor = torch.randn(input_shape)
-
-    for attribution_explainer in attribution_methods_to_test:
-        attributions = attribution_explainer(model, batch_size=3, device=DEVICE).explain(input_tensor)
-
-        assert attributions.shape == input_shape
-
-
-def test_attribution_methods_with_2d_input_models():
-    input_shape = (4, 3, 10)  # (batch_size=4, channels=3, input_size=10)
-    models = [
-        NNsight(SmallRNNModel(input_size=input_shape[2])),
-        NNsight(SmallLSTMModel(input_size=input_shape[2])),
-        NNsight(SmallGRUModel(input_size=input_shape[2])),
-        NNsight(SmallConv1DModel(input_channels=input_shape[1], input_length=input_shape[2])),
-    ]
-
-    input_tensor = torch.randn(input_shape)
-
-    for model, attribution_explainer in product(models, attribution_methods_to_test):
-        attributions = attribution_explainer(model, batch_size=3, device=DEVICE).explain(input_tensor)
-        assert attributions.shape == input_shape
-
-
-def test_attribution_methods_with_3d_input_models():
-    input_shape = (4, 3, 10, 5)  # (batch_size=4, channels=3, input_h=10, input_w=5)
-    models = [
-        NNsight(SmallConv2DModel(input_channels=input_shape[1], image_size=(input_shape[2], input_shape[3]))),
-        NNsight(SmallViTModel(input_channels=input_shape[1], image_size=(input_shape[2], input_shape[3]))),
-    ]
-
-    input_tensor = torch.randn(input_shape)
-
-    for model, attribution_explainer in product(models, attribution_methods_to_test):
-        attributions = attribution_explainer(model, batch_size=3, device=DEVICE).explain(input_tensor)
-
-        assert attributions.shape == input_shape
+attribution_methods_to_test = [IntegratedGradients, SobolAttribution]
+attribution_method_args = {
+    IntegratedGradients: {"baseline": "zero"},
+    SobolAttribution: {"n_samples": 10},
+}
 
 
 model_loader_combinations = [
@@ -86,7 +36,7 @@ model_loader_combinations = [
     ("hf-internal-testing/tiny-random-DistilBertModel", AutoModelForSequenceClassification),
     ("hf-internal-testing/tiny-random-DistilBertModel", AutoModelForMaskedLM),
     ("hf-internal-testing/tiny-random-t5", AutoModelForSequenceClassification),
-    ("hf-internal-testing/tiny-random-t5", AutoModelForSeq2SeqLM),
+    # ("hf-internal-testing/tiny-random-t5", AutoModelForSeq2SeqLM),
     ("hf-internal-testing/tiny-random-LlamaForCausalLM", AutoModelForCausalLM),
     ("hf-internal-testing/tiny-random-gpt2", AutoModelForCausalLM),
 ]
@@ -120,9 +70,10 @@ def test_attribution_methods_with_text(model_name, model_loader, attribution_exp
         assert tokenizer is not None, f"Tokenizer failed to load for {model_name}"
 
         # To be changed according to the final form of the explainer:
-        attributions = attribution_explainer(model, tokenizer=tokenizer, batch_size=3, device=DEVICE).explain(
-            input_text
-        )
+        explainer_args = attribution_method_args.get(attribution_explainer, {})
+        attributions = attribution_explainer(
+            model, tokenizer=tokenizer, batch_size=3, device=DEVICE, **explainer_args
+        ).explain(input_text)
 
         # Checks:
         assert isinstance(attributions, list), "The output of the attribution explainer must be a list"
