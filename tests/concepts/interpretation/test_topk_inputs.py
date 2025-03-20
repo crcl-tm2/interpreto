@@ -82,7 +82,7 @@ def test_topk_inputs_from_activations():
     )
 
     # extracting concept interpretations
-    all_top_k_tokens = interpretation_method.topk_inputs_from_concepts_activations(
+    all_top_k_tokens = interpretation_method._topk_inputs_from_concepts_activations(
         inputs=words_list_list,
         concepts_activations=fake_activations,
         concepts_indices=list(range(nb_concepts)),
@@ -100,7 +100,7 @@ def test_topk_inputs_from_activations():
             assert a == k - i
 
     indices = [0, 2, 4]
-    subset_top_k_tokens = interpretation_method.topk_inputs_from_concepts_activations(
+    subset_top_k_tokens = interpretation_method._topk_inputs_from_concepts_activations(
         inputs=words_list_list,
         concepts_activations=fake_activations,
         concepts_indices=indices,
@@ -111,7 +111,7 @@ def test_topk_inputs_from_activations():
         assert subset_top_k_tokens[c] == all_top_k_tokens[c]
 
     index = 0
-    single_top_k_tokens = interpretation_method.topk_inputs_from_concepts_activations(
+    single_top_k_tokens = interpretation_method._topk_inputs_from_concepts_activations(
         inputs=words_list_list,
         concepts_activations=fake_activations,
         concepts_indices=[index],
@@ -351,7 +351,7 @@ def test_topk_inputs_error_raising(encoder_lm_splitter: ModelWithSplitPoints):
             source=InterpretationSources.CONCEPTS_ACTIVATIONS,
             granularity=Granularities.TOKENS,
         )
-        method.granulated_inputs(
+        method._granulated_inputs(
             inputs=["one", "two", "three"],
             concepts_activations=torch.rand(10, 10),
         )

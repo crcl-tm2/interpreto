@@ -59,6 +59,27 @@ class InterpretationSources(Enum):
 
 
 class TopKInputs(BaseConceptInterpretationMethod):
+    """Code [:octicons-mark-github-24: `concepts/interpretations/topk_inputs.py`](https://github.com/FOR-sight-ai/interpreto/blob/main/interpreto/concepts/interpretations/topk_inputs.py)
+
+    Implementation of the Top-K Inputs concept interpretation method also called MaxAct.
+    It is the most natural way to interpret a concept, as it is the most natural way to explain a concept.
+    Hence several papers used it without describing it.
+    Nonetheless, we can reference Bricken et al. (2023) [^1] from Anthropic for their post on transformer-circuits.
+
+    [^1]:
+        Trenton Bricken*, Adly Templeton*, Joshua Batson*, Brian Chen*, Adam Jermyn*, Tom Conerly, Nicholas L Turner, Cem Anil, Carson Denison, Amanda Askell, Robert Lasenby, Yifan Wu, Shauna Kravec, Nicholas Schiefer, Tim Maxwell, Nicholas Joseph, Alex Tamkin, Karina Nguyen, Brayden McLean, Josiah E Burke, Tristan Hume, Shan Carter, Tom Henighan, Chris Olah
+        [Towards Monosemanticity: Decomposing Language Models With Dictionary Learning](https://transformer-circuits.pub/2023/monosemantic-features)
+        Transformer Circuits, 2023.
+
+    Attributes:
+        granularity (Granularities): The granularity at which the interpretation is computed.
+        source (InterpretationSources): The source of the inputs to use for the interpretation.
+        k (int): The number of inputs to use for the interpretation.
+        model_with_split_points (ModelWithSplitPoints): The model with split points to use for the interpretation.
+        split_point (str): The split point to use for the interpretation.
+        concept_model (ConceptModel): The concept model to use for the interpretation.
+    """
+
     def __init__(
         self,
         *,
@@ -84,7 +105,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
         self.source = source
         self.k = k
 
-    def verify_provided_sources(
+    def _verify_provided_sources(
         self,
         inputs: list[str] | None = None,
         latent_activations: LatentActivations | None = None,
@@ -107,14 +128,14 @@ class TopKInputs(BaseConceptInterpretationMethod):
                 f"The source {self.source} requires concepts activations to be provided. Please provide concepts activations."
             )
 
-    def concepts_activations_from_source(
+    def _concepts_activations_from_source(
         self,
         inputs: list[str] | None = None,
         latent_activations: Float[torch.Tensor, "nl d"] | None = None,
         concepts_activations: Float[torch.Tensor, "nl cpt"] | None = None,
     ) -> tuple(list[str], Float[torch.Tensor, "nl cpt"]):
         # check that the provided sources are consistent with the arguments
-        self.verify_provided_sources(inputs, latent_activations, concepts_activations)
+        self._verify_provided_sources(inputs, latent_activations, concepts_activations)
 
         source = self.source
         if source is InterpretationSources.AUTO:
@@ -149,7 +170,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
 
         return inputs, concepts_activations
 
-    def granulated_inputs(
+    def _granulated_inputs(
         self,
         inputs: list[str],  # (n, l)
         concepts_activations: ConceptsActivations,  # (n*l, cpt)
@@ -180,7 +201,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
         assert len(granulated_flattened_inputs) == len(studied_inputs_concept_activations)
         return granulated_flattened_inputs, studied_inputs_concept_activations
 
-    def verify_concepts_indices(
+    def _verify_concepts_indices(
         self,
         concepts_activations: ConceptsActivations,
         concepts_indices: int | list[int] | Literal["all"] = "all",
@@ -204,7 +225,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
 
         return concepts_indices
 
-    def topk_inputs_from_concepts_activations(
+    def _topk_inputs_from_concepts_activations(
         self,
         inputs: list[str],  # (nl,)
         concepts_activations: ConceptsActivations,  # (nl, cpt)
@@ -247,8 +268,31 @@ class TopKInputs(BaseConceptInterpretationMethod):
         latent_activations: LatentActivations | None = None,
         concepts_activations: ConceptsActivations | None = None,
     ) -> Mapping[int, Any]:
+        """
+        Give the interpretation of the concepts dimensions in the latent space into a human-readable format.
+        The interpretation is a mapping between the concepts indices and an object allowing to interpret them.
+        It can be a label, a description, examples, etc.
+
+        To do so it finds the inputs that maximize the activations of a given concepts.
+
+        Args:
+            concepts_indices (int | list[int] | Literal["all"] | None): The indices of the concepts to interpret.
+            inputs (list[str] | None): The inputs to use for the interpretation.
+                Necessary if the source is not `VOCABULARY`, as examples are extracted from the inputs.
+            latent_activations (Float[torch.Tensor, "nl d"] | None): The latent activations to use for the interpretation.
+                Necessary if the source is `LATENT_ACTIVATIONS`.
+                Otherwise, it is computed from the inputs or ignored if the source is `CONCEPT_ACTIVATIONS`.
+            concepts_activations (Float[torch.Tensor, "nl cpt"] | None): The concepts activations to use for the interpretation.
+                Necessary if the source is not `CONCEPT_ACTIVATIONS`. Otherwise, it is computed from the latent activations.
+
+        Returns:
+            Mapping[int, Any]: The interpretation of the concepts indices.
+
+        Raises:
+            ValueError: If the arguments do not correspond to the specified source.
+        """
         # compute the concepts activations from the provided source, can also create inputs from the vocabulary
-        inputs, concepts_activations = self.concepts_activations_from_source(
+        inputs, concepts_activations = self._concepts_activations_from_source(
             inputs, latent_activations, concepts_activations
         )
         inputs: list[str]  # Verified by concepts_activations_from_source
@@ -256,12 +300,14 @@ class TopKInputs(BaseConceptInterpretationMethod):
 
         # inputs becomes a list of elements extracted from the examples
         # concepts_activations becomes a subset of the concepts activations corresponding to the inputs elements
-        inputs, concepts_activations = self.granulated_inputs(inputs=inputs, concepts_activations=concepts_activations)
+        inputs, concepts_activations = self._granulated_inputs(
+            inputs=inputs, concepts_activations=concepts_activations
+        )
 
-        concepts_indices = self.verify_concepts_indices(
+        concepts_indices = self._verify_concepts_indices(
             concepts_activations=concepts_activations, concepts_indices=concepts_indices
         )
 
-        return self.topk_inputs_from_concepts_activations(
+        return self._topk_inputs_from_concepts_activations(
             inputs=inputs, concepts_activations=concepts_activations, concepts_indices=concepts_indices
         )

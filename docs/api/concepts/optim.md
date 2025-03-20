@@ -21,5 +21,6 @@ icon: material/middleware-outline
         - encode_activations
         - decode_concepts
         - get_dictionary
+        - interpret
         - input_concept_attribution
         - concept_output_attribution

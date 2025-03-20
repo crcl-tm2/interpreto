@@ -12,7 +12,6 @@ icon: material/middleware-outline
       show_source: true
       inherited_members: true
       members:
-        - top_k_inputs_for_concept
-        - top_k_inputs_for_concept_from_activations
+        - interpret
         - input_concept_attribution
         - concept_output_attribution
