@@ -28,14 +28,11 @@ Implementation of the Cockatiel concept explainer
 
 from __future__ import annotations
 
-import torch
-
-from interpreto.commons.model_wrapping.model_with_split_points import ModelWithSplitPoints
-from interpreto.concepts.methods.overcomplete import OvercompleteDictionaryLearning, OvercompleteOptimClasses
+from interpreto.concepts.methods.overcomplete import NMFConcepts
 from interpreto.typing import ConceptsActivations, ModelInput
 
 
-class Cockatiel(OvercompleteDictionaryLearning):
+class Cockatiel(NMFConcepts):
     """Code: [:octicons-mark-github-24: `concepts/methods/cockatiel.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/cockatiel.py)
 
     Implementation of the Cockatiel concept explainer by Jourdan et al. (2023)[^1].
@@ -50,41 +47,11 @@ class Cockatiel(OvercompleteDictionaryLearning):
         split_point (str | None): The split point used to train the `concept_model`. Default: `None`, set only when
             the concept explainer is fitted.
         concept_model (overcomplete.optimization.SemiNMF): An [Overcomplete NMF](https://github.com/KempnerInstitute/overcomplete/blob/main/overcomplete/optimization/nmf.py) encoder-decoder.
+        force_relu (bool): Whether to force the activations to be positive.
         is_fitted (bool): Whether the `concept_model` was fit on model activations.
         has_differentiable_concept_encoder (bool): Whether the `encode_activations` operation is differentiable.
         has_differentiable_concept_decoder (bool): Whether the `decode_concepts` operation is differentiable.
     """
-
-    def __init__(
-        self,
-        model_with_split_points: ModelWithSplitPoints,
-        *,
-        nb_concepts: int,
-        split_point: str | None = None,
-        device: torch.device | str = "cpu",
-        **kwargs,
-    ):
-        """
-        Initialize the Cockatiel bottleneck explainer using the NMF concept extraction method.
-
-        Args:
-            model_with_split_points (ModelWithSplitPoints): The model to apply the explanation on.
-                It should have at least one split point on which a concept explainer can be trained.
-            nb_concepts (int): Size of the SAE concept space.
-            split_point (str | None): The split point used to train the `concept_model`. If None, tries to use the
-                split point of `model_with_split_points` if a single one is defined.
-            device (torch.device | str): Device to use for the `concept_module`.
-            **kwargs (dict): Additional keyword arguments to pass to the `concept_module`.
-                See the Overcomplete documentation of the provided `concept_model_class` for more details.
-        """
-        super().__init__(
-            model_with_split_points=model_with_split_points,
-            concept_model_class=OvercompleteOptimClasses.SemiNMF.value,
-            nb_concepts=nb_concepts,
-            split_point=split_point,
-            device=device,
-            **kwargs,
-        )
 
     def input_concept_attribution(
         self,

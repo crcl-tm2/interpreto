@@ -4,13 +4,60 @@ icon: material/middleware-outline
 
 # Optimization-based Dictionary Learning
 
-::: interpreto.concepts.OvercompleteOptimClasses
+## List of available methods
+
+::: interpreto.concepts.NMFConcepts
     handler: python
     options:
       show_root_heading: true
-      show_source: true
+      parameter_headings: false
+      filters:
+        - "!^fit"
 
-::: interpreto.concepts.OvercompleteDictionaryLearning
+::: interpreto.concepts.SemiNMFConcepts
+    handler: python
+    options:
+      show_root_heading: true
+
+::: interpreto.concepts.ConvexNMFConcepts
+    handler: python
+    options:
+      show_root_heading: true
+      parameter_headings: false
+
+::: interpreto.concepts.PCAConcepts
+    handler: python
+    options:
+      show_root_heading: true
+
+::: interpreto.concepts.ICAConcepts
+    handler: python
+    options:
+      show_root_heading: true
+
+::: interpreto.concepts.KMeansConcepts
+    handler: python
+    options:
+      show_root_heading: true
+
+::: interpreto.concepts.SparsePCAConcepts
+    handler: python
+    options:
+      show_root_heading: true
+
+::: interpreto.concepts.SVDConcepts
+    handler: python
+    options:
+      show_root_heading: true
+
+::: interpreto.concepts.DictionaryLearningConcepts
+    handler: python
+    options:
+      show_root_heading: true
+
+## Base abstract class
+
+::: interpreto.concepts.methods.DictionaryLearningExplainer
     handler: python
     options:
       show_root_heading: true
