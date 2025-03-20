@@ -73,6 +73,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
 
     Attributes:
         granularity (Granularities): The granularity at which the interpretation is computed.
+            Ignored for source `VOCABULARY`.
         source (InterpretationSources): The source of the inputs to use for the interpretation.
         k (int): The number of inputs to use for the interpretation.
         model_with_split_points (ModelWithSplitPoints): The model with split points to use for the interpretation.
@@ -92,13 +93,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
     ):
         super().__init__(model_with_split_points, split_point, concept_model)
 
-        if source is InterpretationSources.VOCABULARY and granularity not in [
-            # Granularities.ALL_TOKENS,  # TODO: add this granularity when implemented
-            Granularities.TOKENS,
-        ]:
-            raise ValueError(f"The vocabulary granularity suppose a token granularity. Got {granularity}.")
-
-        if granularity is not Granularities.TOKENS:
+        if granularity is not Granularities.TOKENS and source is not InterpretationSources.VOCABULARY:
             raise NotImplementedError("Only token granularity is currently supported for interpretation.")
 
         self.granularity = granularity
@@ -151,10 +146,19 @@ class TopKInputs(BaseConceptInterpretationMethod):
                 )
 
         if source is InterpretationSources.VOCABULARY:
-            inputs: list[str] = list(self.model_with_split_points.tokenizer.get_vocab().keys())
+            # extract and sort the vocabulary
+            vocab = self.model_with_split_points.tokenizer.get_vocab()
+            sorted_vocab = sorted(vocab.items(), key=lambda x: x[1])
+            inputs, input_ids = zip(*sorted_vocab, strict=True)
+            inputs: list[str]
+
+            # compute the vocabulary's latent activations
+            input_tensor: Float[torch.Tensor, "v 1"] = torch.tensor(input_ids).unsqueeze(1)
+            latent_activations: Float[torch.Tensor, "v d"] = self.model_with_split_points.get_activations(
+                input_tensor, select_strategy=ActivationSelectionStrategy.FLATTEN
+            )[self.split_point]  # TODO: verify `ModelWithSplitPoints.get_activations()` can take in ids
 
         if source in [
-            InterpretationSources.VOCABULARY,
             InterpretationSources.INPUTS,
         ]:
             latent_activations: Float[torch.Tensor, "nl d"] = self.model_with_split_points.get_activations(
@@ -175,6 +179,10 @@ class TopKInputs(BaseConceptInterpretationMethod):
         inputs: list[str],  # (n, l)
         concepts_activations: ConceptsActivations,  # (n*l, cpt)
     ):
+        if self.source is InterpretationSources.VOCABULARY:
+            # no granularity is needed
+            return inputs, concepts_activations
+
         max_seq_len = concepts_activations.shape[0] / len(inputs)
 
         if max_seq_len != int(max_seq_len):
@@ -182,7 +190,6 @@ class TopKInputs(BaseConceptInterpretationMethod):
                 f"The number of inputs and activations should be the same. Got {len(inputs)} inputs and {concepts_activations.shape[0]} activations."
             )
         max_seq_len = int(max_seq_len)
-
         if self.granularity is Granularities.TOKENS:
             indices_mask = torch.zeros(size=(concepts_activations.shape[0],), dtype=bool)
 

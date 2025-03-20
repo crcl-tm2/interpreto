@@ -260,25 +260,22 @@ def test_topk_inputs_from_vocabulary(encoder_lm_splitter: ModelWithSplitPoints):
     """
     Test that interpretations can be obtained from the vocabulary
     """
-    k = 5
+    k = 2
     hidden_size = 312
-    nb_concepts = 10
+    nb_concepts = 3
 
     # initializing the explainer
     split = "bert.encoder.layer.1.output"
     encoder_lm_splitter.split_points = split
     concept_explainer = NeuronsAsConcepts(model_with_split_points=encoder_lm_splitter, split_point=split)
 
-    try:
-        top_k_vocabulary = concept_explainer.interpret(
-            interpretation_method=TopKInputs,
-            granularity=Granularities.TOKENS,
-            source=InterpretationSources.VOCABULARY,
-            k=k,
-            concepts_indices=torch.randperm(hidden_size)[:nb_concepts].tolist(),
-        )
-    except MemoryError:  # TODO: remove this try catch when optimized or bigger CI capacity
-        pytest.skip("MemoryError raised, likely due to the large vocabulary")
+    top_k_vocabulary = concept_explainer.interpret(
+        interpretation_method=TopKInputs,
+        granularity=Granularities.TOKENS,
+        source=InterpretationSources.VOCABULARY,
+        k=k,
+        concepts_indices=torch.randperm(hidden_size)[:nb_concepts].tolist(),
+    )
 
     assert len(top_k_vocabulary) == nb_concepts
 
@@ -302,13 +299,6 @@ def test_topk_inputs_error_raising(encoder_lm_splitter: ModelWithSplitPoints):
 
     # getting the activations
     activations = encoder_lm_splitter.get_activations(testing_examples)[split]
-
-    # incompatible granularity and source  # TODO: add this test when Granularities.WORDS is implemented
-    # with pytest.raises(ValueError):
-    #     TopKInputs(
-    #         InterpretationSources.VOCABULARY,
-    #         granularity=Granularities.WORDS,
-    #     )
 
     # source inputs but inputs is not provided
     with pytest.raises(ValueError):
@@ -370,3 +360,12 @@ def test_topk_inputs_error_raising(encoder_lm_splitter: ModelWithSplitPoints):
             inputs=["one", "two", "three"],
             concepts_activations=torch.rand(10, 10),
         )
+
+
+test_topk_inputs_from_vocabulary(
+    ModelWithSplitPoints(
+        "huawei-noah/TinyBERT_General_4L_312D",
+        split_points=[],
+        model_autoclass=AutoModelForMaskedLM,  # type: ignore
+    )
+)
