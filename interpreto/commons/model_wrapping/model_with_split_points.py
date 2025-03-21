@@ -212,18 +212,16 @@ class ModelWithSplitPoints(LanguageModel):
 
     def get_activations(
         self,
-        inputs: str | list[str] | BatchEncoding,
+        inputs: str | list[str] | BatchEncoding | torch.Tensor,
         select_strategy: str
         | ActivationSelectionStrategy = ActivationSelectionStrategy.FLATTEN,  # TODO: discuss the default behavior, but if methods require flatten it should be the default
         select_indices: int | list[int] | tuple[int] | None = None,
         **kwargs,
-    ) -> dict[
-        str, LatentActivations
-    ]:  # Wrong output type, `nnsight_dict` returns an `InterventionProxy` which is not a dict, TODO: update
+    ) -> InterventionProxy:
         """Get intermediate activations for all model split points
 
         Args:
-            inputs (str | list[str] | BatchEncoding): Inputs to the model forward pass before or after tokenization.
+            inputs (str | list[str] | BatchEncoding | torch.Tensor): Inputs to the model forward pass before or after tokenization.
             select_strategy (str | ActivationSelectionStrategy): Selection strategy for activations.
 
                 Options are:
@@ -239,7 +237,7 @@ class ModelWithSplitPoints(LanguageModel):
                 only across all sequences, with shape `(batch, d_model)`. By default, all positions are selected.
 
         Returns:
-            Dictionary having one key, value pair for each split point defined for the model. Keys correspond to split
+            (InterventionProxy) Dictionary having one key, value pair for each split point defined for the model. Keys correspond to split
                 names in `self.split_points`, while values correspond to the extracted activations for the split point
                 for the given `inputs`.
         """
@@ -252,7 +250,8 @@ class ModelWithSplitPoints(LanguageModel):
 
         # Compute activations
         with self.trace(inputs, **kwargs):
-            activations: dict[str, LatentActivations] = nnsight_dict().save()  # type: ignore
+            # dict[str, torch.Tensor]
+            activations: InterventionProxy = nnsight_dict().save()  # type: ignore
             for idx, split_point in enumerate(self.split_points):
                 curr_module: Envoy = self.get(split_point)
                 # Handle case in which module has .output attribute, and .nns_output gets overridden instead
@@ -285,6 +284,59 @@ class ModelWithSplitPoints(LanguageModel):
                         f"(batch_size x sequence_length, model_dim), got {activations[layer].shape}"
                     )
         return activations
+
+    def get_split_activations(
+        self, activations: InterventionProxy, split_point: str | None = None
+    ) -> LatentActivations:
+        """
+        Extract activations for the specified split point.
+        Verify that the given activations are valid for the `model_with_split_points` and `split_point`.
+        Cases in which the activations are not valid include:
+
+        * Activations are not a valid dictionary.
+        * Specified split point does not exist in the activations.
+
+        Args:
+            activations (InterventionProxy): A dictionary with model paths as keys and the corresponding
+                tensors as values.
+            split_point (str | None): The split point to extract activations from.
+                If None, the `split_point` of the explainer is used.
+
+        Returns:
+            (LatentActivations): The activations for the explainer split point.
+
+        Raises:
+            TypeError: If the activations are not a valid dictionary.
+            ValueError: If the specified split point is not found in the activations.
+        """
+        if split_point is not None:
+            local_split_point: str = split_point
+        elif not self.split_points:
+            raise ValueError(
+                "The activations cannot correspond to `model_with_split_points` model. "
+                "The `model_with_split_points` model do not have `split_point` defined. "
+            )
+        elif len(self.split_points) > 1:
+            raise ValueError("Cannot determine the split point with multiple `model_with_split_points` split points. ")
+        else:
+            local_split_point: str = self.split_points[0]
+
+        # dict wrapped in InterventionProxy do not directly inherit from dict
+        activations_is_dict = hasattr(activations, "values") and hasattr(activations, "keys")
+        if not activations_is_dict or not all(isinstance(act, torch.Tensor) for act in activations.values()):
+            raise TypeError(
+                "Invalid activations for the concept explainer. "
+                "Activations should be a dictionary of model paths and torch.Tensor activations. "
+                f"Got: '{type(activations)}'"
+            )
+        activations_split_points: list[str] = list(activations.keys())  # type: ignore
+        if local_split_point not in activations_split_points:
+            raise ValueError(
+                f"Fitted split point '{local_split_point}' not found in activations.\n"
+                f"Available split_points: {', '.join(activations_split_points)}."
+            )
+
+        return activations[local_split_point]  # type: ignore
 
     def get_latent_shape(
         self,

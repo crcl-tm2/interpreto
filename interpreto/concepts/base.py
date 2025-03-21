@@ -41,8 +41,9 @@ from overcomplete.base import BaseDictionaryLearning
 from interpreto.attributions.base import AttributionExplainer
 from interpreto.commons.model_wrapping.model_with_split_points import ModelWithSplitPoints
 from interpreto.concepts.interpretations.base import BaseConceptInterpretationMethod
-from interpreto.typing import ConceptModel, ConceptsActivations, LatentActivations, ModelInput
+from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentActivations, ModelInput
 
+ConceptModel = TypeVar("ConceptModel", bound=ConceptModelProtocol)
 MethodOutput = TypeVar("MethodOutput")
 
 
@@ -68,7 +69,7 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
         model_with_split_points (ModelWithSplitPoints): The model to apply the explanation on.
             It should have at least one split point on which `concept_model` can be fitted.
         split_point (str): The split point used to train the `concept_model`.
-        concept_model (Any): The model used to extract concepts from the activations of
+        concept_model (ConceptModelProtocol): The model used to extract concepts from the activations of
             `model_with_split_points`. The only assumption for classes inheriting from this class is that
             the `concept_model` can encode activations into concepts with `encode_activations`.
         is_fitted (bool): Whether the `concept_model` was fit on model activations.
@@ -78,7 +79,7 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
     def __init__(
         self,
         model_with_split_points: ModelWithSplitPoints,
-        concept_model: ConceptModel,
+        concept_model: ConceptModelProtocol,
         split_point: str | None = None,
     ):
         """Initializes the concept explainer with a given splitted model.
@@ -86,7 +87,7 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
         Args:
             model_with_split_points (ModelWithSplitPoints): The model to apply the explanation on.
                 It should have at least one split point on which a concept explainer can be trained.
-            concept_model (Any): The model used to extract concepts from
+            concept_model (ConceptModelProtocol): The model used to extract concepts from
                 the activations of `model_with_split_points`.
             split_point (str | None): The split point used to train the `concept_model`. If None, tries to use the
                 split point of `model_with_split_points` if a single one is defined.
@@ -96,10 +97,15 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
                 f"The given model should be a ModelWithSplitPoints, but {type(model_with_split_points)} was given."
             )
         self.model_with_split_points: ModelWithSplitPoints = model_with_split_points
-        self.concept_model: ConceptModel = concept_model
-        self.split_point: str = split_point  # Verified by `split_point.setter`
+        self._concept_model = concept_model
+        self.split_point = split_point  # Verified by `split_point.setter`
         self.__is_fitted: bool = False
         self.has_differentiable_concept_encoder = False
+
+    @property
+    def concept_model(self) -> ConceptModelProtocol:
+        # Declare the concept model as read-only property for inheritance typing flexibility
+        return self._concept_model
 
     @property
     def is_fitted(self) -> bool:
@@ -115,7 +121,7 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
             )""")
 
     @abstractmethod
-    def fit(self, activations: LatentActivations | dict[str, LatentActivations], *args, **kwargs) -> Any:
+    def fit(self, activations: LatentActivations | InterventionProxy, *args, **kwargs) -> Any:
         """Fits `concept_model` on the given activations.
 
         Args:
@@ -139,37 +145,6 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
         """
         pass
 
-    def _verify_activations(self, activations: dict[str, LatentActivations]) -> None:
-        """
-        Verify that the given activations are valid for the `model_with_split_points` and `self.split_point`.
-        Cases in which the activations are not valid include:
-
-        * Activations are not a valid dictionary.
-        * Specified split point does not exist in the activations.
-
-        Args:
-            activations (dict[str, torch.Tensor]): A dictionary with model paths as keys and the corresponding
-                tensors as values.
-        """
-        # dict wrapped in InterventionProxy do not directly inherit from dict
-        activations_is_dict = isinstance(activations, dict) or (
-            isinstance(activations, InterventionProxy)
-            and hasattr(activations, "values")
-            and hasattr(activations, "keys")
-        )
-        if not activations_is_dict or not all(isinstance(act, torch.Tensor) for act in activations.values()):
-            raise TypeError(
-                "Invalid activations for the concept explainer. "
-                "Activations should be a dictionary of model paths and torch.Tensor activations. "
-                f"Got: '{type(activations)}'"
-            )
-        activations_split_points = list(activations.keys())
-        if self.split_point not in activations_split_points:
-            raise ValueError(
-                f"Fitted split point '{self.split_point}' not found in activations.\n"
-                f"Available split_points: {', '.join(activations_split_points)}."
-            )
-
     @property
     def split_point(self) -> str:
         return self._split_point
@@ -192,14 +167,12 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
                 )
             self._split_point: str = split_point
 
-    def _get_split_activations(
+    def _sanitize_activations(
         self,
-        activations: LatentActivations | dict[str, LatentActivations],
+        activations: LatentActivations | InterventionProxy,
     ) -> LatentActivations:
-        # TODO: find a better way to check if activations is a dict
-        if hasattr(activations, "keys"):
-            self._verify_activations(activations)
-            split_activations = activations[self.split_point]
+        if isinstance(activations, InterventionProxy):
+            split_activations: LatentActivations = self.model_with_split_points.get_split_activations(activations)
         else:
             split_activations = activations
         assert len(split_activations.shape) == 2, (
@@ -211,7 +184,7 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
 
     def _prepare_fit(
         self,
-        activations: LatentActivations | dict[str, LatentActivations],
+        activations: LatentActivations | InterventionProxy,
         overwrite: bool,
     ) -> LatentActivations:
         if self.is_fitted and not overwrite:
@@ -219,7 +192,7 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
                 "Concept explainer has already been fitted. Refitting will overwrite the current model."
                 "If this is intended, use `overwrite=True` in fit(...)."
             )
-        return self._get_split_activations(activations)
+        return self._sanitize_activations(activations)
 
     @check_fitted
     def interpret(
@@ -227,7 +200,7 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
         interpretation_method: type[BaseConceptInterpretationMethod],
         concepts_indices: int | list[int] | Literal["all"] = "all",
         inputs: list[str] | None = None,
-        latent_activations: dict[str, LatentActivations] | LatentActivations | None = None,
+        latent_activations: InterventionProxy | LatentActivations | None = None,
         concepts_activations: ConceptsActivations | None = None,
         **kwargs,
     ) -> Mapping[int, Any]:
@@ -245,17 +218,20 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
         Returns:
             Mapping[int, Any]: A mapping between the concepts indices and the interpretation of the concepts.
         """
+        if concepts_indices == "all":
+            concepts_indices = list(range(self.concept_model.nb_concepts))
+
         # verify
         if latent_activations is not None:
-            split_latent_activations = self._get_split_activations(latent_activations)
+            split_latent_activations = self._sanitize_activations(latent_activations)
         else:
             split_latent_activations = None
 
         # initialize the interpretation method
         method = interpretation_method(
             model_with_split_points=self.model_with_split_points,
-            concept_model=self.concept_model,
             split_point=self.split_point,
+            concept_model=self.concept_model,
             **kwargs,
         )
 
@@ -290,7 +266,7 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
         raise NotImplementedError("Input-to-concept attribution method is not implemented yet.")
 
 
-class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning], ABC):
+class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning]):
     """Code: [:octicons-mark-github-24: `concepts/base.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/base.py)
 
     A concept bottleneck explainer wraps a `concept_model` that should be able to encode activations into concepts
@@ -330,6 +306,7 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
             split_point (str | None): The split point used to train the `concept_model`. If None, tries to use the
                 split point of `model_with_split_points` if a single one is defined.
         """
+        self.concept_model: BaseDictionaryLearning
         super().__init__(model_with_split_points, concept_model, split_point)
         self.has_differentiable_concept_decoder = False
 
@@ -357,7 +334,7 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
         Returns:
             The encoded concept activations.
         """
-        self._verify_activations({self.split_point: activations})
+        self._sanitize_activations(activations)
         return self.concept_model.encode(activations)  # type: ignore
 
     @check_fitted

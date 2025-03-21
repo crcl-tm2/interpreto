@@ -31,14 +31,15 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Mapping
 from enum import Enum
-from typing import Any, Literal
+from typing import Any
 
 import torch
 from jaxtyping import Float
+from nnsight.intervention.graph import InterventionProxy
 
 from interpreto.commons import ActivationSelectionStrategy, ModelWithSplitPoints
 from interpreto.concepts.interpretations.base import BaseConceptInterpretationMethod
-from interpreto.typing import ConceptModel, ConceptsActivations, LatentActivations
+from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentActivations
 
 
 class Granularities(Enum):  # TODO: harmonize with attribution granularities
@@ -78,60 +79,38 @@ class TopKInputs(BaseConceptInterpretationMethod):
         k (int): The number of inputs to use for the interpretation.
         model_with_split_points (ModelWithSplitPoints): The model with split points to use for the interpretation.
         split_point (str): The split point to use for the interpretation.
-        concept_model (ConceptModel): The concept model to use for the interpretation.
+        concept_model (ConceptModelProtocol): The concept model to use for the interpretation.
     """
 
     def __init__(
         self,
         *,
+        model_with_split_points: ModelWithSplitPoints,
+        split_point: str,
+        concept_model: ConceptModelProtocol,
         granularity: Granularities,
         source: InterpretationSources,
         k: int = 5,
-        model_with_split_points: ModelWithSplitPoints | None = None,  # TODO:
-        split_point: str | None = None,
-        concept_model: ConceptModel | None = None,
     ):
         super().__init__(model_with_split_points, split_point, concept_model)
 
-        if granularity is not Granularities.TOKENS and source is not InterpretationSources.VOCABULARY:
+        if granularity is not Granularities.TOKENS:
             raise NotImplementedError("Only token granularity is currently supported for interpretation.")
+
+        if source not in InterpretationSources:
+            raise ValueError(f"The source {source} is not supported. Supported sources: {InterpretationSources}")
 
         self.granularity = granularity
         self.source = source
         self.k = k
-
-    def _verify_provided_sources(
-        self,
-        inputs: list[str] | None = None,
-        latent_activations: LatentActivations | None = None,
-        concepts_activations: ConceptsActivations | None = None,
-    ):
-        if inputs is None and self.source in [
-            InterpretationSources.CONCEPTS_ACTIVATIONS,
-            InterpretationSources.LATENT_ACTIVATIONS,
-            InterpretationSources.INPUTS,
-        ]:
-            raise ValueError(f"The source {self.source} requires inputs to be provided. Please provide inputs.")
-
-        if latent_activations is None and self.source is InterpretationSources.LATENT_ACTIVATIONS:
-            raise ValueError(
-                f"The source {self.source} requires latent activations to be provided. Please provide latent activations."
-            )
-
-        if concepts_activations is None and self.source is InterpretationSources.CONCEPTS_ACTIVATIONS:
-            raise ValueError(
-                f"The source {self.source} requires concepts activations to be provided. Please provide concepts activations."
-            )
 
     def _concepts_activations_from_source(
         self,
         inputs: list[str] | None = None,
         latent_activations: Float[torch.Tensor, "nl d"] | None = None,
         concepts_activations: Float[torch.Tensor, "nl cpt"] | None = None,
-    ) -> tuple(list[str], Float[torch.Tensor, "nl cpt"]):
-        # check that the provided sources are consistent with the arguments
-        self._verify_provided_sources(inputs, latent_activations, concepts_activations)
-
+    ) -> tuple[list[str], Float[torch.Tensor, "nl cpt"]]:
+        # determine the automatic source
         source = self.source
         if source is InterpretationSources.AUTO:
             if concepts_activations is not None:
@@ -141,36 +120,57 @@ class TopKInputs(BaseConceptInterpretationMethod):
             elif inputs is not None:
                 source = InterpretationSources.INPUTS
             else:
-                raise ValueError(
-                    "The source `auto` requires either `concepts_activations`, `latent_activations` or `inputs` to be provided."
-                )
+                source = InterpretationSources.VOCABULARY
 
+        # vocabulary source: construct the inputs from the vocabulary and compute the latent activations
         if source is InterpretationSources.VOCABULARY:
             # extract and sort the vocabulary
-            vocab = self.model_with_split_points.tokenizer.get_vocab()
-            sorted_vocab = sorted(vocab.items(), key=lambda x: x[1])
-            inputs, input_ids = zip(*sorted_vocab, strict=True)
-            inputs: list[str]
+            vocab_dict: dict[str, int] = self.model_with_split_points.tokenizer.get_vocab()
+            input_ids: list[int]
+            inputs, input_ids = zip(*vocab_dict.items(), strict=True)  # type: ignore
 
             # compute the vocabulary's latent activations
             input_tensor: Float[torch.Tensor, "v 1"] = torch.tensor(input_ids).unsqueeze(1)
-            latent_activations: Float[torch.Tensor, "v d"] = self.model_with_split_points.get_activations(
+            activations_dict: InterventionProxy = self.model_with_split_points.get_activations(
                 input_tensor, select_strategy=ActivationSelectionStrategy.FLATTEN
-            )[self.split_point]  # TODO: verify `ModelWithSplitPoints.get_activations()` can take in ids
+            )  # TODO: verify `ModelWithSplitPoints.get_activations()` can take in ids
+            latent_activations = self.model_with_split_points.get_split_activations(
+                activations_dict, split_point=self.split_point
+            )
 
-        if source in [
-            InterpretationSources.INPUTS,
-        ]:
-            latent_activations: Float[torch.Tensor, "nl d"] = self.model_with_split_points.get_activations(
+        # not vocabulary source: ensure that the inputs are provided
+        if inputs is None:
+            raise ValueError(f"The source {self.source} requires inputs to be provided. Please provide inputs.")
+
+        # inputs source: compute the latent activations from the inputs
+        if source is InterpretationSources.INPUTS:
+            activations_dict: InterventionProxy = self.model_with_split_points.get_activations(
                 inputs, select_strategy=ActivationSelectionStrategy.FLATTEN
-            )[self.split_point]
+            )
+            latent_activations = self.model_with_split_points.get_split_activations(
+                activations_dict, split_point=self.split_point
+            )
 
+        # latent activation source: ensure that the latent activations are provided
+        if source is InterpretationSources.LATENT_ACTIVATIONS:
+            if latent_activations is None:
+                raise ValueError(
+                    f"The source {self.source} requires latent activations to be provided. Please provide latent activations."
+                )
+
+        # not concepts activation source: compute the concepts activations from the latent activations
         if source in [
             InterpretationSources.VOCABULARY,
             InterpretationSources.INPUTS,
             InterpretationSources.LATENT_ACTIVATIONS,
         ]:
-            concepts_activations: Float[torch.Tensor, "nl cpt"] = self.concept_model.encode(latent_activations)
+            concepts_activations = self.concept_model.encode(latent_activations)  # type: ignore
+
+        # concepts activation source: ensure that the concepts activations are provided
+        if concepts_activations is None:
+            raise ValueError(
+                f"The source {self.source} requires concepts activations to be provided. Please provide concepts activations."
+            )
 
         return inputs, concepts_activations
 
@@ -191,7 +191,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
             )
         max_seq_len = int(max_seq_len)
         if self.granularity is Granularities.TOKENS:
-            indices_mask = torch.zeros(size=(concepts_activations.shape[0],), dtype=bool)
+            indices_mask = torch.zeros(size=(concepts_activations.shape[0],), dtype=torch.bool)
 
             granulated_flattened_inputs = []
             for i, input_example in enumerate(inputs):
@@ -211,11 +211,8 @@ class TopKInputs(BaseConceptInterpretationMethod):
     def _verify_concepts_indices(
         self,
         concepts_activations: ConceptsActivations,
-        concepts_indices: int | list[int] | Literal["all"] = "all",
+        concepts_indices: int | list[int],
     ) -> list[int]:
-        if concepts_indices == "all":
-            concepts_indices = list(range(self.concept_model.nb_concepts))
-
         # take subset of concepts as specified by the user
         if isinstance(concepts_indices, int):
             concepts_indices = [concepts_indices]
@@ -270,7 +267,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
 
     def interpret(
         self,
-        concepts_indices: int | list[int] | Literal["all"] | None = "all",
+        concepts_indices: int | list[int],
         inputs: list[str] | None = None,
         latent_activations: LatentActivations | None = None,
         concepts_activations: ConceptsActivations | None = None,
@@ -283,7 +280,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
         To do so it finds the inputs that maximize the activations of a given concepts.
 
         Args:
-            concepts_indices (int | list[int] | Literal["all"] | None): The indices of the concepts to interpret.
+            concepts_indices (int | list[int]): The indices of the concepts to interpret.
             inputs (list[str] | None): The inputs to use for the interpretation.
                 Necessary if the source is not `VOCABULARY`, as examples are extracted from the inputs.
             latent_activations (Float[torch.Tensor, "nl d"] | None): The latent activations to use for the interpretation.
@@ -299,22 +296,24 @@ class TopKInputs(BaseConceptInterpretationMethod):
             ValueError: If the arguments do not correspond to the specified source.
         """
         # compute the concepts activations from the provided source, can also create inputs from the vocabulary
-        inputs, concepts_activations = self._concepts_activations_from_source(
+        sure_inputs: list[str]  # Verified by concepts_activations_from_source
+        sure_concepts_activations: Float[torch.Tensor, "nl cpt"]  # Verified by concepts_activations_from_source
+        sure_inputs, sure_concepts_activations = self._concepts_activations_from_source(
             inputs, latent_activations, concepts_activations
         )
-        inputs: list[str]  # Verified by concepts_activations_from_source
-        concepts_activations: Float[torch.Tensor, "nl cpt"]  # Verified by concepts_activations_from_source
 
-        # inputs becomes a list of elements extracted from the examples
-        # concepts_activations becomes a subset of the concepts activations corresponding to the inputs elements
-        inputs, concepts_activations = self._granulated_inputs(
-            inputs=inputs, concepts_activations=concepts_activations
+        granulated_inputs: list[str]  # len: ng, inputs becomes a list of elements extracted from the examples
+        granulated_concepts_activations: Float[torch.Tensor, "ng cpt"]
+        granulated_inputs, granulated_concepts_activations = self._granulated_inputs(
+            inputs=sure_inputs, concepts_activations=sure_concepts_activations
         )
 
         concepts_indices = self._verify_concepts_indices(
-            concepts_activations=concepts_activations, concepts_indices=concepts_indices
+            concepts_activations=granulated_concepts_activations, concepts_indices=concepts_indices
         )
 
         return self._topk_inputs_from_concepts_activations(
-            inputs=inputs, concepts_activations=concepts_activations, concepts_indices=concepts_indices
+            inputs=granulated_inputs,
+            concepts_activations=granulated_concepts_activations,
+            concepts_indices=concepts_indices,
         )

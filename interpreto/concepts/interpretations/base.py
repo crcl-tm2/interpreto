@@ -33,7 +33,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from interpreto.commons import ModelWithSplitPoints
-from interpreto.typing import ConceptModel, ConceptsActivations, LatentActivations, ModelInput
+from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentActivations, ModelInput
 
 
 class BaseConceptInterpretationMethod(ABC):
@@ -47,24 +47,24 @@ class BaseConceptInterpretationMethod(ABC):
 
     def __init__(
         self,
-        model_with_split_points: ModelWithSplitPoints | None = None,
-        split_point: str | None = None,
-        concept_model: ConceptModel | None = None,
+        model_with_split_points: ModelWithSplitPoints,
+        split_point: str,
+        concept_model: ConceptModelProtocol,
     ):
-        if concept_model is not None and not hasattr(concept_model, "encode"):
+        if not hasattr(concept_model, "encode"):
             raise TypeError(
                 f"Concept model should be able to encode activations into concepts. Got: {type(concept_model)}."
             )
 
-        if split_point is not None and split_point not in model_with_split_points.split_points:
+        if split_point not in model_with_split_points.split_points:
             raise ValueError(
                 f"Split point '{split_point}' not found in model split points: "
                 f"{', '.join(model_with_split_points.split_points)}."
             )
 
-        self.model_with_split_points: ModelWithSplitPoints | None = model_with_split_points
-        self.split_point: str | None = split_point
-        self.concept_model: ConceptModel | None = concept_model
+        self.model_with_split_points: ModelWithSplitPoints = model_with_split_points
+        self.split_point: str = split_point
+        self.concept_model: ConceptModelProtocol = concept_model
 
     @abstractmethod
     def interpret(
@@ -81,6 +81,13 @@ class BaseConceptInterpretationMethod(ABC):
 
         Args:
             concepts_indices (int | list[int]): The indices of the concepts to interpret.
+            inputs (ModelInput | None): The inputs to use for the interpretation.
+                Necessary if the source is not `VOCABULARY`, as examples are extracted from the inputs.
+            latent_activations (LatentActivations | None): The latent activations to use for the interpretation.
+                Necessary if the source is `LATENT_ACTIVATIONS`.
+                Otherwise, it is computed from the inputs or ignored if the source is `CONCEPT_ACTIVATIONS`.
+            concepts_activations (ConceptsActivations | None): The concepts activations to use for the interpretation.
+                Necessary if the source is not `CONCEPT_ACTIVATIONS`. Otherwise, it is computed from the latent activations.
 
         Returns:
             Mapping[int, Any]: The interpretation of each of the specified concepts.

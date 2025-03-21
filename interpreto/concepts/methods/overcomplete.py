@@ -32,6 +32,7 @@ from abc import abstractmethod
 from enum import Enum
 
 import torch
+from nnsight.intervention.graph import InterventionProxy
 from overcomplete import optimization as oc_opt
 from overcomplete import sae as oc_sae
 from torch import nn
@@ -194,7 +195,7 @@ class SAEExplainer(ConceptAutoEncoderExplainer):
 
     def fit(
         self,
-        activations: LatentActivations | dict[str, LatentActivations],
+        activations: LatentActivations | InterventionProxy,
         *,
         use_amp: bool = False,
         batch_size: int = 1024,
@@ -349,7 +350,7 @@ class DictionaryLearningExplainer(ConceptAutoEncoderExplainer):
         self.has_differentiable_concept_encoder = True
         self.has_differentiable_concept_decoder = True
 
-    def fit(self, activations: LatentActivations | dict[str, LatentActivations], *, overwrite: bool = False, **kwargs):
+    def fit(self, activations: LatentActivations | InterventionProxy, *, overwrite: bool = False, **kwargs):
         """Fit an Overcomplete OptimDictionaryLearning model on the given activations.
 
         Args:
@@ -487,7 +488,7 @@ class NMFConcepts(DictionaryLearningExplainer):
         self.has_differentiable_concept_encoder = False
         self.has_differentiable_concept_decoder = True
 
-    def fit(self, activations: LatentActivations | dict[str, LatentActivations], *, overwrite: bool = False, **kwargs):
+    def fit(self, activations: LatentActivations | InterventionProxy, *, overwrite: bool = False, **kwargs):
         """Fit an Overcomplete OptimDictionaryLearning model on the given activations.
 
         Args:
@@ -519,7 +520,7 @@ class NMFConcepts(DictionaryLearningExplainer):
         Returns:
             The encoded concept activations.
         """
-        self._verify_activations({self.split_point: activations})
+        self._sanitize_activations(activations)
         if (activations < 0).any():
             if self.force_relu:
                 activations = torch.nn.functional.relu(activations)
