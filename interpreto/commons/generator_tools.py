@@ -32,6 +32,21 @@ class SubGenerator(Iterator):
         res = self.main_generator.buffer[self.index][self.position]
         self.index += 1
         return res
+    
+class PersistentGenerator(Iterator):
+    def __init__(self, generator:Iterator):
+        self.generator = generator
+        self.buffer = []
+
+    def __next__(self):
+        self.buffer += [next(self.generator)]
+        return self.buffer[-1]
+
+    def __getitem__(self, index:int|slice):
+        try:
+            return self.buffer[index]
+        except IndexError as e:
+            raise IndexError(f"Element {index} has not been generated yet and cannot be accessed") from e
 
 class PersistentTupleGeneratorWrapper(Iterator):
     def __init__(self, tuple_generator:Iterator[tuple]):

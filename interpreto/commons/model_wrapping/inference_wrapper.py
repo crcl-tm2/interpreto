@@ -29,7 +29,7 @@ from functools import singledispatchmethod
 import torch
 from transformers import PreTrainedModel
 
-from interpreto.commons.generator_tools import enumerate_generator
+from interpreto.commons.generator_tools import enumerate_generator, PersistentGenerator
 
 
 class ClassificationInferenceWrapper:
@@ -80,12 +80,23 @@ class ClassificationInferenceWrapper:
                 flat_mask = model_inputs["attention_mask"].flatten(0, -2)
                 return self.get_logits({"input_ids": flat_input, "attention_mask": flat_mask}).view(*batch_dims, -1)
 
-    #@get_logits.register(Iterable)
-    #def _(self, model_inputs: Iterable[Mapping[str, torch.Tensor]]) -> Generator:
-    #    return self.get_logits(iter(model_inputs))
+    @staticmethod
+    def _reshape_input_ids(tensor:torch.Tensor):
+        # TODO : refaire ça proprement
+        match tensor.dim():
+            case 1:
+                return tensor.unsqueeze(0)
+            case 2:
+                return tensor
+            case 3:
+                assert tensor.shape[0] == 1, "When passing a sequence or a generator of inputs to the inference wrapper, please consider giving sequence of perturbations of single elements instead of batches (shape should be (1, n_perturbations, ...))"
+                return tensor[0]
+            case _:
+                raise NotImplementedError(f"input tensor of shape {tensor.shape} not supported")
 
-    @get_logits.register(Iterator)
-    def _(self, model_inputs: Iterator[Mapping[str, torch.Tensor]])->Generator:
+    @get_logits.register(Iterable)
+    def _(self, model_inputs: Iterable[Mapping[str, torch.Tensor]])->Generator:
+        model_inputs = iter(model_inputs)
         # TODO : adapt this method to the "input_embeds" mode
         def concat_and_pad(
             t1: torch.Tensor | None, t2: torch.Tensor, pad_value: int | None = None, dim: int = 0
@@ -138,10 +149,8 @@ class ClassificationInferenceWrapper:
                 continue
             try:
                 next_item = next(model_inputs)
-                input_ids = next_item["input_ids"]
-                assert input_ids.shape[0] == 1 and input_ids.dim() > 2, "When passing a sequence or a generator of inputs to the inference wrapper, please consider giving sequence of perturbations of single elements instead of batches (shape should be (1, n_perturbations, ...))"
-                input_buffer = next_item["input_ids"][0]
-                mask_buffer = next_item["attention_mask"][0]
+                input_buffer = self._reshape_input_ids(next_item["input_ids"])
+                mask_buffer = self._reshape_input_ids(next_item["attention_mask"])
                 result_indexes += [len(input_buffer)]
             except StopIteration:
                 if last_item:
@@ -158,33 +167,37 @@ class ClassificationInferenceWrapper:
         return self.get_logits(model_inputs).argmax(dim=-1)
 
     @get_targets.register(Iterable)
-    def _(self, model_inputs: Iterable[Mapping[str, torch.Tensor]]) -> Generator:
-        return self.get_targets(iter(model_inputs))
+    def _(self, model_inputs: Iterable[Mapping[str, torch.Tensor]]) -> Iterator:
+        yield from (prediction.argmax(dim=-1) for prediction in self.get_logits(iter(model_inputs)))
 
-    @get_targets.register(Iterator)
-    def _(self, model_inputs: Iterator[Mapping[str, torch.Tensor]]) -> Iterator:
-        yield from (prediction.argmax(dim=-1) for prediction in self.get_logits(model_inputs))
+    def _get_score_from_logits_and_target(self, logits: torch.Tensor, target: torch.Tensor)->torch.Tensor:
+        # TODO : change that
+        if target.dim() == 1:
+            target = target.unsqueeze(0).expand(logits.shape[0], -1)
+        return torch.gather(logits, -1, target)
 
     @singledispatchmethod
     def get_scores(self, model_inputs, targets:torch.Tensor):
-        raise NotImplementedError(f"type {type(model_inputs)} not supported for method get_targets in class {self.__class__.__name__}")
+        raise NotImplementedError(f"type {type(model_inputs)} not supported for method get_scores in class {self.__class__.__name__}")
 
     @get_scores.register(Mapping)
     def _(self, model_inputs: Mapping[str, torch.Tensor], targets: torch.Tensor):
-        if targets.dim == 1:
-            targets = targets.unsqueeze(0).repeat(model_inputs["input_ids"].shape[0], 1)
-        predictions = self.get_logits(model_inputs)
-        # TODO : check shape of target here
-        return torch.gather(self.get_logits(model_inputs), 2, targets.unsqueeze(1).repeat(1, predictions.shape[1], 1))
+        return self._get_score_from_logits_and_target(self.get_logits(model_inputs), targets)
 
     @get_scores.register(Iterable)
-    def _(self, model_inputs: Iterator[Mapping[str, torch.Tensor]], targets: torch.Tensor):
-        return self.get_scores(iter(model_inputs), targets)
-
-    @get_scores.register(Iterator)
-    def _(self, model_inputs: Iterator[Mapping[str, torch.Tensor]], targets: torch.Tensor):
-        for index, element in enumerate_generator(model_inputs):
-            yield self.get_scores(element, targets[index])
+    def _(self, model_inputs: Iterable[Mapping[str, torch.Tensor]], targets: torch.Tensor):
+        predictions = self.get_logits(iter(model_inputs))
+        # TODO : refaire ça proprement
+        if targets.dim() in (0, 1):
+            targets = targets.view(1, -1)
+        if targets.shape[0] == 1:
+            for prediction in predictions:
+                yield self._get_score_from_logits_and_target(prediction, targets[0:1])
+        else:
+            for index, prediction in enumerate_generator(predictions):
+                print(prediction.shape, targets[index].shape)
+                # TODO : refaire ça proprement
+                yield self._get_score_from_logits_and_target(prediction, targets[index:index+1])
 
     @singledispatchmethod
     def get_gradients(self, model_inputs, targets: torch.Tensor):
@@ -192,10 +205,15 @@ class ClassificationInferenceWrapper:
 
     @get_gradients.register(Mapping)
     def _(self, model_inputs: Mapping[str, torch.Tensor], targets: torch.Tensor):
-        result = self.get_scores(model_inputs, targets)
-        return result.backward(torch.ones_like(result))
+        scores = self.get_scores(model_inputs, targets)
+        scores.backward(torch.ones_like(scores))
+        return model_inputs["input_ids"].grad
 
-    @get_gradients.register(Iterator)
-    def _(self, model_inputs: Iterator[Mapping[str, torch.Tensor]], targets: torch.Tensor):
-        for index, element in enumerate_generator(model_inputs):
-            yield self.get_gradients(element, targets[index])
+    @get_gradients.register(Iterable)
+    def _(self, model_inputs: Iterable[Mapping[str, torch.Tensor]], targets: torch.Tensor):
+        # TODO : see if we can do that without using persistent generator
+        mi = PersistentGenerator(iter(model_inputs))
+        scores = self.get_scores(mi, targets)
+        for index, element in enumerate_generator(scores):
+            element.backward(torch.ones_like(element))
+            return mi[index]["input_ids"].grad
