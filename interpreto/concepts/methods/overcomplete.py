@@ -30,6 +30,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from enum import Enum
+from typing import Generic, TypeVar
 
 import torch
 from nnsight.intervention.graph import InterventionProxy
@@ -41,6 +42,10 @@ from torch.utils.data import DataLoader, TensorDataset
 from interpreto.commons.model_wrapping.model_with_split_points import ModelWithSplitPoints
 from interpreto.concepts.base import ConceptAutoEncoderExplainer, check_fitted
 from interpreto.typing import LatentActivations
+
+# Type variables for covariant generics
+_SAE_co = TypeVar("_SAE_co", bound=oc_sae.SAE, covariant=True)
+_BODL_co = TypeVar("_BODL_co", bound=oc_opt.BaseOptimDictionaryLearning, covariant=True)
 
 
 class SAELoss:
@@ -105,7 +110,7 @@ class SAELossClasses(Enum):
     DeadNeuronsReanimation = DeadNeuronsReanimationLoss
 
 
-class SAEExplainer(ConceptAutoEncoderExplainer):
+class SAEExplainer(ConceptAutoEncoderExplainer[oc_sae.SAE], Generic[_SAE_co]):
     """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
 
     Implementation of a concept explainer using a
@@ -288,7 +293,7 @@ class SAEExplainer(ConceptAutoEncoderExplainer):
 
 
 # TODO: Rename, remove Overcomplete prefix
-class DictionaryLearningExplainer(ConceptAutoEncoderExplainer):
+class DictionaryLearningExplainer(ConceptAutoEncoderExplainer[oc_opt.BaseOptimDictionaryLearning], Generic[_BODL_co]):
     """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
 
     Implementation of a concept explainer using an
@@ -365,7 +370,7 @@ class DictionaryLearningExplainer(ConceptAutoEncoderExplainer):
         self.concept_model.fit(split_activations, **kwargs)
 
 
-class VanillaSAEConcepts(SAEExplainer):
+class VanillaSAEConcepts(SAEExplainer[oc_sae.SAE]):
     """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
 
     `ConceptAutoEncoderExplainer` with the Vanilla SAE from Cunningham et al. (2023)[^1] and Bricken et al. (2023)[^2] as concept model.
@@ -386,7 +391,7 @@ class VanillaSAEConcepts(SAEExplainer):
         return oc_sae.SAE
 
 
-class TopKSAEConcepts(SAEExplainer):
+class TopKSAEConcepts(SAEExplainer[oc_sae.TopKSAE]):
     """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
 
     `ConceptAutoEncoderExplainer` with the TopK SAE from Gao et al. (2024)[^3] as concept model.
@@ -403,7 +408,7 @@ class TopKSAEConcepts(SAEExplainer):
         return oc_sae.TopKSAE
 
 
-class BatchTopKSAEConcepts(SAEExplainer):
+class BatchTopKSAEConcepts(SAEExplainer[oc_sae.BatchTopKSAE]):
     """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
 
     `ConceptAutoEncoderExplainer` with the BatchTopK SAE from Bussmann et al. (2024)[^4] as concept model.
@@ -420,7 +425,7 @@ class BatchTopKSAEConcepts(SAEExplainer):
         return oc_sae.BatchTopKSAE
 
 
-class JumpReLUSAEConcepts(SAEExplainer):
+class JumpReLUSAEConcepts(SAEExplainer[oc_sae.JumpSAE]):
     """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
 
     `ConceptAutoEncoderExplainer` with the JumpReLU SAE from Rajamanoharan et al. (2024)[^5] as concept model.
@@ -437,7 +442,7 @@ class JumpReLUSAEConcepts(SAEExplainer):
         return oc_sae.JumpSAE
 
 
-class NMFConcepts(DictionaryLearningExplainer):
+class NMFConcepts(DictionaryLearningExplainer[oc_opt.NMF]):
     """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
 
     `ConceptAutoEncoderExplainer` with the NMF from Lee and Seung (1999)[^1] as concept model.
@@ -532,7 +537,7 @@ class NMFConcepts(DictionaryLearningExplainer):
         return self.concept_model.encode(activations)  # type: ignore
 
 
-class SemiNMFConcepts(DictionaryLearningExplainer):
+class SemiNMFConcepts(DictionaryLearningExplainer[oc_opt.SemiNMF]):
     """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
 
     `ConceptAutoEncoderExplainer` with the SemiNMF from Ding et al. (2008)[^2] as concept model.
@@ -549,7 +554,7 @@ class SemiNMFConcepts(DictionaryLearningExplainer):
         return oc_opt.SemiNMF
 
 
-class ConvexNMFConcepts(DictionaryLearningExplainer):
+class ConvexNMFConcepts(DictionaryLearningExplainer[oc_opt.ConvexNMF]):
     """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
 
     `ConceptAutoEncoderExplainer` with the ConvexNMF from Ding et al. (2008)[^2] as concept model.
@@ -597,7 +602,7 @@ class ConvexNMFConcepts(DictionaryLearningExplainer):
         )
 
 
-class PCAConcepts(DictionaryLearningExplainer):
+class PCAConcepts(DictionaryLearningExplainer[oc_opt.SkPCA]):
     """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
 
     `ConceptAutoEncoderExplainer` with the PCA from Pearson (1901)[^3] as concept model.
@@ -614,7 +619,7 @@ class PCAConcepts(DictionaryLearningExplainer):
         return oc_opt.SkPCA
 
 
-class ICAConcepts(DictionaryLearningExplainer):
+class ICAConcepts(DictionaryLearningExplainer[oc_opt.SkICA]):
     """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
 
     `ConceptAutoEncoderExplainer` with the ICA from Hyvarinen and Oja (2000)[^4] as concept model.
@@ -631,7 +636,7 @@ class ICAConcepts(DictionaryLearningExplainer):
         return oc_opt.SkICA
 
 
-class KMeansConcepts(DictionaryLearningExplainer):
+class KMeansConcepts(DictionaryLearningExplainer[oc_opt.SkKMeans]):
     """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
 
     `ConceptAutoEncoderExplainer` with the K-Means concepts from Mairal et al. (2009)[^5] as concept model.
@@ -648,7 +653,7 @@ class KMeansConcepts(DictionaryLearningExplainer):
         return oc_opt.SkKMeans
 
 
-class DictionaryLearningConcepts(DictionaryLearningExplainer):
+class DictionaryLearningConcepts(DictionaryLearningExplainer[oc_opt.SkDictionaryLearning]):
     """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
 
     `ConceptAutoEncoderExplainer` with the Dictionary Learning concepts from Mairal et al. (2009)[^5] as concept model.
@@ -665,7 +670,7 @@ class DictionaryLearningConcepts(DictionaryLearningExplainer):
         return oc_opt.SkDictionaryLearning
 
 
-class SparsePCAConcepts(DictionaryLearningExplainer):
+class SparsePCAConcepts(DictionaryLearningExplainer[oc_opt.SkSparsePCA]):
     """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
 
     `ConceptAutoEncoderExplainer` with the SparsePCA concepts from Mairal et al. (2009)[^5] as concept model.
@@ -682,7 +687,7 @@ class SparsePCAConcepts(DictionaryLearningExplainer):
         return oc_opt.SkSparsePCA
 
 
-class SVDConcepts(DictionaryLearningExplainer):
+class SVDConcepts(DictionaryLearningExplainer[oc_opt.SkSVD]):
     """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
 
     `ConceptAutoEncoderExplainer` with the SVD concepts from Mairal et al. (2009)[^5] as concept model.

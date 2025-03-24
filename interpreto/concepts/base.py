@@ -44,6 +44,7 @@ from interpreto.concepts.interpretations.base import BaseConceptInterpretationMe
 from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentActivations, ModelInput
 
 ConceptModel = TypeVar("ConceptModel", bound=ConceptModelProtocol)
+BDL = TypeVar("BDL", bound=BaseDictionaryLearning)
 MethodOutput = TypeVar("MethodOutput")
 
 
@@ -266,7 +267,7 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
         raise NotImplementedError("Input-to-concept attribution method is not implemented yet.")
 
 
-class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning]):
+class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning], Generic[BDL]):
     """Code: [:octicons-mark-github-24: `concepts/base.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/base.py)
 
     A concept bottleneck explainer wraps a `concept_model` that should be able to encode activations into concepts
