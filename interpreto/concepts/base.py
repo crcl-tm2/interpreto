@@ -198,7 +198,7 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
     def interpret(
         self,
         interpretation_method: type[BaseConceptInterpretationMethod],
-        concepts_indices: int | list[int] | Literal["all"] = "all",
+        concepts_indices: int | list[int] | Literal["all"],
         inputs: list[str] | None = None,
         latent_activations: InterventionProxy | LatentActivations | None = None,
         concepts_activations: ConceptsActivations | None = None,

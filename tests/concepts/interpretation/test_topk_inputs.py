@@ -34,8 +34,6 @@ from itertools import product
 
 import pytest
 import torch
-from pytest import fixture
-from transformers import AutoModelForMaskedLM
 
 from interpreto.commons import ActivationSelectionStrategy, ModelWithSplitPoints
 from interpreto.concepts import NeuronsAsConcepts
@@ -44,16 +42,7 @@ from interpreto.concepts.interpretations import Granularities, InterpretationSou
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-@fixture
-def encoder_lm_splitter() -> ModelWithSplitPoints:
-    return ModelWithSplitPoints(
-        "huawei-noah/TinyBERT_General_4L_312D",
-        split_points=[],
-        model_autoclass=AutoModelForMaskedLM,  # type: ignore
-    )
-
-
-def test_topk_inputs_from_activations(encoder_lm_splitter: ModelWithSplitPoints):
+def test_topk_inputs_from_activations(splitted_encoder_ml: ModelWithSplitPoints):
     """
     Test that the `top_k_tokens_for_concept_from_activations` method works as expected
     Fake activations are given to the `NeuronsAsConcepts` explainer
@@ -76,12 +65,12 @@ def test_topk_inputs_from_activations(encoder_lm_splitter: ModelWithSplitPoints)
 
     # initializing the explainer
     split = "bert.encoder.layer.1.output"
-    encoder_lm_splitter.split_points = split
-    concept_model = NeuronsAsConcepts(model_with_split_points=encoder_lm_splitter, split_point=split).concept_model
+    splitted_encoder_ml.split_points = split
+    concept_model = NeuronsAsConcepts(model_with_split_points=splitted_encoder_ml, split_point=split).concept_model
 
     # initializing the interpreter
     interpretation_method = TopKInputs(
-        model_with_split_points=encoder_lm_splitter,
+        model_with_split_points=splitted_encoder_ml,
         split_point=split,
         concept_model=concept_model,
         granularity=Granularities.TOKENS,
@@ -128,7 +117,7 @@ def test_topk_inputs_from_activations(encoder_lm_splitter: ModelWithSplitPoints)
     assert single_top_k_tokens[index] == all_top_k_tokens[index]
 
 
-def test_interpret_via_topk_inputs(encoder_lm_splitter: ModelWithSplitPoints):
+def test_interpret_via_topk_inputs(splitted_encoder_ml: ModelWithSplitPoints):
     """
     Test that the `top_k_tokens_for_concept` method works as expected
     Fake activations are given to the `NeuronsAsConcepts` explainer
@@ -146,11 +135,11 @@ def test_interpret_via_topk_inputs(encoder_lm_splitter: ModelWithSplitPoints):
 
     # initializing the explainer
     split = "bert.encoder.layer.1.output"
-    encoder_lm_splitter.split_points = split
-    concept_explainer = NeuronsAsConcepts(model_with_split_points=encoder_lm_splitter, split_point=split)
+    splitted_encoder_ml.split_points = split
+    concept_explainer = NeuronsAsConcepts(model_with_split_points=splitted_encoder_ml, split_point=split)
 
     # getting the activations
-    activations = encoder_lm_splitter.get_activations(
+    activations = splitted_encoder_ml.get_activations(
         joined_tokens_list, select_strategy=ActivationSelectionStrategy.FLATTEN
     )
 
@@ -200,7 +189,7 @@ def test_interpret_via_topk_inputs(encoder_lm_splitter: ModelWithSplitPoints):
     assert single_top_k_tokens[index] == all_top_k_tokens[index]
 
 
-def test_topk_inputs_sources(encoder_lm_splitter: ModelWithSplitPoints):
+def test_topk_inputs_sources(splitted_encoder_ml: ModelWithSplitPoints):
     """
     Test that different sources give the same results
     """
@@ -217,11 +206,11 @@ def test_topk_inputs_sources(encoder_lm_splitter: ModelWithSplitPoints):
 
     # initializing the explainer
     split = "bert.encoder.layer.1.output"
-    encoder_lm_splitter.split_points = split
-    concept_explainer = NeuronsAsConcepts(model_with_split_points=encoder_lm_splitter, split_point=split)
+    splitted_encoder_ml.split_points = split
+    concept_explainer = NeuronsAsConcepts(model_with_split_points=splitted_encoder_ml, split_point=split)
 
     # getting the activations
-    activations = encoder_lm_splitter.get_activations(
+    activations = splitted_encoder_ml.get_activations(
         joined_tokens_list, select_strategy=ActivationSelectionStrategy.FLATTEN
     )
 
@@ -264,7 +253,7 @@ def test_topk_inputs_sources(encoder_lm_splitter: ModelWithSplitPoints):
         assert top_latent == top_concept == top_input
 
 
-def test_topk_inputs_from_vocabulary(encoder_lm_splitter: ModelWithSplitPoints):
+def test_topk_inputs_from_vocabulary(splitted_encoder_ml: ModelWithSplitPoints):
     """
     Test that interpretations can be obtained from the vocabulary
     """
@@ -274,8 +263,8 @@ def test_topk_inputs_from_vocabulary(encoder_lm_splitter: ModelWithSplitPoints):
 
     # initializing the explainer
     split = "bert.encoder.layer.1.output"
-    encoder_lm_splitter.split_points = split
-    concept_explainer = NeuronsAsConcepts(model_with_split_points=encoder_lm_splitter, split_point=split)
+    splitted_encoder_ml.split_points = split
+    concept_explainer = NeuronsAsConcepts(model_with_split_points=splitted_encoder_ml, split_point=split)
 
     top_k_vocabulary = concept_explainer.interpret(
         interpretation_method=TopKInputs,
@@ -287,14 +276,14 @@ def test_topk_inputs_from_vocabulary(encoder_lm_splitter: ModelWithSplitPoints):
 
     assert len(top_k_vocabulary) == nb_concepts
 
-    vocabulary = list(encoder_lm_splitter.tokenizer.get_vocab().keys())
+    vocabulary = list(splitted_encoder_ml.tokenizer.get_vocab().keys())
     for topk in top_k_vocabulary.values():
         assert len(topk) == k
         for token in topk:
             assert token in vocabulary
 
 
-def test_topk_inputs_error_raising(encoder_lm_splitter: ModelWithSplitPoints):
+def test_topk_inputs_error_raising(splitted_encoder_ml: ModelWithSplitPoints):
     """
     Test that the `TopKInputs` class raises an error when needed
     """
@@ -303,17 +292,17 @@ def test_topk_inputs_error_raising(encoder_lm_splitter: ModelWithSplitPoints):
 
     # initializing the explainer
     split = "bert.encoder.layer.1.output"
-    encoder_lm_splitter.split_points = split
-    concept_model = NeuronsAsConcepts(model_with_split_points=encoder_lm_splitter, split_point=split).concept_model
+    splitted_encoder_ml.split_points = split
+    concept_model = NeuronsAsConcepts(model_with_split_points=splitted_encoder_ml, split_point=split).concept_model
 
     # getting the activations
-    activations_dict = encoder_lm_splitter.get_activations(testing_examples)
-    activations = encoder_lm_splitter.get_split_activations(activations_dict, split_point=split)
+    activations_dict = splitted_encoder_ml.get_activations(testing_examples)
+    activations = splitted_encoder_ml.get_split_activations(activations_dict, split_point=split)
 
     # source inputs but inputs is not provided
     with pytest.raises(ValueError):
         method = TopKInputs(
-            model_with_split_points=encoder_lm_splitter,
+            model_with_split_points=splitted_encoder_ml,
             split_point=split,
             concept_model=concept_model,
             source=InterpretationSources.INPUTS,
@@ -328,7 +317,7 @@ def test_topk_inputs_error_raising(encoder_lm_splitter: ModelWithSplitPoints):
     # source latent activations but latent activations is not provided
     with pytest.raises(ValueError):
         method = TopKInputs(
-            model_with_split_points=encoder_lm_splitter,
+            model_with_split_points=splitted_encoder_ml,
             split_point=split,
             concept_model=concept_model,
             source=InterpretationSources.LATENT_ACTIVATIONS,
@@ -343,7 +332,7 @@ def test_topk_inputs_error_raising(encoder_lm_splitter: ModelWithSplitPoints):
     # source concepts activations but concepts activations is not provided
     with pytest.raises(ValueError):
         method = TopKInputs(
-            model_with_split_points=encoder_lm_splitter,
+            model_with_split_points=splitted_encoder_ml,
             split_point=split,
             concept_model=concept_model,
             source=InterpretationSources.CONCEPTS_ACTIVATIONS,
@@ -359,7 +348,7 @@ def test_topk_inputs_error_raising(encoder_lm_splitter: ModelWithSplitPoints):
     for wrong_indices in [-1, activations.shape[1], [-1, 0, 1], ["?"], (0, 1, 2), "str other than 'all'"]:
         with pytest.raises(ValueError):
             method = TopKInputs(
-                model_with_split_points=encoder_lm_splitter,
+                model_with_split_points=splitted_encoder_ml,
                 split_point=split,
                 concept_model=concept_model,
                 source=InterpretationSources.CONCEPTS_ACTIVATIONS,
@@ -374,13 +363,13 @@ def test_topk_inputs_error_raising(encoder_lm_splitter: ModelWithSplitPoints):
     # incompatible inputs and concepts activations $10 / 3$ is not an integer
     with pytest.raises(ValueError):
         method = TopKInputs(
-            model_with_split_points=encoder_lm_splitter,
+            model_with_split_points=splitted_encoder_ml,
             split_point=split,
             concept_model=concept_model,
             source=InterpretationSources.CONCEPTS_ACTIVATIONS,
             granularity=Granularities.TOKENS,
         )
-        method._granulated_inputs(
+        method._get_granular_inputs(
             inputs=["one", "two", "three"],
             concepts_activations=torch.rand(10, 10),
         )

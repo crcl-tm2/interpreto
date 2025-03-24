@@ -30,8 +30,6 @@ from __future__ import annotations
 
 import pytest
 import torch
-from pytest import fixture
-from transformers import AutoModelForMaskedLM
 
 from interpreto.commons.model_wrapping.model_with_split_points import ModelWithSplitPoints
 from interpreto.concepts import NeuronsAsConcepts
@@ -39,27 +37,18 @@ from interpreto.concepts import NeuronsAsConcepts
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-@fixture
-def encoder_lm_splitter() -> ModelWithSplitPoints:
-    return ModelWithSplitPoints(
-        "huawei-noah/TinyBERT_General_4L_312D",
-        split_points=[],
-        model_autoclass=AutoModelForMaskedLM,  # type: ignore
-    )
-
-
-def test_overcomplete_cbe(encoder_lm_splitter: ModelWithSplitPoints):
+def test_overcomplete_cbe(splitted_encoder_ml: ModelWithSplitPoints):
     """
     Test that the concept encoding and decoding of the `NeuronsAsConcepts` is the identity
     """
 
     txt = ["Hello, my dog is cute", "The cat is on the [MASK]"]
     split = "bert.encoder.layer.1.output"
-    encoder_lm_splitter.split_points = split
-    activations = encoder_lm_splitter.get_activations(txt, select_strategy="flatten")
+    splitted_encoder_ml.split_points = split
+    activations = splitted_encoder_ml.get_activations(txt, select_strategy="flatten")
     assert activations[split].shape == (16, 312)
 
-    concept_explainer = NeuronsAsConcepts(model_with_split_points=encoder_lm_splitter, split_point=split)
+    concept_explainer = NeuronsAsConcepts(model_with_split_points=splitted_encoder_ml, split_point=split)
 
     assert concept_explainer.is_fitted is True  # splitted_model has a single split so it is fitted
     assert concept_explainer.split_point == split
@@ -70,8 +59,8 @@ def test_overcomplete_cbe(encoder_lm_splitter: ModelWithSplitPoints):
     concepts = concept_explainer.encode_activations(activations[split])
     reconstructed_activations = concept_explainer.decode_concepts(concepts)
 
-    assert torch.allclose(concepts, activations[split])
-    assert torch.allclose(reconstructed_activations, activations[split])
+    assert torch.allclose(concepts, activations[split])  # type: ignore
+    assert torch.allclose(reconstructed_activations, activations[split])  # type: ignore
 
     with pytest.raises(NotImplementedError):
         concept_explainer.fit(activations[split])

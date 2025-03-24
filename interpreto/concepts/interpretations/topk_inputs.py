@@ -43,7 +43,15 @@ from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentA
 
 
 class Granularities(Enum):  # TODO: harmonize with attribution granularities
-    # TODO: doc strings
+    """Code [:octicons-mark-github-24: `concepts/interpretations/topk_inputs.py`](https://github.com/FOR-sight-ai/interpreto/blob/main/interpreto/concepts/interpretations/topk_inputs.py)
+
+    Possible granularities of inputs returned by the Top-K Inputs concept interpretation method.
+
+    Valid granularities are:
+
+    - `TOKENS`: the granularity is at the token level.
+    """
+
     # ALL_TOKENS = "all_tokens"
     TOKENS = "tokens"
     # WORDS = "words"
@@ -52,6 +60,29 @@ class Granularities(Enum):  # TODO: harmonize with attribution granularities
 
 
 class InterpretationSources(Enum):
+    """Code [:octicons-mark-github-24: `concepts/interpretations/topk_inputs.py`](https://github.com/FOR-sight-ai/interpreto/blob/main/interpreto/concepts/interpretations/topk_inputs.py)
+
+    Possible sources of inputs to use for the Top-K Inputs concept interpretation method.
+    The activations do not need to take into account the granularity of the inputs. It is managed internally.
+
+    Valid sources are:
+
+    - `CONCEPTS_ACTIVATIONS`: also require `inputs` to return strings but assume that the `concepts_activations` are provided and correspond to the inputs. Hence it is the fastest source.
+
+    - `LATENT_ACTIVATIONS`: also require `inputs` to return strings but assume that the `latent_activations` are provided and correspond to the inputs.
+        The latent activations can be the one used to fit the `concepts_model`. Hence the easiest source to use.
+
+    - `INPUTS`: requires `inputs` and compute activations on them to extract the most activating inputs. It is the slowest source.
+
+    - `VOCABULARY`: each token of the tokenizer vocabulary is considered as an `inputs`, then activations are computed. This source has the least requirements.
+
+    - `AUTO`: depending on the provided arguments, it will select the most appropriate source. Order of preference is:
+        1. `CONCEPTS_ACTIVATIONS`
+        2. `LATENT_ACTIVATIONS`
+        3. `INPUTS`
+        4. `VOCABULARY`
+    """
+
     CONCEPTS_ACTIVATIONS = "concepts_activations"
     LATENT_ACTIVATIONS = "latent_activations"
     INPUTS = "inputs"
@@ -73,13 +104,13 @@ class TopKInputs(BaseConceptInterpretationMethod):
         Transformer Circuits, 2023.
 
     Attributes:
+        model_with_split_points (ModelWithSplitPoints): The model with split points to use for the interpretation.
+        split_point (str): The split point to use for the interpretation.
+        concept_model (ConceptModelProtocol): The concept model to use for the interpretation.
         granularity (Granularities): The granularity at which the interpretation is computed.
             Ignored for source `VOCABULARY`.
         source (InterpretationSources): The source of the inputs to use for the interpretation.
         k (int): The number of inputs to use for the interpretation.
-        model_with_split_points (ModelWithSplitPoints): The model with split points to use for the interpretation.
-        split_point (str): The split point to use for the interpretation.
-        concept_model (ConceptModelProtocol): The concept model to use for the interpretation.
     """
 
     def __init__(
@@ -174,7 +205,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
 
         return inputs, concepts_activations
 
-    def _granulated_inputs(
+    def _get_granular_inputs(
         self,
         inputs: list[str],  # (n, l)
         concepts_activations: ConceptsActivations,  # (n*l, cpt)
@@ -193,20 +224,20 @@ class TopKInputs(BaseConceptInterpretationMethod):
         if self.granularity is Granularities.TOKENS:
             indices_mask = torch.zeros(size=(concepts_activations.shape[0],), dtype=torch.bool)
 
-            granulated_flattened_inputs = []
+            granular_flattened_inputs = []
             for i, input_example in enumerate(inputs):
                 # TODO: check this treatment is correct, for now it has not really been tested
                 tokens = self.model_with_split_points.tokenizer.tokenize(input_example)
                 indices_mask[i * max_seq_len : i * max_seq_len + len(tokens)] = True
-                granulated_flattened_inputs += tokens
+                granular_flattened_inputs += tokens
             studied_inputs_concept_activations = concepts_activations[indices_mask]
         else:
             raise NotImplementedError(
                 f"Granularity {self.granularity} is not yet implemented, only `TOKEN` is supported for now."
             )
 
-        assert len(granulated_flattened_inputs) == len(studied_inputs_concept_activations)
-        return granulated_flattened_inputs, studied_inputs_concept_activations
+        assert len(granular_flattened_inputs) == len(studied_inputs_concept_activations)
+        return granular_flattened_inputs, studied_inputs_concept_activations
 
     def _verify_concepts_indices(
         self,
@@ -274,10 +305,12 @@ class TopKInputs(BaseConceptInterpretationMethod):
     ) -> Mapping[int, Any]:
         """
         Give the interpretation of the concepts dimensions in the latent space into a human-readable format.
-        The interpretation is a mapping between the concepts indices and an object allowing to interpret them.
-        It can be a label, a description, examples, etc.
+        The interpretation is a mapping between the concepts indices and a list of inputs allowing to interpret them.
+        The granularity of input examples is determined by the `granularity` class attribute.
 
-        To do so it finds the inputs that maximize the activations of a given concepts.
+        The returned inputs are the most activating inputs for the concepts.
+
+        The required arguments depend on the `source` class attribute.
 
         Args:
             concepts_indices (int | list[int]): The indices of the concepts to interpret.
@@ -302,18 +335,18 @@ class TopKInputs(BaseConceptInterpretationMethod):
             inputs, latent_activations, concepts_activations
         )
 
-        granulated_inputs: list[str]  # len: ng, inputs becomes a list of elements extracted from the examples
-        granulated_concepts_activations: Float[torch.Tensor, "ng cpt"]
-        granulated_inputs, granulated_concepts_activations = self._granulated_inputs(
+        granular_inputs: list[str]  # len: ng, inputs becomes a list of elements extracted from the examples
+        granular_concepts_activations: Float[torch.Tensor, "ng cpt"]
+        granular_inputs, granular_concepts_activations = self._get_granular_inputs(
             inputs=sure_inputs, concepts_activations=sure_concepts_activations
         )
 
         concepts_indices = self._verify_concepts_indices(
-            concepts_activations=granulated_concepts_activations, concepts_indices=concepts_indices
+            concepts_activations=granular_concepts_activations, concepts_indices=concepts_indices
         )
 
         return self._topk_inputs_from_concepts_activations(
-            inputs=granulated_inputs,
-            concepts_activations=granulated_concepts_activations,
+            inputs=granular_inputs,
+            concepts_activations=granular_concepts_activations,
             concepts_indices=concepts_indices,
         )
