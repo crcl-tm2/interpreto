@@ -24,14 +24,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Generator, Iterator, Mapping, Iterable
+from collections.abc import Generator, Iterable, Iterator, Mapping
 from functools import singledispatchmethod
 
 import torch
-from transformers import PreTrainedModel
 
-from interpreto.commons.generator_tools import enumerate_generator, PersistentGenerator
+from interpreto.commons.generator_tools import PersistentGenerator, enumerate_generator
 from interpreto.commons.model_wrapping.inference_wrapper import InferenceWrapper
+
 
 class ClassificationInferenceWrapper(InferenceWrapper):
     def _embed(self, model_inputs: Mapping[str, torch.Tensor]):
@@ -81,13 +81,22 @@ class ClassificationInferenceWrapper(InferenceWrapper):
         model_inputs = iter(model_inputs)
         # TODO : adapt this method to the "inputs_embeds" mode
         def concat_and_pad(
-            t1: torch.Tensor | None, t2: torch.Tensor, pad_value: int | None = None, dim: int = 0
+            t1: torch.Tensor | None,
+            t2: torch.Tensor,
+            dim: int = 0,
+            pad_value: int | None = None,
+            pad_dim:int |None = None,
         ) -> torch.Tensor:
             if t1 is not None:
-                if pad_value is not None and t1.shape[1] > t2.shape[1]:
-                    t2 = torch.nn.functional.pad(t2, (0, t1.shape[1] - t2.shape[1]), value=pad_value)
-                if pad_value is not None and t1.shape[1] < t2.shape[1]:
-                    t1 = torch.nn.functional.pad(t1, (0, t2.shape[1] - t1.shape[1]), value=pad_value)
+                # TODO : rewrite this
+                if pad_value is not None and t1.shape[pad_dim] > t2.shape[pad_dim]:
+                    pad = [0, 0] * t2.dim()
+                    pad[~2 * pad_dim] = t1.shape[pad_dim] - t2.shape[pad_dim]
+                    t2 = torch.nn.functional.pad(t2, pad, value=pad_value)
+                elif pad_value is not None and t1.shape[pad_dim] < t2.shape[pad_dim]:
+                    pad = [0, 0] * t1.dim()
+                    pad[~2 * pad_dim] = t2.shape[pad_dim] - t1.shape[pad_dim]
+                    t1 = torch.nn.functional.pad(t1, pad, value=pad_value)
                 return torch.cat([t1, t2], dim=dim)
             return t2
 
@@ -124,8 +133,8 @@ class ClassificationInferenceWrapper(InferenceWrapper):
                 continue
             if input_buffer.numel():
                 missing_length = self.batch_size - len(batch if batch is not None else ())
-                batch = concat_and_pad(batch, input_buffer[:missing_length], pad_token_id)
-                batch_mask = concat_and_pad(batch_mask, mask_buffer[:missing_length], 0)
+                batch = concat_and_pad(batch, input_buffer[:missing_length], 0, pad_token_id, 1)
+                batch_mask = concat_and_pad(batch_mask, mask_buffer[:missing_length], 0, 0, 1)
                 input_buffer = input_buffer[missing_length:]
                 mask_buffer = mask_buffer[missing_length:]
                 continue
@@ -177,7 +186,6 @@ class ClassificationInferenceWrapper(InferenceWrapper):
                 yield self._get_score_from_logits_and_target(prediction, targets[0:1])
         else:
             for index, prediction in enumerate_generator(predictions):
-                print(prediction.shape, targets[index].shape)
                 # TODO : refaire ça proprement
                 yield self._get_score_from_logits_and_target(prediction, targets[index:index+1])
 
@@ -187,7 +195,7 @@ class ClassificationInferenceWrapper(InferenceWrapper):
 
     @get_gradients.register(Mapping)
     def _(self, model_inputs: Mapping[str, torch.Tensor], targets: torch.Tensor):
-        model_input = self._embed(model_inputs)
+        model_inputs = self._embed(model_inputs)
         scores = self.get_scores(model_inputs, targets)
         scores.backward(torch.ones_like(scores))
         return model_inputs["inputs_embeds"].grad.abs().mean(axis=-1)
