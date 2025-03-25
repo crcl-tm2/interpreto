@@ -11,3 +11,12 @@ Implementation of the COCKATIEL framework from [COCKATIEL: COntinuous Concept ra
     options:
       show_root_heading: true
       show_source: true
+      inherited_members: true
+      members:
+        - fit
+        - encode_activations
+        - decode_concepts
+        - get_dictionary
+        - interpret
+        - input_concept_attribution
+        - concept_output_attribution

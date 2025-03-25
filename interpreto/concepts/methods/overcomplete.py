@@ -32,13 +32,14 @@ from abc import abstractmethod
 from enum import Enum
 
 import torch
+from nnsight.intervention.graph import InterventionProxy
 from overcomplete import optimization as oc_opt
 from overcomplete import sae as oc_sae
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
 from interpreto.commons.model_wrapping.model_with_split_points import ModelWithSplitPoints
-from interpreto.concepts.base import ConceptBottleneckExplainer, check_fitted
+from interpreto.concepts.base import ConceptAutoEncoderExplainer, check_fitted
 from interpreto.typing import LatentActivations
 
 
@@ -89,104 +90,22 @@ class DeadNeuronsReanimationLoss(SAELoss):
         return loss
 
 
-class OvercompleteSAEClasses(Enum):
-    """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
-
-    Overcomplete concepts encoder-decoder classes for dictionary learning
-    derived from the [Overcomplete SAE](https://kempnerinstitute.github.io/overcomplete/saes/vanilla/) class.
-
-    Valid classes are:
-
-    * **SAE** from Cunningham et al. (2023)[^1] and Bricken et al. (2023)[^2]
-        ([Overcomplete implementation](https://github.com/KempnerInstitute/overcomplete/blob/main/overcomplete/sae/base.py)).
-    * **TopKSAE** from Gao et al. (2024)[^3]
-        ([Overcomplete implementation](https://github.com/KempnerInstitute/overcomplete/blob/main/overcomplete/sae/topk_sae.py)).
-    * **BatchTopKSAE** from Bussmann et al. (2024)[^4]
-        ([Overcomplete implementation](https://github.com/KempnerInstitute/overcomplete/blob/main/overcomplete/sae/batchtopk_sae.py)).
-    * **JumpReLUSAE** from Rajamanoharan et al. (2024)[^5]
-        ([Overcomplete implementation](https://github.com/KempnerInstitute/overcomplete/blob/main/overcomplete/sae/jump_sae.py)).
-
-    [^1]:
-        Huben, R., Cunningham, H., Smith, L. R., Ewart, A., Sharkey, L. [Sparse Autoencoders Find Highly Interpretable Features in Language Models](https://openreview.net/forum?id=F76bwRSLeK).
-        The Twelfth International Conference on Learning Representations, 2024.
-    [^2]:
-        Bricken, T. et al., [Towards Monosemanticity: Decomposing Language Models With Dictionary Learning](https://transformer-circuits.pub/2023/monosemantic-features),
-        Transformer Circuits Thread, 2023.
-    [^3]:
-        Gao, L. et al., [Scaling and evaluating sparse autoencoders](https://openreview.net/forum?id=tcsZt9ZNKD).
-        The Thirteenth International Conference on Learning Representations, 2025.
-    [^4]:
-        Bussmann, B., Leask, P., Nanda, N. [BatchTopK Sparse Autoencoders](https://arxiv.org/abs/2412.06410).
-        Arxiv Preprint, 2024.
-    [^5]:
-        Rajamanoharan, S. et al., [Jumping Ahead: Improving Reconstruction Fidelity with JumpReLU Sparse Autoencoders](https://arxiv.org/abs/2407.14435).
-        Arxiv Preprint, 2024.
-    """
-
-    SAE = oc_sae.SAE
-    TopKSAE = oc_sae.TopKSAE
-    BatchTopKSAE = oc_sae.BatchTopKSAE
-    JumpReLUSAE = oc_sae.JumpSAE
-
-
-class OvercompleteOptimClasses(Enum):
-    """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
-
-    Overcomplete optimization classes for dictionary learning
-    derived from the [Overcomplete BaseOptimDictionaryLearning](https://github.com/KempnerInstitute/overcomplete/blob/main/overcomplete/optimization/base.py) class.
-
-    Valid classes are:
-
-    * **NMF** from Lee and Seung (1999)[^1] ([Overcomplete implementation](https://github.com/KempnerInstitute/overcomplete/blob/main/overcomplete/optimization/nmf.py)).
-    * **SemiNMF** from Ding et al. (2008)[^2] ([Overcomplete implementation](https://github.com/KempnerInstitute/overcomplete/blob/main/overcomplete/optimization/semi_nmf.py)).
-    * **ConvexNMF** from Ding et al. (2008)[^2]([Overcomplete implementation](https://github.com/KempnerInstitute/overcomplete/blob/main/overcomplete/optimization/convex_nmf.py)).
-
-    Several methods sourced from `scikit-learn` are also available:
-
-    * **PCA** from Pearson (1901)[^3]
-    * **ICA** from Hyvarinen and Oja (2000)[^4]
-    * **KMeans**
-    * **DictionaryLearning** from Mairal et al. (2009)[^5]
-    * **SparsePCA**
-    * **SVD**
-
-    [^1]:
-        Lee, D., Seung, H. [Learning the parts of objects by non-negative matrix factorization](https://doi.org/10.1038/44565).
-        Nature, 401, 1999, pp. 788–791.
-    [^2]:
-        C. H. Q. Ding, T. Li and M. I. Jordan, [Convex and Semi-Nonnegative Matrix Factorizations](https://ieeexplore.ieee.org/document/4685898).
-        IEEE Transactions on Pattern Analysis and Machine Intelligence, 32(1), 2010, pp. 45-55
-    [^3]:
-        K. Pearson, [On lines and planes of closest fit to systems of points in space](https://doi.org/10.1080/14786440109462720).
-        Philosophical Magazine, 2(11), 1901, pp. 559-572.
-    [^4]:
-        A. Hyvarinen and E. Oja, [Independent Component Analysis: Algorithms and Applications](https://www.sciencedirect.com/science/article/pii/S0893608000000265),
-        Neural Networks, 13(4-5), 2000, pp. 411-430.
-    [^5]:
-        J. Mairal, F. Bach, J. Ponce, G. Sapiro, [Online dictionary learning for sparse coding](https://www.di.ens.fr/~fbach/mairal_icml09.pdf)
-        Proceedings of the 26th Annual International Conference on Machine Learning, 2009, pp. 689-696.
-    """
-
-    # NMF = oc_opt.NMF # TODO: Add treatment to manage activations to ensure they are strictly positive
-    SemiNMF = oc_opt.SemiNMF
-    ConvexNMF = oc_opt.ConvexNMF
-    PCA = oc_opt.SkPCA
-    ICA = oc_opt.SkICA
-    KMeans = oc_opt.SkKMeans
-    DictionaryLearning = oc_opt.SkDictionaryLearning
-    SparsePCA = oc_opt.SkSparsePCA
-    SVD = oc_opt.SkSVD
-
-
 class SAELossClasses(Enum):
-    """Overcomplete SAE loss functions."""
+    """
+    Enumeration of possible loss functions for SAEs.
+
+    To pass as the `criterion` parameter of `SAEExplainer.fit()`.
+
+    Attributes:
+        MSE (type[SAELoss]): Mean Squared Error loss.
+        DeadNeuronsReanimation (type[SAELoss]): Loss function promoting reanimation of dead neurons.
+    """
 
     MSE = MSELoss
     DeadNeuronsReanimation = DeadNeuronsReanimationLoss
 
 
-# TODO: Rename, remove Overcomplete prefix
-class OvercompleteSAE(ConceptBottleneckExplainer):
+class SAEExplainer(ConceptAutoEncoderExplainer):
     """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
 
     Implementation of a concept explainer using a
@@ -197,17 +116,28 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
             It should have at least one split point on which `concept_model` can be fitted.
         split_point (str | None): The split point used to train the `concept_model`. Default: `None`, set only when
             the concept explainer is fitted.
-        concept_model (oc_sae.SAE): An [Overcomplete SAE](https://kempnerinstitute.github.io/overcomplete/saes/vanilla/)
+        concept_model (overcomplete.sae.SAE): An [Overcomplete SAE](https://kempnerinstitute.github.io/overcomplete/saes/vanilla/)
             variant for concept extraction.
         is_fitted (bool): Whether the `concept_model` was fit on model activations.
         has_differentiable_concept_encoder (bool): Whether the `encode_activations` operation is differentiable.
         has_differentiable_concept_decoder (bool): Whether the `decode_concepts` operation is differentiable.
     """
 
+    @property
+    @abstractmethod
+    def concept_model_class(self) -> type[oc_sae.SAE]:
+        """
+        Defines the concept model class to use for the explainer.
+
+        Returns:
+            concept_model_class (type[overcomplete.sae.SAE]): One of the supported [Overcomplete SAE](https://kempnerinstitute.github.io/overcomplete/saes/vanilla/)
+                variants. Supported classes are available in [interpreto.concepts.SAEExplainerClasses]().
+        """
+        raise NotImplementedError
+
     def __init__(
         self,
         model_with_split_points: ModelWithSplitPoints,
-        concept_model_class: type[oc_sae.SAE],
         *,
         nb_concepts: int,
         split_point: str | None = None,
@@ -222,28 +152,26 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
         Args:
             model_with_split_points (ModelWithSplitPoints): The model to apply the explanation on.
                 It should have at least one split point on which a concept explainer can be trained.
-            concept_model_class (type[oc_sae.SAE]): One of the supported [Overcomplete SAE](https://kempnerinstitute.github.io/overcomplete/saes/vanilla/)
-                variants. Supported classes are available in [interpreto.concepts.OvercompleteSAEClasses]().
             nb_concepts (int): Size of the SAE concept space.
             split_point (str | None): The split point used to train the `concept_model`. If None, tries to use the
                 split point of `model_with_split_points` if a single one is defined.
-            encoder_module (nn.Module | str | None): Encoder module to use for the `concept_module`.
-            dictionary_params (dict | None): Dictionary parameters to use for the `concept_module`.
+            encoder_module (nn.Module | str | None): Encoder module to use to construct the SAE, see [Overcomplete SAE documentation](https://kempnerinstitute.github.io/overcomplete/saes/vanilla/).
+            dictionary_params (dict | None): Dictionary parameters to use to construct the SAE, see [Overcomplete SAE documentation](https://kempnerinstitute.github.io/overcomplete/saes/vanilla/).
             device (torch.device | str): Device to use for the `concept_module`.
             **kwargs (dict): Additional keyword arguments to pass to the `concept_module`.
                 See the Overcomplete documentation of the provided `concept_model_class` for more details.
         """
-        if not issubclass(concept_model_class, oc_sae.SAE):
+        if not issubclass(self.concept_model_class, oc_sae.SAE):
             raise ValueError(
                 "ConceptEncoderDecoder must be a subclass of `overcomplete.sae.SAE`.\n"
-                "Use `interpreto.concepts.methods.OvercompleteSAEClasses` to get the list of available SAE methods."
+                "Use `interpreto.concepts.methods.SAEExplainerClasses` to get the list of available SAE methods."
             )
         self.model_with_split_points = model_with_split_points
         self.split_point: str = split_point  # type: ignore
 
         # TODO: this will be replaced with a scan and a better way to select how to pick activations based on model class
         shapes = self.model_with_split_points.get_latent_shape()
-        concept_model = concept_model_class(
+        concept_model = self.concept_model_class(
             input_shape=shapes[self.split_point][-1],
             nb_concepts=nb_concepts,
             encoder_module=encoder_module,
@@ -267,7 +195,7 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
 
     def fit(
         self,
-        activations: LatentActivations | dict[str, LatentActivations],
+        activations: LatentActivations | InterventionProxy,
         *,
         use_amp: bool = False,
         batch_size: int = 1024,
@@ -305,7 +233,7 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
         Returns:
             A dictionary with training history logs.
         """
-        split_activations = self.prepare_fit(activations, overwrite=overwrite)
+        split_activations = self._prepare_fit(activations, overwrite=overwrite)
         dataloader = DataLoader(TensorDataset(split_activations.detach()), batch_size=batch_size, shuffle=True)
         optimizer_kwargs = {"lr": lr}
         optimizer = optimizer_class(self.concept_model.parameters(), **optimizer_kwargs)  # type: ignore
@@ -329,11 +257,11 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
         else:
             train_method = oc_sae.train_sae
         log = train_method(**train_params)
-        self.is_fitted = True
+        self.concept_model.fitted = True
         return log
 
     @check_fitted
-    def encode_activations(self, activations: LatentActivations) -> torch.Tensor:  # ConceptActivations
+    def encode_activations(self, activations: LatentActivations) -> torch.Tensor:  # ConceptsActivations
         """Encode the given activations using the `concept_model` encoder.
 
         Args:
@@ -360,7 +288,7 @@ class OvercompleteSAE(ConceptBottleneckExplainer):
 
 
 # TODO: Rename, remove Overcomplete prefix
-class OvercompleteDictionaryLearning(ConceptBottleneckExplainer):
+class DictionaryLearningExplainer(ConceptAutoEncoderExplainer):
     """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
 
     Implementation of a concept explainer using an
@@ -372,17 +300,28 @@ class OvercompleteDictionaryLearning(ConceptBottleneckExplainer):
             It should have at least one split point on which `concept_model` can be fitted.
         split_point (str | None): The split point used to train the `concept_model`. Default: `None`, set only when
             the concept explainer is fitted.
-        concept_model (oc_sae.SAE): An [Overcomplete BaseOptimDictionaryLearning](https://github.com/KempnerInstitute/overcomplete/blob/main/overcomplete/optimization/base.py)
+        concept_model (overcomplete.sae.SAE): An [Overcomplete BaseOptimDictionaryLearning](https://github.com/KempnerInstitute/overcomplete/blob/main/overcomplete/optimization/base.py)
             variant for concept extraction.
         is_fitted (bool): Whether the `concept_model` was fit on model activations.
         has_differentiable_concept_encoder (bool): Whether the `encode_activations` operation is differentiable.
         has_differentiable_concept_decoder (bool): Whether the `decode_concepts` operation is differentiable.
     """
 
+    @property
+    @abstractmethod
+    def concept_model_class(self) -> type[oc_opt.BaseOptimDictionaryLearning]:
+        """
+        Defines the concept model class to use for the explainer.
+
+        Returns:
+            concept_model_class (type[overcomplete.optimization.BaseOptimDictionaryLearning]): One of the supported [Overcomplete BaseOptimDictionaryLearning](https://github.com/KempnerInstitute/overcomplete/blob/main/overcomplete/optimization/base.py)
+                variants for concept extraction.
+        """
+        raise NotImplementedError
+
     def __init__(
         self,
         model_with_split_points: ModelWithSplitPoints,
-        concept_model_class: type[oc_opt.BaseOptimDictionaryLearning],
         *,
         nb_concepts: int,
         split_point: str | None = None,
@@ -395,8 +334,6 @@ class OvercompleteDictionaryLearning(ConceptBottleneckExplainer):
         Args:
             model_with_split_points (ModelWithSplitPoints): The model to apply the explanation on.
                 It should have at least one split point on which a concept explainer can be trained.
-            concept_model_class (type[oc_opt.BaseOptimDictionaryLearning]): One of the supported [Overcomplete BaseOptimDictionaryLearning](https://github.com/KempnerInstitute/overcomplete/blob/main/overcomplete/optimization/base.py)
-                variants for concept extraction.
             nb_concepts (int): Size of the SAE concept space.
             split_point (str | None): The split point used to train the `concept_model`. If None, tries to use the
                 split point of `model_with_split_points` if a single one is defined.
@@ -404,26 +341,16 @@ class OvercompleteDictionaryLearning(ConceptBottleneckExplainer):
             **kwargs (dict): Additional keyword arguments to pass to the `concept_module`.
                 See the Overcomplete documentation of the provided `concept_model_class` for more details.
         """
-        if not issubclass(concept_model_class, oc_opt.BaseOptimDictionaryLearning):
-            raise ValueError(
-                "ConceptEncoderDecoder must be a subclass of `overcomplete.optimization.BaseOptimDictionaryLearning`.\n"
-                "Use `interpreto.concepts.methods.OvercompleteOptimClasses` to get the list of available SAE methods."
-            )
-        self.model_with_split_points = model_with_split_points
-        self.split_point = split_point
-        if concept_model_class.__name__ == "ConvexNMF":
-            # TODO: see if we can support the pgd solver or have an easy way to set parameters
-            kwargs["solver"] = "mu"
-        concept_model = concept_model_class(
+        concept_model = self.concept_model_class(
             nb_concepts=nb_concepts,
             device=device,  # type: ignore
             **kwargs,
         )
-        super().__init__(model_with_split_points, concept_model, self.split_point)
-        self.has_differentiable_concept_encoder = False if "NMF" in concept_model_class.__name__ else True
+        super().__init__(model_with_split_points, concept_model, split_point)
+        self.has_differentiable_concept_encoder = True
         self.has_differentiable_concept_decoder = True
 
-    def fit(self, activations: LatentActivations | dict[str, LatentActivations], *, overwrite: bool = False, **kwargs):
+    def fit(self, activations: LatentActivations | InterventionProxy, *, overwrite: bool = False, **kwargs):
         """Fit an Overcomplete OptimDictionaryLearning model on the given activations.
 
         Args:
@@ -434,6 +361,339 @@ class OvercompleteDictionaryLearning(ConceptBottleneckExplainer):
             **kwargs (dict): Additional keyword arguments to pass to the `concept_model`.
                 See the Overcomplete documentation of the provided `concept_model` for more details.
         """
-        split_activations = self.prepare_fit(activations, overwrite=overwrite)
+        split_activations = self._prepare_fit(activations, overwrite=overwrite)
         self.concept_model.fit(split_activations, **kwargs)
-        self.is_fitted = True
+
+
+class VanillaSAEConcepts(SAEExplainer):
+    """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
+
+    `ConceptAutoEncoderExplainer` with the Vanilla SAE from Cunningham et al. (2023)[^1] and Bricken et al. (2023)[^2] as concept model.
+
+    Vanilla SAE implementation from [overcomplete.sae.SAE](https://kempnerinstitute.github.io/overcomplete/saes/vanilla/) class.
+
+    [^1]:
+        Huben, R., Cunningham, H., Smith, L. R., Ewart, A., Sharkey, L. [Sparse Autoencoders Find Highly Interpretable Features in Language Models](https://openreview.net/forum?id=F76bwRSLeK).
+        The Twelfth International Conference on Learning Representations, 2024.
+    [^2]:
+        Bricken, T. et al., [Towards Monosemanticity: Decomposing Language Models With Dictionary Learning](https://transformer-circuits.pub/2023/monosemantic-features),
+        Transformer Circuits Thread, 2023.
+
+    """
+
+    @property
+    def concept_model_class(self) -> type[oc_sae.SAE]:
+        return oc_sae.SAE
+
+
+class TopKSAEConcepts(SAEExplainer):
+    """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
+
+    `ConceptAutoEncoderExplainer` with the TopK SAE from Gao et al. (2024)[^3] as concept model.
+
+    TopK SAE implementation from [overcomplete.sae.TopKSAE](https://kempnerinstitute.github.io/overcomplete/saes/topk_sae/) class.
+
+    [^3]:
+        Gao, L. et al., [Scaling and evaluating sparse autoencoders](https://openreview.net/forum?id=tcsZt9ZNKD).
+        The Thirteenth International Conference on Learning Representations, 2025.
+    """
+
+    @property
+    def concept_model_class(self) -> type[oc_sae.TopKSAE]:
+        return oc_sae.TopKSAE
+
+
+class BatchTopKSAEConcepts(SAEExplainer):
+    """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
+
+    `ConceptAutoEncoderExplainer` with the BatchTopK SAE from Bussmann et al. (2024)[^4] as concept model.
+
+    BatchTopK SAE implementation from [overcomplete.sae.BatchTopKSAE](https://kempnerinstitute.github.io/overcomplete/saes/batchtopk_sae/) class.
+
+    [^4]:
+        Bussmann, B., Leask, P., Nanda, N. [BatchTopK Sparse Autoencoders](https://arxiv.org/abs/2412.06410).
+        Arxiv Preprint, 2024.
+    """
+
+    @property
+    def concept_model_class(self) -> type[oc_sae.BatchTopKSAE]:
+        return oc_sae.BatchTopKSAE
+
+
+class JumpReLUSAEConcepts(SAEExplainer):
+    """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
+
+    `ConceptAutoEncoderExplainer` with the JumpReLU SAE from Rajamanoharan et al. (2024)[^5] as concept model.
+
+    JumpReLU SAE implementation from [overcomplete.sae.JumpReLUSAE](https://kempnerinstitute.github.io/overcomplete/saes/jump_sae/) class.
+
+    [^5]:
+        Rajamanoharan, S. et al., [Jumping Ahead: Improving Reconstruction Fidelity with JumpReLU Sparse Autoencoders](https://arxiv.org/abs/2407.14435).
+        Arxiv Preprint, 2024.
+    """
+
+    @property
+    def concept_model_class(self) -> type[oc_sae.JumpSAE]:
+        return oc_sae.JumpSAE
+
+
+class NMFConcepts(DictionaryLearningExplainer):
+    """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
+
+    `ConceptAutoEncoderExplainer` with the NMF from Lee and Seung (1999)[^1] as concept model.
+
+    NMF implementation from [overcomplete.optimization.NMF](https://kempnerinstitute.github.io/overcomplete/optimization/nmf/) class.
+
+    [^1]:
+        Lee, D., Seung, H. [Learning the parts of objects by non-negative matrix factorization](https://doi.org/10.1038/44565).
+        Nature, 401, 1999, pp. 788–791.
+    """
+
+    @property
+    def concept_model_class(self) -> type[oc_opt.NMF]:
+        return oc_opt.NMF
+
+    def __init__(
+        self,
+        model_with_split_points: ModelWithSplitPoints,
+        *,
+        nb_concepts: int,
+        split_point: str | None = None,
+        device: torch.device | str = "cpu",
+        force_relu: bool = False,
+        **kwargs,
+    ):
+        """
+        Initialize the concept bottleneck explainer based on the Overcomplete BaseOptimDictionaryLearning framework.
+
+        Args:
+            model_with_split_points (ModelWithSplitPoints): The model to apply the explanation on.
+                It should have at least one split point on which a concept explainer can be trained.
+            nb_concepts (int): Size of the SAE concept space.
+            split_point (str | None): The split point used to train the `concept_model`. If None, tries to use the
+                split point of `model_with_split_points` if a single one is defined.
+            device (torch.device | str): Device to use for the `concept_module`.
+            force_relu (bool): Whether to force the activations to be positive.
+            **kwargs (dict): Additional keyword arguments to pass to the `concept_module`.
+                See the Overcomplete documentation of the provided `concept_model_class` for more details.
+        """
+        super().__init__(
+            model_with_split_points,
+            nb_concepts=nb_concepts,
+            split_point=split_point,
+            device=device,
+            **kwargs,
+        )
+        self.force_relu = force_relu
+        self.has_differentiable_concept_encoder = False
+        self.has_differentiable_concept_decoder = True
+
+    def fit(self, activations: LatentActivations | InterventionProxy, *, overwrite: bool = False, **kwargs):
+        """Fit an Overcomplete OptimDictionaryLearning model on the given activations.
+
+        Args:
+            activations (torch.Tensor | dict[str, torch.Tensor]): The activations used for fitting the `concept_model`.
+                If a dictionary is provided, the activation corresponding to `split_point` will be used.
+            overwrite (bool): Whether to overwrite the current model if it has already been fitted.
+                Default: False.
+            **kwargs (dict): Additional keyword arguments to pass to the `concept_model`.
+                See the Overcomplete documentation of the provided `concept_model` for more details.
+        """
+        split_activations = self._prepare_fit(activations, overwrite=overwrite)
+        if (split_activations < 0).any():
+            if self.force_relu:
+                split_activations = torch.nn.functional.relu(split_activations)
+            else:
+                raise ValueError(
+                    "The activations should be positive. If you want to force the activations to be positive, "
+                    "use the `NMFConcepts(..., force_relu=True)`."
+                )
+        self.concept_model.fit(split_activations, **kwargs)
+
+    @check_fitted
+    def encode_activations(self, activations: LatentActivations) -> torch.Tensor:  # ConceptsActivations
+        """Encode the given activations using the `concept_model` encoder.
+
+        Args:
+            activations (LatentActivations): The activations to encode.
+
+        Returns:
+            The encoded concept activations.
+        """
+        self._sanitize_activations(activations)
+        if (activations < 0).any():
+            if self.force_relu:
+                activations = torch.nn.functional.relu(activations)
+            else:
+                raise ValueError(
+                    "The activations should be positive. If you want to force the activations to be positive, "
+                    "use the `NMFConcepts(..., force_relu=True)`."
+                )
+        return self.concept_model.encode(activations)  # type: ignore
+
+
+class SemiNMFConcepts(DictionaryLearningExplainer):
+    """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
+
+    `ConceptAutoEncoderExplainer` with the SemiNMF from Ding et al. (2008)[^2] as concept model.
+
+    SemiNMF implementation from [overcomplete.optimization.SemiNMF](https://kempnerinstitute.github.io/overcomplete/optimization/semi_nmf/) class.
+
+    [^2]:
+        C. H. Q. Ding, T. Li and M. I. Jordan, [Convex and Semi-Nonnegative Matrix Factorizations](https://ieeexplore.ieee.org/document/4685898).
+        IEEE Transactions on Pattern Analysis and Machine Intelligence, 32(1), 2010, pp. 45-55
+    """
+
+    @property
+    def concept_model_class(self) -> type[oc_opt.SemiNMF]:
+        return oc_opt.SemiNMF
+
+
+class ConvexNMFConcepts(DictionaryLearningExplainer):
+    """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
+
+    `ConceptAutoEncoderExplainer` with the ConvexNMF from Ding et al. (2008)[^2] as concept model.
+
+    ConvexNMF implementation from [overcomplete.optimization.ConvexNMF](https://kempnerinstitute.github.io/overcomplete/optimization/convex_nmf/) class.
+
+    [^2]:
+        C. H. Q. Ding, T. Li and M. I. Jordan, [Convex and Semi-Nonnegative Matrix Factorizations](https://ieeexplore.ieee.org/document/4685898).
+        IEEE Transactions on Pattern Analysis and Machine Intelligence, 32(1), 2010, pp. 45-55
+    """
+
+    @property
+    def concept_model_class(self) -> type[oc_opt.ConvexNMF]:
+        return oc_opt.ConvexNMF
+
+    def __init__(
+        self,
+        model_with_split_points: ModelWithSplitPoints,
+        *,
+        nb_concepts: int,
+        split_point: str | None = None,
+        device: torch.device | str = "cpu",
+        **kwargs,
+    ):
+        """
+        Initialize the concept bottleneck explainer based on the Overcomplete BaseOptimDictionaryLearning framework.
+
+        Args:
+            model_with_split_points (ModelWithSplitPoints): The model to apply the explanation on.
+                It should have at least one split point on which a concept explainer can be trained.
+            nb_concepts (int): Size of the SAE concept space.
+            split_point (str | None): The split point used to train the `concept_model`. If None, tries to use the
+                split point of `model_with_split_points` if a single one is defined.
+            device (torch.device | str): Device to use for the `concept_module`.
+            **kwargs (dict): Additional keyword arguments to pass to the `concept_module`.
+                See the Overcomplete documentation of the provided `concept_model_class` for more details.
+        """
+        kwargs["solver"] = "mu"  # TODO: see if we can support the pgd solver or have an easy way to set parameters
+        super().__init__(
+            model_with_split_points=model_with_split_points,
+            nb_concepts=nb_concepts,
+            split_point=split_point,
+            device=device,
+            **kwargs,
+        )
+
+
+class PCAConcepts(DictionaryLearningExplainer):
+    """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
+
+    `ConceptAutoEncoderExplainer` with the PCA from Pearson (1901)[^3] as concept model.
+
+    PCA implementation from [overcomplete.optimization.SkPCA](https://kempnerinstitute.github.io/overcomplete/optimization/sklearn/) class.
+
+    [^3]:
+        K. Pearson, [On lines and planes of closest fit to systems of points in space](https://doi.org/10.1080/14786440109462720).
+        Philosophical Magazine, 2(11), 1901, pp. 559-572.
+    """
+
+    @property
+    def concept_model_class(self) -> type[oc_opt.SkPCA]:
+        return oc_opt.SkPCA
+
+
+class ICAConcepts(DictionaryLearningExplainer):
+    """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
+
+    `ConceptAutoEncoderExplainer` with the ICA from Hyvarinen and Oja (2000)[^4] as concept model.
+
+    ICA implementation from [overcomplete.optimization.SkICA](https://kempnerinstitute.github.io/overcomplete/optimization/sklearn/) class.
+
+    [^4]:
+        A. Hyvarinen and E. Oja, [Independent Component Analysis: Algorithms and Applications](https://www.sciencedirect.com/science/article/pii/S0893608000000265),
+        Neural Networks, 13(4-5), 2000, pp. 411-430.
+    """
+
+    @property
+    def concept_model_class(self) -> type[oc_opt.SkICA]:
+        return oc_opt.SkICA
+
+
+class KMeansConcepts(DictionaryLearningExplainer):
+    """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
+
+    `ConceptAutoEncoderExplainer` with the K-Means concepts from Mairal et al. (2009)[^5] as concept model.
+
+    K-Means implementation from [overcomplete.optimization.SkKMeans](https://kempnerinstitute.github.io/overcomplete/optimization/sklearn/) class.
+
+    [^5]:
+        J. Mairal, F. Bach, J. Ponce, G. Sapiro, [Online dictionary learning for sparse coding](https://www.di.ens.fr/~fbach/mairal_icml09.pdf)
+        Proceedings of the 26th Annual International Conference on Machine Learning, 2009, pp. 689-696.
+    """
+
+    @property
+    def concept_model_class(self) -> type[oc_opt.SkKMeans]:
+        return oc_opt.SkKMeans
+
+
+class DictionaryLearningConcepts(DictionaryLearningExplainer):
+    """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
+
+    `ConceptAutoEncoderExplainer` with the Dictionary Learning concepts from Mairal et al. (2009)[^5] as concept model.
+
+    Dictionary Learning implementation from [overcomplete.optimization.SkDictionaryLearning](https://kempnerinstitute.github.io/overcomplete/optimization/sklearn/) class.
+
+    [^5]:
+        J. Mairal, F. Bach, J. Ponce, G. Sapiro, [Online dictionary learning for sparse coding](https://www.di.ens.fr/~fbach/mairal_icml09.pdf)
+        Proceedings of the 26th Annual International Conference on Machine Learning, 2009, pp. 689-696.
+    """
+
+    @property
+    def concept_model_class(self) -> type[oc_opt.SkDictionaryLearning]:
+        return oc_opt.SkDictionaryLearning
+
+
+class SparsePCAConcepts(DictionaryLearningExplainer):
+    """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
+
+    `ConceptAutoEncoderExplainer` with the SparsePCA concepts from Mairal et al. (2009)[^5] as concept model.
+
+    SparsePCA implementation from [overcomplete.optimization.SkSparsePCA](https://kempnerinstitute.github.io/overcomplete/optimization/sklearn/) class.
+
+    [^5]:
+        J. Mairal, F. Bach, J. Ponce, G. Sapiro, [Online dictionary learning for sparse coding](https://www.di.ens.fr/~fbach/mairal_icml09.pdf)
+        Proceedings of the 26th Annual International Conference on Machine Learning, 2009, pp. 689-696.
+    """
+
+    @property
+    def concept_model_class(self) -> type[oc_opt.SkSparsePCA]:
+        return oc_opt.SkSparsePCA
+
+
+class SVDConcepts(DictionaryLearningExplainer):
+    """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
+
+    `ConceptAutoEncoderExplainer` with the SVD concepts from Mairal et al. (2009)[^5] as concept model.
+
+    SVD implementation from [overcomplete.optimization.SkSVD](https://kempnerinstitute.github.io/overcomplete/optimization/sklearn/) class.
+
+    [^5]:
+        J. Mairal, F. Bach, J. Ponce, G. Sapiro, [Online dictionary learning for sparse coding](https://www.di.ens.fr/~fbach/mairal_icml09.pdf)
+        Proceedings of the 26th Annual International Conference on Machine Learning, 2009, pp. 689-696.
+    """
+
+    @property
+    def concept_model_class(self) -> type[oc_opt.SkSVD]:
+        return oc_opt.SkSVD

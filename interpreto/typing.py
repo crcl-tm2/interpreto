@@ -28,12 +28,31 @@ Generic type annotations for Interpreto
 
 from __future__ import annotations
 
-from typing import Any, Optional, Union
+from typing import Any, Optional, Protocol, Union
 
 import torch
+from jaxtyping import Float
 
-TokenEmbedding = torch.Tensor
-LatentActivations = torch.Tensor
-ConceptsActivations = torch.Tensor
+TokenEmbedding = Float[torch.Tensor, "n ..."]
+LatentActivations = Float[torch.Tensor, "n ..."]
+ConceptsActivations = Float[torch.Tensor, "n cpt"]
 ModelInput = Any
 TensorBaseline = Optional[Union[torch.Tensor, float, int]]  # noqa: UP007
+
+
+class ConceptModelProtocol(Protocol):
+    """Protocol for concept models."""
+
+    @property
+    def nb_concepts(self) -> int:
+        """Number of concepts."""
+        ...
+
+    @property
+    def fitted(self) -> bool:
+        """Wether the concept model has been fitted."""
+        ...
+
+    def encode(self, x):
+        """Encode the given activations using the concept model."""
+        ...

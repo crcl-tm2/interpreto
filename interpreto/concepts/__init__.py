@@ -22,23 +22,43 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from .base import AbstractConceptExplainer, ConceptBottleneckExplainer
+from .base import ConceptAutoEncoderExplainer, ConceptEncoderExplainer
 from .methods import (
+    BatchTopKSAEConcepts,
     Cockatiel,
-    OvercompleteDictionaryLearning,
-    OvercompleteOptimClasses,
-    OvercompleteSAE,
-    OvercompleteSAEClasses,
+    ConvexNMFConcepts,
+    DictionaryLearningConcepts,
+    ICAConcepts,
+    JumpReLUSAEConcepts,
+    KMeansConcepts,
+    NeuronsAsConcepts,
+    NMFConcepts,
+    PCAConcepts,
     SAELossClasses,
+    SemiNMFConcepts,
+    SparsePCAConcepts,
+    SVDConcepts,
+    TopKSAEConcepts,
+    VanillaSAEConcepts,
 )
 
 __all__ = [
-    "AbstractConceptExplainer",
-    "ConceptBottleneckExplainer",
+    "ConceptAutoEncoderExplainer",
+    "ConceptEncoderExplainer",
     "Cockatiel",
-    "OvercompleteDictionaryLearning",
-    "OvercompleteSAE",
-    "OvercompleteOptimClasses",
-    "OvercompleteSAEClasses",
+    "NeuronsAsConcepts",
+    "VanillaSAEConcepts",
+    "TopKSAEConcepts",
+    "BatchTopKSAEConcepts",
+    "JumpReLUSAEConcepts",
     "SAELossClasses",
+    "NMFConcepts",
+    "SemiNMFConcepts",
+    "ConvexNMFConcepts",
+    "PCAConcepts",
+    "ICAConcepts",
+    "KMeansConcepts",
+    "DictionaryLearningConcepts",
+    "SparsePCAConcepts",
+    "SVDConcepts",
 ]

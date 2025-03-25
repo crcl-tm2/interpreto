@@ -22,6 +22,20 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from .model_with_split_points import ActivationSelectionStrategy, ModelWithSplitPoints
+"""
+Common fixtures for all tests
+"""
 
-__all__ = ["ActivationSelectionStrategy", "ModelWithSplitPoints"]
+from pytest import fixture
+from transformers import AutoModelForMaskedLM
+
+from interpreto.commons import ModelWithSplitPoints
+
+
+@fixture(scope="session")
+def splitted_encoder_ml() -> ModelWithSplitPoints:
+    return ModelWithSplitPoints(
+        "huawei-noah/TinyBERT_General_4L_312D",
+        split_points=[],
+        model_autoclass=AutoModelForMaskedLM,  # type: ignore
+    )
