@@ -28,6 +28,7 @@ from collections.abc import Mapping
 import torch
 from transformers import PreTrainedModel
 
+
 class InferenceWrapper:
     def __init__(self, model: PreTrainedModel, batch_size: int, device: torch.device | None = None):
         self.model = model
