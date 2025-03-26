@@ -28,6 +28,7 @@ from collections.abc import Mapping
 import torch
 from transformers import PreTrainedModel
 
+
 class InferenceWrapper:
     def __init__(self, model: PreTrainedModel, batch_size: int, device: torch.device | None = None):
         self.model = model
@@ -50,6 +51,15 @@ class InferenceWrapper:
 
     def cuda(self):
         self.device = torch.device("cuda")
+
+    def _embed(self, model_inputs: Mapping[str, torch.Tensor]):
+        if "inputs_embeds" in model_inputs:
+            return model_inputs
+        if "input_ids" in model_inputs:
+            # TODO : flatten/unflatten
+            model_inputs["inputs_embeds"] = self.model.get_input_embeddings()(model_inputs.pop("input_ids"))
+            return model_inputs
+        raise ValueError("model_inputs should contain either 'input_ids' or 'inputs_embeds'")
 
     def call_model(self, model_inputs: Mapping[str, torch.Tensor]):
         valid_keys = ["input_ids", "inputs_embeds", "attention_mask"]

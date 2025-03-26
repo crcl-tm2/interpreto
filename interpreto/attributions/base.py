@@ -29,7 +29,7 @@ Basic standard classes for attribution methods
 from __future__ import annotations
 
 from abc import abstractmethod
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 import torch
@@ -45,7 +45,6 @@ SingleAttribution = (
 )
 
 # TODO : move this in generator tools
-
 
 
 class AttributionOutput:
@@ -133,7 +132,9 @@ class InferenceExplainer(AttributionExplainer):
                 t["attention_mask"] = t["attention_mask"].unsqueeze(1)
             targets = torch.stack(list(self.inference_wrapper.get_targets([tokens[i] for i in sorted_indices])))
         # Perturbation
-        pert_per_input_generator = PersistentTupleGeneratorWrapper(self.perturbator.perturb(inputs[i]) for i in sorted_indices)
+        pert_per_input_generator = PersistentTupleGeneratorWrapper(
+            self.perturbator.perturb(inputs[i]) for i in sorted_indices
+        )
         scores = list(self.call_inference_wrapper(pert_per_input_generator.get_subgenerator(0), targets))
         masks = list(pert_per_input_generator.get_subgenerator(1))
 

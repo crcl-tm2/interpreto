@@ -47,12 +47,12 @@ class GranularityLevel(Enum):
     DEFAULT = TOKEN
 
     @staticmethod
-    def __all_tokens_assoc_matrix(tokens_ids:Mapping[str, torch.Tensor]):
+    def __all_tokens_assoc_matrix(tokens_ids: Mapping[str, torch.Tensor]):
         n, l_p = tokens_ids["input_ids"].shape
         return torch.eye(l_p).unsqueeze(0).expand(n, -1, -1)
 
     @staticmethod
-    def __token_assoc_matrix(tokens_ids:Mapping[str, torch.Tensor]):
+    def __token_assoc_matrix(tokens_ids: Mapping[str, torch.Tensor]):
         # TODO : remake this using only tensor operation (if possible ?)
         n, l_p = tokens_ids["input_ids"].shape
         perturbable_matrix = torch.diag_embed(1 - tokens_ids["special_tokens_mask"])
@@ -64,12 +64,23 @@ class GranularityLevel(Enum):
         return result
 
     @staticmethod
-    def __word_assoc_matrix(tokens_ids:Mapping[str, torch.Tensor]):
+    def __word_assoc_matrix(tokens_ids: Mapping[str, torch.Tensor]):
         n, l_p = tokens_ids["input_ids"].shape
         l_t = GranularityLevel.get_length(tokens_ids, GranularityLevel.WORD).max()
-        index_tensor = torch.nn.utils.rnn.pad_sequence([torch.tensor([a if a is not None else l_t for a in elem]) for elem in [tokens_ids.word_ids(i) for i in range(n)]], batch_first=True, padding_value=l_t + 1)
+        index_tensor = torch.nn.utils.rnn.pad_sequence(
+            [
+                torch.tensor([a if a is not None else l_t for a in elem])
+                for elem in [tokens_ids.word_ids(i) for i in range(n)]
+            ],
+            batch_first=True,
+            padding_value=l_t + 1,
+        )
         reference = torch.diagonal_scatter(torch.zeros(l_t + 1, l_t), torch.ones(l_t))
-        res = torch.index_select(reference, 0, index_tensor.flatten()).reshape(index_tensor.shape + (reference.shape[1],)).transpose(-1, -2)
+        res = (
+            torch.index_select(reference, 0, index_tensor.flatten())
+            .reshape(index_tensor.shape + (reference.shape[1],))
+            .transpose(-1, -2)
+        )
         return res
 
     @staticmethod
@@ -92,7 +103,15 @@ class GranularityLevel(Enum):
             case GranularityLevel.TOKEN:
                 return (1 - tokens_ids["special_tokens_mask"]).sum(dim=1)
             case GranularityLevel.WORD:
-                return torch.tensor([max(filter(lambda x: x is not None, tokens_ids.word_ids(i))) for i in range(tokens_ids["input_ids"].shape[0])]) + 1
+                return (
+                    torch.tensor(
+                        [
+                            max(filter(lambda x: x is not None, tokens_ids.word_ids(i)))
+                            for i in range(tokens_ids["input_ids"].shape[0])
+                        ]
+                    )
+                    + 1
+                )
             case _:
                 raise NotImplementedError(f"Granularity level {granularity_level} not implemented")
 
@@ -224,12 +243,15 @@ class BasePerturbator:
         # Check if an embedding perturbation has been defined
         try:
             # If perturb_tensors has been defined, call it on the embeddings
-            
+
             embeddings, perturbation_mask = self.perturb_tensors(self.inputs_embedder(inputs))
             # TODO : perform smart combination of perturbation masks
             attention_mask = inputs["attention_mask"].unsqueeze(1).repeat(1, embeddings.shape[1], 1)
-            
-            return {"inputs_embeds": embeddings, "attention_mask":attention_mask}, perturbation_mask  # add complementary data in dict
+
+            return {
+                "inputs_embeds": embeddings,
+                "attention_mask": attention_mask,
+            }, perturbation_mask  # add complementary data in dict
         except NotImplementedError:
             # If no embeddings perturbation has been defined to the, return the perturbed ids
             return inputs, mask
@@ -243,7 +265,7 @@ class BasePerturbator:
             inputs (torch.Tensor): inputs embeddings to perturb
         """
         perturbed_tensor, mask = self.perturb_tensors(inputs)
-        return {"inputs_embeds": perturbed_tensor, "attention_mask":torch.ones(perturbed_tensor.shape[:-1])}, mask
+        return {"inputs_embeds": perturbed_tensor, "attention_mask": torch.ones(perturbed_tensor.shape[:-1])}, mask
 
     def perturb_ids(self, model_inputs: Mapping) -> tuple[Mapping[str, torch.Tensor], torch.Tensor | None]:
         """
