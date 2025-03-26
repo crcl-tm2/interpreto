@@ -35,7 +35,7 @@ import torch
 from interpreto.attributions.aggregations import MeanAggregator
 from interpreto.attributions.base import GradientExplainer
 from interpreto.attributions.perturbations import LinearInterpolationPerturbator
-from interpreto.commons.model_wrapping.inference_wrapper import ClassificationInferenceWrapper
+from interpreto.commons.model_wrapping.classification_inference_wrapper import ClassificationInferenceWrapper
 
 
 class IntegratedGradients(GradientExplainer):
