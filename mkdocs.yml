@@ -12,7 +12,7 @@ nav:
     - "Training a concept explainer": notebooks/concept_explainer_training.ipynb
   - API Reference:
     - Attribution Explainers:
-      - Overview: api/attributions/overview.md 
+      - Overview: api/attributions/overview.md
       - Inference Based: api/attributions/methods/inference_based.md
       - Gradient Based: api/attributions/methods/gradient_based.md
     - Concept Explainers:

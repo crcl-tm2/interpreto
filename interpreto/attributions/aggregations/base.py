@@ -106,4 +106,4 @@ class MaskwiseMeanAggregator(Aggregator):
         # TODO : this cast should not be there, check to solve the incompatible types error
         mask = mask.to(results.dtype)
         # TODO : transform the output tensor to interpretable explaination
-        return torch.einsum("np,npl->nl", results, mask) / mask.sum(dim=1)
+        return torch.einsum("npt,npl->ntl", results, mask) / mask.sum(dim=1)

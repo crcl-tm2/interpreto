@@ -21,7 +21,7 @@ The API have two steps:
     - targets: another parameter to specify what to explain in the inputs, can be a specific class or a set of classes (for classification), or texts (for generation). If targets=None, the target is calculated by making the prediction from the input with the given model.
 
 
-## Specifics methods 
+## Specifics methods
 
 
 **Inference-based Methods:**
@@ -59,7 +59,7 @@ inference_wrapper:
     - batch_size: an integer which allows to process inputs per batch.
 
 perturbator:
-    - 
+    -
 
 - explainer instantiation: Method is an attribution method among those displayed methods tables. It inherits from the Base class BlackBoxExplainer. Their initialization takes 2 parameters apart from the specific ones and generates an explainer:
     - inference_wrapper: Callable,
