@@ -22,6 +22,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+from .distances import DistanceFunctions
 from .model_wrapping import ActivationSelectionStrategy, ModelWithSplitPoints
 
 __all__ = ["ActivationSelectionStrategy", "ModelWithSplitPoints"]
