@@ -75,7 +75,7 @@ class ClassificationInferenceWrapper(InferenceWrapper):
             assert tensor.shape[0] == 1, (
                 "When passing a sequence or a generator of inputs to the inference wrapper, please consider giving sequence of perturbations of single elements instead of batches (shape should be (1, n_perturbations, ...))"
             )
-            return self._reshape_inputs(tensor[0])
+            return self._reshape_inputs(tensor[0], non_batch_dims=non_batch_dims)
         raise NotImplementedError(f"input tensor of shape {tensor.shape} not supported")
 
     @get_logits.register(Iterable)
@@ -91,14 +91,15 @@ class ClassificationInferenceWrapper(InferenceWrapper):
             pad_dim: int | None = None,
         ) -> torch.Tensor:
             if t1 is not None:
-                assert t1.dim() == t2.dim(), "tensors should have the same number of dimensions"
-                pad = [0, 0] * t1.dim()
-                pad[~2 * pad_dim] = abs(t1.shape[pad_dim] - t2.shape[pad_dim])
-                # TODO : rewrite this
-                if pad_value is not None and t1.shape[pad_dim] > t2.shape[pad_dim]:
-                    t2 = torch.nn.functional.pad(t2, pad, value=pad_value)
-                elif pad_value is not None and t1.shape[pad_dim] < t2.shape[pad_dim]:
-                    t1 = torch.nn.functional.pad(t1, pad, value=pad_value)
+                if pad_value is not None:
+                    assert t1.dim() == t2.dim(), "tensors should have the same number of dimensions"
+                    pad = [0, 0] * t1.dim()
+                    pad[~2 * (pad_dim % t1.dim())] = abs(t1.shape[pad_dim] - t2.shape[pad_dim])
+                    # TODO : rewrite this
+                    if t1.shape[pad_dim] > t2.shape[pad_dim]:
+                        t2 = torch.nn.functional.pad(t2, pad, value=pad_value)
+                    elif t1.shape[pad_dim] < t2.shape[pad_dim]:
+                        t1 = torch.nn.functional.pad(t1, pad, value=pad_value)
                 return torch.cat([t1, t2], dim=dim)
             return t2
 
@@ -136,7 +137,7 @@ class ClassificationInferenceWrapper(InferenceWrapper):
             if input_buffer.numel():
                 missing_length = self.batch_size - len(batch if batch is not None else ())
                 batch = concat_and_pad(batch, input_buffer[:missing_length], 0, pad_token_id, 1)
-                batch_mask = concat_and_pad(batch_mask, mask_buffer[:missing_length], 0, 0, 1)
+                batch_mask = concat_and_pad(batch_mask, mask_buffer[:missing_length], 0, 0, -1)
                 input_buffer = input_buffer[missing_length:]
                 mask_buffer = mask_buffer[missing_length:]
                 continue
@@ -168,9 +169,6 @@ class ClassificationInferenceWrapper(InferenceWrapper):
         yield from (prediction.argmax(dim=-1) for prediction in self.get_logits(iter(model_inputs)))
 
     def _get_score_from_logits_and_target(self, logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        # TODO : change that
-        if target.dim() == 1:
-            target = target.unsqueeze(0).expand(logits.shape[0], -1)
         return torch.gather(logits, -1, target)
 
     @singledispatchmethod
@@ -181,7 +179,24 @@ class ClassificationInferenceWrapper(InferenceWrapper):
 
     @get_scores.register(Mapping)
     def _(self, model_inputs: Mapping[str, torch.Tensor], targets: torch.Tensor):
-        return self._get_score_from_logits_and_target(self.get_logits(model_inputs), targets)
+        logits = self.get_logits(model_inputs)
+        targets = self._process_target(targets, logits)
+        return self._get_score_from_logits_and_target(logits, targets)
+    
+    def _process_target(self, target: torch.TensorType,
+                        logits:torch.Tensor) -> torch.Tensor:
+        # TODO : refaire ça proprement
+        match target.dim():
+            case 0:
+                return self._process_target(target.unsqueeze(0), logits)
+            case 1: # (t)
+                index_shape = list(logits.shape)
+                index_shape[-1] = target.shape[0]
+                return target.expand(index_shape)
+            case 2: # (n, t)
+                if target.shape[0] == 1:
+                    return target.expand(logits.shape[0], -1)
+                return target
 
     @get_scores.register(Iterable)
     def _(self, model_inputs: Iterable[Mapping[str, torch.Tensor]], targets: torch.Tensor):
@@ -189,13 +204,9 @@ class ClassificationInferenceWrapper(InferenceWrapper):
         # TODO : refaire ça proprement
         if targets.dim() in (0, 1):
             targets = targets.view(1, -1)
-        if targets.shape[0] == 1:
-            for prediction in predictions:
-                yield self._get_score_from_logits_and_target(prediction, targets[0:1])
-        else:
-            for index, prediction in enumerate_generator(predictions):
-                # TODO : refaire ça proprement
-                yield self._get_score_from_logits_and_target(prediction, targets[index : index + 1])
+        single_index = int(targets.shape[0] > 1)
+        for index, prediction in enumerate_generator(predictions):
+            yield self._get_score_from_logits_and_target(prediction, targets[single_index and index].unsqueeze(0).expand(prediction.shape[0], -1))
 
     @singledispatchmethod
     def get_gradients(self, model_inputs, targets: torch.Tensor):
@@ -207,6 +218,7 @@ class ClassificationInferenceWrapper(InferenceWrapper):
     def _(self, model_inputs: Mapping[str, torch.Tensor], targets: torch.Tensor):
         model_inputs = self._embed(model_inputs)
         scores = self.get_scores(model_inputs, targets)
+        scores.grad = None
         scores.backward(torch.ones_like(scores))
         return model_inputs["inputs_embeds"].grad.abs().mean(axis=-1)
 
@@ -214,7 +226,7 @@ class ClassificationInferenceWrapper(InferenceWrapper):
     def _(self, model_inputs: Iterable[Mapping[str, torch.Tensor]], targets: torch.Tensor):
         # TODO : see if we can do that without using persistent generator
         mi = PersistentGenerator(iter(model_inputs))
-        scores = self.get_scores(mi, targets)
-        for index, element in enumerate_generator(scores):
-            element.backward(torch.ones_like(self._embed(element)))
+        for index, element in enumerate_generator(self.get_scores(mi, targets)):
+            element.grad = None
+            element.backward(torch.ones_like(element), retain_graph=True)
             return mi[index]["inputs_embeds"].grad.abs().mean(axis=-1)

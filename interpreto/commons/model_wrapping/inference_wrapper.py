@@ -23,6 +23,7 @@
 # SOFTWARE.
 from __future__ import annotations
 
+import warnings
 from collections.abc import Mapping
 
 import torch
@@ -62,6 +63,13 @@ class InferenceWrapper:
         raise ValueError("model_inputs should contain either 'input_ids' or 'inputs_embeds'")
 
     def call_model(self, model_inputs: Mapping[str, torch.Tensor]):
-        valid_keys = ["input_ids", "inputs_embeds", "attention_mask"]
+        valid_keys = ["inputs_embeds", "input_ids", "attention_mask"]
         inputs = {key: value.to(self.device) for key, value in model_inputs.items() if key in valid_keys}
+        for k, v in inputs.items():
+            if v.shape[0] > self.batch_size:
+                warnings.warn(
+                    f"Batch size of {k} ({model_inputs.get(k).shape[0]}) is greater than the wrapper's batch size of {self.batch_size}. "
+                    f"Consider adjust the batch size or the wrapper of split your data."
+                )
+                break
         return self.model(**inputs)

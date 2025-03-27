@@ -128,13 +128,15 @@ class InferenceExplainer(AttributionExplainer):
 
         if targets is None:
             for t in tokens:
-                t["input_ids"] = t["input_ids"].unsqueeze(1)
-                t["attention_mask"] = t["attention_mask"].unsqueeze(1)
+                t["input_ids"] = t["input_ids"]
+                t["attention_mask"] = t["attention_mask"]
             targets = torch.stack(list(self.inference_wrapper.get_targets([tokens[i] for i in sorted_indices])))
+
         # Perturbation
         pert_per_input_generator = PersistentTupleGeneratorWrapper(
             self.perturbator.perturb(inputs[i]) for i in sorted_indices
         )
+
         scores = list(self.call_inference_wrapper(pert_per_input_generator.get_subgenerator(0), targets))
         masks = list(pert_per_input_generator.get_subgenerator(1))
 
@@ -145,13 +147,8 @@ class InferenceExplainer(AttributionExplainer):
             unsorted_masks[original_idx] = masks[idx]
             unsorted_scores[original_idx] = scores[idx]
 
-        explanations = []
+        return [self.aggregator(score.unsqueeze(0), mask) for score, mask in zip(unsorted_scores, unsorted_masks, strict=True)]
 
-        for score, mask in zip(unsorted_scores, unsorted_masks, strict=True):
-            explanation = self.aggregator(score, mask)
-            explanations.append(explanation)
-
-        return explanations
 
 
 class GradientExplainer(InferenceExplainer):
