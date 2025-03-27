@@ -38,10 +38,12 @@ from interpreto.commons.model_wrapping.inference_wrapper import InferenceWrapper
 
 
 class OcclusionExplainer(InferenceExplainer):
-    def __init__(self, 
-                 inference_wrapper: InferenceWrapper,
-                 tokenizer: PreTrainedTokenizer,
-                 granularity_level: GranularityLevel = GranularityLevel.WORD):
+    def __init__(
+        self,
+        inference_wrapper: InferenceWrapper,
+        tokenizer: PreTrainedTokenizer,
+        granularity_level: GranularityLevel = GranularityLevel.WORD,
+    ):
         perturbator = OcclusionPerturbator(
             tokenizer=tokenizer,
             granularity_level=granularity_level,

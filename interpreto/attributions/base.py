@@ -29,7 +29,7 @@ Basic standard classes for attribution methods
 from __future__ import annotations
 
 from abc import abstractmethod
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from typing import Any
 
 import torch
@@ -52,6 +52,7 @@ class AttributionOutput:
     """
     Class to store the output of an attribution method.
     """
+
     def __init__(
         self,
         attributions: SingleAttribution,
@@ -113,6 +114,7 @@ class InferenceExplainer(AttributionExplainer):
     """
     Black box model explainer
     """
+
     def explain(self, inputs: ModelInput, targets: torch.Tensor | None = None) -> Any:
         """
         main process of attribution method
@@ -136,7 +138,9 @@ class InferenceExplainer(AttributionExplainer):
             self.perturbator.perturb(inputs[i]) for i in sorted_indices
         )
 
-        target_logits = list(self.inference_wrapper.get_target_logits(pert_per_input_generator.get_subgenerator(0), targets))
+        target_logits = list(
+            self.inference_wrapper.get_target_logits(pert_per_input_generator.get_subgenerator(0), targets)
+        )
 
         scores = [logits[index] - target_logit for index, target_logit in enumerate(target_logits)]
 
@@ -149,12 +153,21 @@ class InferenceExplainer(AttributionExplainer):
             unsorted_masks[original_idx] = masks[idx]
             unsorted_scores[original_idx] = scores[idx]
 
-        contributions = [self.aggregator(score.unsqueeze(0), mask) for score, mask in zip(unsorted_scores, unsorted_masks, strict=True)]
+        contributions = [
+            self.aggregator(score.unsqueeze(0), mask).squeeze(0)
+            for score, mask in zip(unsorted_scores, unsorted_masks, strict=True)
+        ]
 
         tokens = [self.perturbator.tokenizer(item, return_tensors="pt") for item in inputs]
 
         decompositions = [GranularityLevel.get_decomposition(t, self.granularity_level) for t in tokens]
-        return [AttributionOutput(c, [self.perturbator.tokenizer.decode(token_ids, skip_special_tokens=True) for token_ids in d[0]]) for c, d in zip(contributions, decompositions, strict=True)]
+        return [
+            AttributionOutput(
+                c, [self.perturbator.tokenizer.decode(token_ids, skip_special_tokens=True) for token_ids in d[0]]
+            )
+            for c, d in zip(contributions, decompositions, strict=True)
+        ]
+
 
 class GradientExplainer(InferenceExplainer):
     """
@@ -162,4 +175,5 @@ class GradientExplainer(InferenceExplainer):
     Can be fully constructed from a perturbation and an aggregation
     Subclasses of this explainer are mostly reductions to a specific perturbation or aggregation
     """
+
     # TODO

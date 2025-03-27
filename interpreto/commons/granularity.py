@@ -24,6 +24,7 @@
 """
 Definition of different granularity levels for explainers (tokens, words, sentences...)
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -116,9 +117,28 @@ class GranularityLevel(Enum):
     def get_decomposition(tokens_ids: Mapping[str, torch.Tensor], granularity_level: GranularityLevel = DEFAULT):
         match granularity_level:
             case GranularityLevel.ALL_TOKENS:
-                return [[[id,] for id in elem] for elem in tokens_ids["input_ids"]]
+                return [
+                    [
+                        [
+                            id,
+                        ]
+                        for id in elem
+                    ]
+                    for elem in tokens_ids["input_ids"]
+                ]
             case GranularityLevel.TOKEN:
-                return [[[id,] for id, mask in zip(elem, spe_tok_mask, strict=True) if mask == 0] for elem, spe_tok_mask in zip(tokens_ids["input_ids"], tokens_ids["special_tokens_mask"], strict=True)]
+                return [
+                    [
+                        [
+                            id,
+                        ]
+                        for id, mask in zip(elem, spe_tok_mask, strict=True)
+                        if mask == 0
+                    ]
+                    for elem, spe_tok_mask in zip(
+                        tokens_ids["input_ids"], tokens_ids["special_tokens_mask"], strict=True
+                    )
+                ]
             case GranularityLevel.WORD:
                 # TODO : refaire ça
                 res = []
@@ -130,8 +150,9 @@ class GranularityLevel(Enum):
                             res[-1][word_id] += [tok.item()]
                 return res
             case _:
-                raise NotImplementedError(f"Granularity level {granularity_level} not implemented in decompose function")
-        
+                raise NotImplementedError(
+                    f"Granularity level {granularity_level} not implemented in decompose function"
+                )
 
     @staticmethod
     def get_association_matrix(

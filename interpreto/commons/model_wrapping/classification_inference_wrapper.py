@@ -179,18 +179,17 @@ class ClassificationInferenceWrapper(InferenceWrapper):
         logits = self.get_logits(model_inputs)
         targets = self._process_target(targets, logits)
         return logits.gather(-1, targets)
-    
-    def _process_target(self, target: torch.TensorType,
-                        logits:torch.Tensor) -> torch.Tensor:
+
+    def _process_target(self, target: torch.TensorType, logits: torch.Tensor) -> torch.Tensor:
         # TODO : refaire ça proprement
         match target.dim():
             case 0:
                 return self._process_target(target.unsqueeze(0), logits)
-            case 1: # (t)
+            case 1:  # (t)
                 index_shape = list(logits.shape)
                 index_shape[-1] = target.shape[0]
                 return target.expand(index_shape)
-            case 2: # (n, t)
+            case 2:  # (n, t)
                 if target.shape[0] == 1:
                     return target.expand(logits.shape[0], -1)
                 return target
