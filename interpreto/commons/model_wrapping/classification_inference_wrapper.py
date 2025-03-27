@@ -168,20 +168,17 @@ class ClassificationInferenceWrapper(InferenceWrapper):
     def _(self, model_inputs: Iterable[Mapping[str, torch.Tensor]]) -> Iterator:
         yield from (prediction.argmax(dim=-1) for prediction in self.get_logits(iter(model_inputs)))
 
-    def _get_score_from_logits_and_target(self, logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        return torch.gather(logits, -1, target)
-
     @singledispatchmethod
-    def get_scores(self, model_inputs, targets: torch.Tensor):
+    def get_target_logits(self, model_inputs, targets: torch.Tensor):
         raise NotImplementedError(
-            f"type {type(model_inputs)} not supported for method get_scores in class {self.__class__.__name__}"
+            f"type {type(model_inputs)} not supported for method get_target_logits in class {self.__class__.__name__}"
         )
 
-    @get_scores.register(Mapping)
+    @get_target_logits.register(Mapping)
     def _(self, model_inputs: Mapping[str, torch.Tensor], targets: torch.Tensor):
         logits = self.get_logits(model_inputs)
         targets = self._process_target(targets, logits)
-        return self._get_score_from_logits_and_target(logits, targets)
+        return logits.gather(-1, targets)
     
     def _process_target(self, target: torch.TensorType,
                         logits:torch.Tensor) -> torch.Tensor:
@@ -198,15 +195,15 @@ class ClassificationInferenceWrapper(InferenceWrapper):
                     return target.expand(logits.shape[0], -1)
                 return target
 
-    @get_scores.register(Iterable)
+    @get_target_logits.register(Iterable)
     def _(self, model_inputs: Iterable[Mapping[str, torch.Tensor]], targets: torch.Tensor):
         predictions = self.get_logits(iter(model_inputs))
         # TODO : refaire ça proprement
         if targets.dim() in (0, 1):
             targets = targets.view(1, -1)
         single_index = int(targets.shape[0] > 1)
-        for index, prediction in enumerate_generator(predictions):
-            yield self._get_score_from_logits_and_target(prediction, targets[single_index and index].unsqueeze(0).expand(prediction.shape[0], -1))
+        for index, logits in enumerate_generator(predictions):
+            yield logits.gather(-1, targets[single_index and index].unsqueeze(0).expand(logits.shape[0], -1))
 
     @singledispatchmethod
     def get_gradients(self, model_inputs, targets: torch.Tensor):
@@ -217,7 +214,7 @@ class ClassificationInferenceWrapper(InferenceWrapper):
     @get_gradients.register(Mapping)
     def _(self, model_inputs: Mapping[str, torch.Tensor], targets: torch.Tensor):
         model_inputs = self._embed(model_inputs)
-        scores = self.get_scores(model_inputs, targets)
+        scores = self.get_target_logits(model_inputs, targets)
         scores.grad = None
         scores.backward(torch.ones_like(scores))
         return model_inputs["inputs_embeds"].grad.abs().mean(axis=-1)
@@ -226,7 +223,7 @@ class ClassificationInferenceWrapper(InferenceWrapper):
     def _(self, model_inputs: Iterable[Mapping[str, torch.Tensor]], targets: torch.Tensor):
         # TODO : see if we can do that without using persistent generator
         mi = PersistentGenerator(iter(model_inputs))
-        for index, element in enumerate_generator(self.get_scores(mi, targets)):
+        for index, element in enumerate_generator(self.get_target_logits(mi, targets)):
             element.grad = None
             element.backward(torch.ones_like(element), retain_graph=True)
             return mi[index]["inputs_embeds"].grad.abs().mean(axis=-1)
