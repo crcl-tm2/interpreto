@@ -29,7 +29,7 @@ Basic standard classes for attribution methods
 from __future__ import annotations
 
 from abc import abstractmethod
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable
 from typing import Any
 
 import torch
@@ -38,6 +38,7 @@ from jaxtyping import Float
 from interpreto.attributions.aggregations.base import Aggregator
 from interpreto.attributions.perturbations.base import BasePerturbator
 from interpreto.commons.generator_tools import PersistentTupleGeneratorWrapper
+from interpreto.commons.granularity import GranularityLevel
 from interpreto.typing import ModelInput
 
 SingleAttribution = (
@@ -89,11 +90,13 @@ class AttributionExplainer:
         perturbator: BasePerturbator | None = None,
         aggregator: Aggregator | None = None,
         device: torch.device | None = None,
+        granularity_level: GranularityLevel = GranularityLevel.DEFAULT,
     ):
         self.perturbator = perturbator
         self.inference_wrapper = inference_wrapper
         self.aggregator = aggregator
         self.device = device
+        self.granularity_level = granularity_level
 
     @abstractmethod
     def explain(self, inputs: ModelInput, targets: torch.Tensor | None = None) -> Any:
@@ -112,30 +115,35 @@ class InferenceExplainer(AttributionExplainer):
     Black box model explainer
     """
 
-    # TODO : faire ça différement
-    def call_inference_wrapper(self, inputs: Iterable[Mapping[str, torch.Tensor]], targets: torch.Tensor) -> Any:
-        return self.inference_wrapper.get_scores(inputs, targets)
-
     def explain(self, inputs: ModelInput, targets: torch.Tensor | None = None) -> Any:
         """
         main process of attribution method
         """
         self.inference_wrapper.to(self.device)
-
+        # TODO : eventually remove sort ? Or replace with a repositioning of the longest sequence ?
         tokens = [self.perturbator.tokenizer(item, return_tensors="pt") for item in inputs]
         token_count = [len(item["input_ids"][0]) for item in tokens]
         sorted_indices = sorted(range(len(token_count)), key=lambda k: token_count[k], reverse=True)
 
+        # Reference inference
+        logits = torch.stack(list(self.inference_wrapper.get_logits(tokens[i] for i in sorted_indices)))
+
         if targets is None:
-            for t in tokens:
-                t["input_ids"] = t["input_ids"].unsqueeze(1)
-                t["attention_mask"] = t["attention_mask"].unsqueeze(1)
-            targets = torch.stack(list(self.inference_wrapper.get_targets([tokens[i] for i in sorted_indices])))
+            targets = logits.argmax(dim=-1)
+
+        logits = logits.gather(-1, targets.unsqueeze(1))
+
         # Perturbation
         pert_per_input_generator = PersistentTupleGeneratorWrapper(
             self.perturbator.perturb(inputs[i]) for i in sorted_indices
         )
-        scores = list(self.call_inference_wrapper(pert_per_input_generator.get_subgenerator(0), targets))
+
+        target_logits = list(
+            self.inference_wrapper.get_target_logits(pert_per_input_generator.get_subgenerator(0), targets)
+        )
+
+        scores = [logits[index] - target_logit for index, target_logit in enumerate(target_logits)]
+
         masks = list(pert_per_input_generator.get_subgenerator(1))
 
         # Unsort
@@ -145,13 +153,20 @@ class InferenceExplainer(AttributionExplainer):
             unsorted_masks[original_idx] = masks[idx]
             unsorted_scores[original_idx] = scores[idx]
 
-        explanations = []
+        contributions = [
+            self.aggregator(score.unsqueeze(0), mask).squeeze(0)
+            for score, mask in zip(unsorted_scores, unsorted_masks, strict=True)
+        ]
 
-        for score, mask in zip(unsorted_scores, unsorted_masks, strict=True):
-            explanation = self.aggregator(score, mask)
-            explanations.append(explanation)
+        tokens = [self.perturbator.tokenizer(item, return_tensors="pt") for item in inputs]
 
-        return explanations
+        decompositions = [GranularityLevel.get_decomposition(t, self.granularity_level) for t in tokens]
+        return [
+            AttributionOutput(
+                c, [self.perturbator.tokenizer.decode(token_ids, skip_special_tokens=True) for token_ids in d[0]]
+            )
+            for c, d in zip(contributions, decompositions, strict=True)
+        ]
 
 
 class GradientExplainer(InferenceExplainer):
@@ -161,5 +176,4 @@ class GradientExplainer(InferenceExplainer):
     Subclasses of this explainer are mostly reductions to a specific perturbation or aggregation
     """
 
-    def call_inference_wrapper(self, inputs: Iterable[Mapping[str, torch.Tensor]], targets: torch.Tensor) -> Any:
-        return self.inference_wrapper.get_gradients(inputs, targets)
+    # TODO

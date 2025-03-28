@@ -76,9 +76,8 @@ def test_classification_inference_wrapper_single_sentence(model_name, sentence):
     assert torch.equal(logits, next(inference_wrapper.get_logits([tokens])))
     assert torch.equal(target, inference_wrapper.get_targets(tokens))
     assert torch.equal(target, next(inference_wrapper.get_targets([tokens])))
-    assert torch.equal(scores, inference_wrapper.get_scores(tokens, predefined_targets))
-    assert torch.equal(scores, inference_wrapper._get_score_from_logits_and_target(logits, predefined_targets))
-    assert torch.equal(scores, next(inference_wrapper.get_scores([tokens], predefined_targets)))
+    assert torch.equal(scores, inference_wrapper.get_target_logits(tokens, predefined_targets))
+    assert torch.equal(scores, next(inference_wrapper.get_target_logits([tokens], predefined_targets)))
 
 
 @pytest.mark.parametrize("model_name", classification_models)
@@ -87,20 +86,16 @@ def test_classification_inference_wrapper_multiple_sentences(model_name, sentenc
     tokenizer, model, inference_wrapper = prepare_model_and_tokenizer(model_name)
 
     ### Reference values
-    tokens = [tokenizer(s, return_tensors="pt", padding=True, truncation=True) for s in sentences]
-    logits = [model(**t).logits for t in tokens]
-    target = [l.argmax(dim=-1) for l in logits]
-    predefined_targets = torch.stack([torch.randperm(logits[0].shape[-1]) for _ in range(len(tokens))])
-    scores = torch.gather(torch.cat(logits), dim=-1, index=predefined_targets)
+    tokens = tokenizer(sentences, return_tensors="pt", padding=True, truncation=True)
+    logits = model(**tokens).logits
+    targets = logits.argmax(dim=-1)
+    predefined_targets = torch.randperm(logits.shape[-1])
+    target_logits = torch.gather(logits, dim=-1, index=predefined_targets.unsqueeze(0).expand(logits.shape[0], -1))
 
     ### Tests
     # TODO : check why they are not equal
-    assert all(
-        torch.allclose(l, il, rtol=1e-6)
-        for l, il in zip(logits, list(inference_wrapper.get_logits(tokens)), strict=True)
-    )
-    assert all(torch.equal(t, it) for t, it in zip(target, list(inference_wrapper.get_targets(tokens)), strict=False))
-    assert all(
-        torch.allclose(s, is_, rtol=1e-6)
-        for s, is_ in zip(scores, list(inference_wrapper.get_scores(tokens, predefined_targets)), strict=False)
+    assert torch.equal(logits, torch.stack(list(inference_wrapper.get_logits(tokens))))
+    assert torch.equal(targets, torch.stack(list(inference_wrapper.get_targets(tokens))))
+    assert torch.equal(
+        target_logits, torch.stack(list(inference_wrapper.get_target_logits(tokens, predefined_targets)))
     )

@@ -28,120 +28,12 @@ Base classes for perturbations used in attribution methods
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from enum import Enum
 from functools import singledispatchmethod
 
 import torch
 from transformers import PreTrainedTokenizer
 
-
-class GranularityLevel(Enum):
-    """
-    Enumerations of the different granularity levels supported for masking perturbations
-    Allows to define token-wise masking, word-wise masking...
-    """
-
-    ALL_TOKENS = "all_tokens"  # All tokens, including special tokens like padding, eos, cls, etc.
-    TOKEN = "token"  # Strictly tokens of the input
-    WORD = "word"  # Words of the input
-    DEFAULT = TOKEN
-
-    @staticmethod
-    def __all_tokens_assoc_matrix(tokens_ids: Mapping[str, torch.Tensor]):
-        n, l_p = tokens_ids["input_ids"].shape
-        return torch.eye(l_p).unsqueeze(0).expand(n, -1, -1)
-
-    @staticmethod
-    def __token_assoc_matrix(tokens_ids: Mapping[str, torch.Tensor]):
-        # TODO : remake this using only tensor operation (if possible ?)
-        n, l_p = tokens_ids["input_ids"].shape
-        perturbable_matrix = torch.diag_embed(1 - tokens_ids["special_tokens_mask"])
-        non_empty_rows_mask = perturbable_matrix.sum(dim=2) != 0
-        l_t = non_empty_rows_mask.sum(dim=1)
-        result = torch.zeros(n, l_t.max(), l_p)
-        for i in range(n):
-            result[i, : l_t[i], :] = perturbable_matrix[i, non_empty_rows_mask[i]]
-        return result
-
-    @staticmethod
-    def __word_assoc_matrix(tokens_ids: Mapping[str, torch.Tensor]):
-        n, l_p = tokens_ids["input_ids"].shape
-        l_t = GranularityLevel.get_length(tokens_ids, GranularityLevel.WORD).max()
-        index_tensor = torch.nn.utils.rnn.pad_sequence(
-            [
-                torch.tensor([a if a is not None else l_t for a in elem])
-                for elem in [tokens_ids.word_ids(i) for i in range(n)]
-            ],
-            batch_first=True,
-            padding_value=l_t + 1,
-        )
-        reference = torch.diagonal_scatter(torch.zeros(l_t + 1, l_t), torch.ones(l_t))
-        res = (
-            torch.index_select(reference, 0, index_tensor.flatten())
-            .reshape(index_tensor.shape + (reference.shape[1],))
-            .transpose(-1, -2)
-        )
-        return res
-
-    @staticmethod
-    def get_length(
-        tokens_ids: Mapping[str, torch.Tensor], granularity_level: GranularityLevel = DEFAULT
-    ) -> torch.Tensor:
-        """
-        Returns the length of the sequences according to the granularity level
-
-        Args:
-            tokens_ids (Mapping[str, torch.Tensor]): tensors to measure
-            granularity_level (GranularityLevel, optional): granularity level. Defaults to DEFAULT.
-
-        Returns:
-            torch.Tensor: length of the sequences
-        """
-        match granularity_level:
-            case GranularityLevel.ALL_TOKENS:
-                return tokens_ids["input_ids"].shape[1] * torch.ones(tokens_ids["input_ids"].shape[0])
-            case GranularityLevel.TOKEN:
-                return (1 - tokens_ids["special_tokens_mask"]).sum(dim=1)
-            case GranularityLevel.WORD:
-                return (
-                    torch.tensor(
-                        [
-                            max(filter(lambda x: x is not None, tokens_ids.word_ids(i)))
-                            for i in range(tokens_ids["input_ids"].shape[0])
-                        ]
-                    )
-                    + 1
-                )
-            case _:
-                raise NotImplementedError(f"Granularity level {granularity_level} not implemented")
-
-    @staticmethod
-    def get_association_matrix(
-        tokens_ids: Mapping[str, torch.Tensor], granularity_level: GranularityLevel = DEFAULT
-    ) -> torch.Tensor:
-        """
-        Creates the matrix to pass from one granularity level to ALL_TOKENS granularity level (finally used by the perturbator)
-
-
-        Args:
-            tokens_ids (Mapping[str, torch.Tensor]): inputs of the perturb meth
-            granularity_level (GranularityLevel | None, optional): source granularity level. Defaults to GranularityLevel.DEFAULT.
-
-        Raises:
-            NotImplementedError: if granularity level is unknown, raises NotImplementedError
-
-        Returns:
-            torch.Tensor: the matrix used to transform a specific granularity mask to a general mask that can be used on tokens
-        """
-        match granularity_level:
-            case GranularityLevel.ALL_TOKENS:
-                return GranularityLevel.__all_tokens_assoc_matrix(tokens_ids)
-            case GranularityLevel.TOKEN:
-                return GranularityLevel.__token_assoc_matrix(tokens_ids)
-            case GranularityLevel.WORD:
-                return GranularityLevel.__word_assoc_matrix(tokens_ids)
-            case _:
-                raise NotImplementedError(f"Granularity level {granularity_level} not implemented")
+from interpreto.commons.granularity import GranularityLevel
 
 
 class BasePerturbator:
