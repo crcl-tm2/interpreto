@@ -45,7 +45,7 @@ class ClassificationInferenceWrapper(InferenceWrapper):
         model_inputs = self._embed(model_inputs)
         match model_inputs["inputs_embeds"].dim():
             case 2:  # (l, d)
-                return self.call_model(**model_inputs).logits
+                return self.call_model(model_inputs).logits
             case 3:  # (p, l, d) or (n, l, d)
                 chunks = torch.split(model_inputs["inputs_embeds"], self.batch_size)
                 mask_chunks = torch.split(model_inputs["attention_mask"], self.batch_size)

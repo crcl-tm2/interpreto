@@ -28,6 +28,7 @@ from collections.abc import Mapping
 from functools import singledispatchmethod
 
 import torch
+from torch.autograd.functional import jacobian
 
 from interpreto.commons.model_wrapping.inference_wrapper import InferenceWrapper
 
@@ -39,31 +40,31 @@ class GenerationInferenceWrapper(InferenceWrapper):
             f"type {type(model_inputs)} not supported for method get_logits in class {self.__class__.__name__}"
         )
 
-    @get_logits.register
+    @get_logits.register(Mapping)
     def _(self, model_inputs: Mapping[str, torch.Tensor]):
         model_inputs = self._embed(model_inputs)
         emb_dim = model_inputs["inputs_embeds"].dim()
         match emb_dim:
-            case 2:  # shape: (seq_length, d)
-                outputs = self.call_model(**model_inputs)
-                return outputs.logits
-            case 3:  # shape: (batch, seq_length, d)
+            case 2:  # shape: (l, d)
+                outputs = self.call_model(model_inputs)
+                return outputs.logits  # (l, v)
+            case 3:  # shape: (n, l, d)
                 # Chunk along the batch dimension if necessary.
                 chunks = torch.split(model_inputs["inputs_embeds"], self.batch_size)
                 mask_chunks = torch.split(model_inputs["attention_mask"], self.batch_size)
                 logits_list = []
                 for chunk, mask_chunk in zip(chunks, mask_chunks, strict=False):
                     chunk_mapping = {"inputs_embeds": chunk, "attention_mask": mask_chunk}
-                    outs = self.call_model(**chunk_mapping)
+                    outs = self.call_model(chunk_mapping)
                     logits_list.append(outs.logits)
-                return torch.cat(logits_list, dim=0)
+                return torch.cat(logits_list, dim=0)  # (n, l, v)
             case _:  # Higher dimensions, e.g. (n, p, l, d)
                 batch_dims = model_inputs["inputs_embeds"].shape[:-1]
-                flat_embeds = model_inputs["inputs_embeds"].flatten(0, -2)
-                flat_mask = model_inputs["attention_mask"].flatten(0, -2)
+                flat_embeds = model_inputs["inputs_embeds"].flatten(start_dim=0, end_dim=-3)  # (n * p, l, d)
+                flat_mask = model_inputs["attention_mask"].flatten(start_dim=0, end_dim=-3)  # (n * p, l, d)
                 flat_mapping = {"inputs_embeds": flat_embeds, "attention_mask": flat_mask}
                 flat_logits = self.get_logits(flat_mapping)
-                return flat_logits.view(*batch_dims, -1)
+                return flat_logits.view(*batch_dims, -1)  # (n, p, l, v)
 
     @singledispatchmethod
     def get_targeted_logits(self, model_inputs, targets):
@@ -71,25 +72,32 @@ class GenerationInferenceWrapper(InferenceWrapper):
             f"type {type(model_inputs)} not supported for method get_targeted_logits in class {self.__class__.__name__}"
         )
 
-    @get_targeted_logits.register
+    @get_targeted_logits.register(Mapping)
     def _(self, model_inputs: Mapping[str, torch.Tensor], targets: Mapping[str, torch.Tensor]):
+        # remove last target token from the model inputs
+        # to avoid using the last token in the generation process
+        model_inputs = {
+            key: value[..., :-1, :] if key == "inputs_embeds" else value[..., :-1]
+            for key, value in model_inputs.items()
+        }
         model_inputs = self._embed(model_inputs)
         if "input_ids" not in targets:
             raise ValueError("targets must contain 'input_ids' for generative inference.")
-
         # Get complete logits regardless of the input's shape.
-        logits = self.get_logits(model_inputs)
-        target_length = targets["input_ids"].shape[-1]
+        logits = self.get_logits(model_inputs)  # (l-1, v) | (n, l-1, v) | (n, p, l-1, v)
+        target_length = targets["input_ids"].shape[-1]  # lt < l
 
-        # For a 2D tensor, assume shape (seq_length, vocab_size)
-        if logits.dim() == 2:
-            target_logits = logits[-target_length:, :]
-            selected_logits = target_logits.gather(dim=-1, index=targets["input_ids"].view(-1, 1)).squeeze(-1)
-        else:  # For logits of shape (batch, seq_length, vocab_size) or higher,
-            # assume the sequence dimension is the second-to-last.
-            target_logits = logits[..., -target_length:, :]
-            # For a batch case, unsqueeze the targets so that they match the logits shape.
-            selected_logits = target_logits.gather(dim=-1, index=targets["input_ids"].unsqueeze(-1)).squeeze(-1)
+        # assume the sequence dimension is the second-to-last.
+        target_logits = logits[..., -target_length:, :]
+
+        if targets["input_ids"].shape != target_logits.shape[:-1]:
+            raise ValueError(
+                "target logits shape without the vocabulary dimension must match the target inputs ids shape."
+                f"Got {target_logits.shape[:-1]} and {targets['input_ids'].shape}."
+            )
+
+        # For a batch case, unsqueeze the targets so that they match the logits shape.
+        selected_logits = target_logits.gather(dim=-1, index=targets["input_ids"].unsqueeze(-1)).squeeze(-1)
 
         return selected_logits
 
@@ -99,7 +107,7 @@ class GenerationInferenceWrapper(InferenceWrapper):
             f"type {type(model_inputs)} not supported for method get_targets in class {self.__class__.__name__}"
         )
 
-    @get_targets.register
+    @get_targets.register(Mapping)
     def _(self, model_inputs: Mapping[str, torch.Tensor], **generation_kwargs) -> Mapping[str, torch.Tensor]:
         # Generate token IDs using model.generate with additional generation parameters.
         generated_ids = self.model.generate(**model_inputs, **generation_kwargs)
@@ -112,35 +120,27 @@ class GenerationInferenceWrapper(InferenceWrapper):
             f"type {type(model_inputs)} not supported for method get_gradients in class {self.__class__.__name__}"
         )
 
-    @get_gradients.register
+    @get_gradients.register(Mapping)
     def _(self, model_inputs: Mapping[str, torch.Tensor], targets: Mapping[str, torch.Tensor]):
-        if "input_ids" not in targets:
-            raise ValueError("targets must contain 'input_ids' for gradient computation.")
+        model_inputs = {
+            key: value[..., :-1, :] if key == "inputs_embeds" else value[..., :-1]
+            for key, value in model_inputs.items()
+        }
 
-        # Use the existing _embed function and ensure gradient tracking.
         model_inputs = self._embed(model_inputs)
         inputs_embeds = model_inputs["inputs_embeds"]
-        inputs_embeds.requires_grad_(True)
 
-        # Reuse get_logits to compute logits.
-        logits = self.get_logits(model_inputs)
-        seq_length = logits.shape[0]
-        target_length = targets["input_ids"].shape[-1]
-        start_idx = seq_length - target_length
+        def get_score(inputs_embeds: torch.Tensor):
+            return self.get_targeted_logits(
+                {"inputs_embeds": inputs_embeds, "attention_mask": model_inputs["attention_mask"]}, targets
+            )
 
-        # Preallocate result matrix with NaNs.
-        grad_matrix = torch.full((seq_length - 1, target_length), float("nan"), device=logits.device)
+        # Compute gradient of the selected logits:
+        grad_matrix = (
+            jacobian(get_score, inputs_embeds).squeeze(-3).mean(dim=-1)
+        )  # (n, lt, 1, l-1, d) -squeeze+mean-> (n, lt, l-1)
 
-        # For each target token, compute gradient of its logit with respect to the input embeddings.
-        for j in range(target_length):
-            pos = start_idx + j  # index in the full sequence for the j-th target token.
-            token_id = targets["input_ids"][j]
-            score = logits[pos, token_id]
-            # Compute gradient of the selected logit.
-            grad = torch.autograd.grad(score, inputs_embeds, retain_graph=True)[0]
-            grad_norm = grad.norm(dim=-1)
-            # Fill in only those entries corresponding to input tokens preceding the target.
-            valid_length = min(pos, seq_length - 1)
-            grad_matrix[:valid_length, j] = grad_norm[:valid_length]
+        # uppertriumask = torch.triu(torch.ones(target_length, target_length), diagonal=1)
+        # grad_matrix[-target_length:, :][uppertriumask.bool()] = float("nan")
 
         return grad_matrix
