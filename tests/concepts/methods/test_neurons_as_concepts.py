@@ -37,7 +37,7 @@ from interpreto.concepts import NeuronsAsConcepts
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-def test_overcomplete_cbe(splitted_encoder_ml: ModelWithSplitPoints):
+def test_neurons_as_concepts(splitted_encoder_ml: ModelWithSplitPoints):
     """
     Test that the concept encoding and decoding of the `NeuronsAsConcepts` is the identity
     """
