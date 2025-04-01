@@ -110,9 +110,14 @@ class GenerationInferenceWrapper(InferenceWrapper):
     @get_targets.register(Mapping)
     def _(self, model_inputs: Mapping[str, torch.Tensor], **generation_kwargs) -> Mapping[str, torch.Tensor]:
         # Generate token IDs using model.generate with additional generation parameters.
-        generated_ids = self.model.generate(**model_inputs, **generation_kwargs)
-        # Optionally wrap in a mapping to be consistent.
-        return {"input_ids": generated_ids}
+        full_ids = self.model.generate(**model_inputs, **generation_kwargs)
+        original_length = model_inputs["attention_mask"].shape[-1]
+        generated_ids = full_ids[..., original_length:]
+        generated_attention_mask = torch.ones_like(generated_ids)
+        full_attention_mask = torch.cat([model_inputs["attention_mask"], generated_attention_mask], dim=-1)
+        full_mapping = {"input_ids": full_ids, "attention_mask": full_attention_mask}
+        generated_mapping = {"input_ids": generated_ids, "attention_mask": generated_attention_mask}
+        return full_mapping, generated_mapping
 
     @singledispatchmethod
     def get_gradients(self, model_inputs, targets):
@@ -122,11 +127,6 @@ class GenerationInferenceWrapper(InferenceWrapper):
 
     @get_gradients.register(Mapping)
     def _(self, model_inputs: Mapping[str, torch.Tensor], targets: Mapping[str, torch.Tensor]):
-        model_inputs = {
-            key: value[..., :-1, :] if key == "inputs_embeds" else value[..., :-1]
-            for key, value in model_inputs.items()
-        }
-
         model_inputs = self._embed(model_inputs)
         inputs_embeds = model_inputs["inputs_embeds"]
 
@@ -136,11 +136,11 @@ class GenerationInferenceWrapper(InferenceWrapper):
             )
 
         # Compute gradient of the selected logits:
-        grad_matrix = (
-            jacobian(get_score, inputs_embeds).squeeze(-3).mean(dim=-1)
-        )  # (n, lt, 1, l-1, d) -squeeze+mean-> (n, lt, l-1)
+        grad_matrix = jacobian(get_score, inputs_embeds)  # (n, lt, n, l, d)
+        grad_matrix = grad_matrix.mean(dim=-1)  # (n, lt, n, l)  # average over the embedding dimension
+        n = grad_matrix.shape[0]  # number of examples in the batch
+        diag_grad_matrix = grad_matrix[
+            torch.arange(n), :, torch.arange(n), :
+        ]  # (n, lt, l) # remove the gradients of the other examples
 
-        # uppertriumask = torch.triu(torch.ones(target_length, target_length), diagonal=1)
-        # grad_matrix[-target_length:, :][uppertriumask.bool()] = float("nan")
-
-        return grad_matrix
+        return diag_grad_matrix
