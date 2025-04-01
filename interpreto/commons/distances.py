@@ -28,7 +28,6 @@ from enum import Enum
 from typing import Any, Protocol, runtime_checkable
 
 import torch
-from scipy.optimize import linear_sum_assignment
 
 
 @runtime_checkable
@@ -208,6 +207,32 @@ def cosine_similarity(x1: torch.Tensor, x2: torch.Tensor, dim: int | tuple[int, 
     return (x1 * x2).sum(dim=dim) / (x1_norm * x2_norm)
 
 
+def cosine_similarity_matrix(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
+    """Compute the cosine similarity matrix between two sets of vectors.
+
+    Args:
+        x1 (torch.Tensor): The first tensor.
+        x2 (torch.Tensor): The second tensor.
+
+    Returns:
+        torch.Tensor: The cosine similarity matrix.
+
+    Raises:
+        ValueError: If tensor shapes don't match.
+        ValueError: If tensor shapes don't match or tensors aren't 2D.
+    """
+    if x1.shape != x2.shape:
+        raise ValueError(f"Shapes of x1 and x2 must match. Got {x1.shape}, {x2.shape}.")
+
+    if len(x1.shape) != 2:
+        raise ValueError(f"x1 and x2 must be 2D tensors. Got {len(x1.shape)}D tensors.")
+
+    x1_normed = x1 / x1.norm(p=2, dim=1, keepdim=True)
+    x2_normed = x2 / x2.norm(p=2, dim=1, keepdim=True)
+
+    return x1_normed @ x2_normed.T
+
+
 def cosine_distance(x1: torch.Tensor, x2: torch.Tensor, dim: int | tuple[int, ...] | None = None) -> torch.Tensor:
     """Compute the cosine distance between two tensors.
 
@@ -223,71 +248,6 @@ def cosine_distance(x1: torch.Tensor, x2: torch.Tensor, dim: int | tuple[int, ..
         ValueError: If tensor shapes don't match.
     """
     return 1 - cosine_similarity(x1, x2, dim=dim)
-
-
-def hungarian_1d_distance(x1: torch.Tensor, x2: torch.Tensor, _, *, p: float = 2.0) -> torch.Tensor:
-    """Compute the Hungarian distance between two sets of 1d vectors.
-
-    Args:
-        x1 (torch.Tensor): The first tensor.
-        x2 (torch.Tensor): The second tensor.
-        p_norm (int, optional): The p-norm to use. Defaults to 2.
-
-    Returns:
-        torch.Tensor: The Hungarian distance.
-
-    Raises:
-        ValueError: If tensor shapes don't match.
-        ValueError: If tensor shapes don't match or tensors aren't 2D.
-    """
-    if x1.shape != x2.shape:
-        raise ValueError(f"Shapes of x1 and x2 must match. Got {x1.shape}, {x2.shape}.")
-
-    if len(x1.shape) != 2:
-        raise ValueError(f"x1 and x2 must be 2D tensors. Got {len(x1.shape)}D tensors.")
-
-    cost_matrix = torch.cdist(x1, x2, p=p).cpu().numpy()
-
-    row_ind, col_ind = linear_sum_assignment(cost_matrix)
-    loss = cost_matrix[row_ind, col_ind].sum()
-
-    return loss / x1.shape[1]
-
-
-def cosine_hungarian_distance(x1: torch.Tensor, x2: torch.Tensor, _: Any = None) -> torch.Tensor:
-    """Compute the cosine hungarian distance between two sets of 1d vectors.
-
-    The distance is 0 if the two sets of vectors are identical up to a permutation.
-    The distance is if the two sets of vectors are orthogonal.
-
-    Args:
-        x1 (torch.Tensor): The first tensor.
-        x2 (torch.Tensor): The second tensor.
-        dim (int | tuple[int, ...] | None, optional): Dimensions to reduce. Defaults to None.
-
-    Returns:
-        torch.Tensor: The cosine hungarian distance.
-
-    Raises:
-        ValueError: If tensor shapes don't match.
-        ValueError: If tensor shapes don't match or tensors aren't 2D.
-    """
-    if x1.shape != x2.shape:
-        raise ValueError(f"Shapes of x1 and x2 must match. Got {x1.shape}, {x2.shape}.")
-
-    if len(x1.shape) != 2:
-        raise ValueError(f"x1 and x2 must be 2D tensors. Got {len(x1.shape)}D tensors.")
-
-    x1_normed = x1 / x1.norm(p=2, dim=1)
-    x2_normed = x2 / x2.norm(p=2, dim=1)
-
-    # cosine distance matrix
-    cost_matrix = 1 - x1_normed @ x2_normed.T
-
-    row_ind, col_ind = linear_sum_assignment(cost_matrix)
-    loss = cost_matrix[row_ind, col_ind].sum()
-
-    return loss / x1.shape[1]
 
 
 class DistanceFunctions(Enum):

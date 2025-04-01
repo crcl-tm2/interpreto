@@ -33,7 +33,7 @@ from interpreto.concepts.base import ConceptAutoEncoderExplainer
 from interpreto.typing import ConceptsActivations, LatentActivations
 
 
-class ReconstructionSpace(Enum):
+class ReconstructionSpaces(Enum):
     # TODO: docstring
     LATENT_ACTIVATIONS = "latent_activations"
     LOGITS = "logits"
@@ -46,14 +46,14 @@ class ReconstructionError:
 
     Attributes:
         concept_explainer (ConceptAutoEncoderExplainer): The explainer used to compute concepts.
-        reconstruction_space (ReconstructionSpace): The space in which the reconstruction error is computed.
+        reconstruction_space (ReconstructionSpaces): The space in which the reconstruction error is computed.
         distance_function (DistanceFunctionProtocol): The distance function used to compute the reconstruction error.
     """
 
     def __init__(
         self,
         concept_explainer: ConceptAutoEncoderExplainer,
-        reconstruction_space: ReconstructionSpace,
+        reconstruction_space: ReconstructionSpaces,
         distance_function: DistanceFunctionProtocol,
     ):
         self.concept_explainer = concept_explainer
@@ -77,7 +77,7 @@ class ReconstructionError:
             concepts_activations
         )
 
-        if self.reconstruction_space is ReconstructionSpace.LATENT_ACTIVATIONS:
+        if self.reconstruction_space is ReconstructionSpaces.LATENT_ACTIVATIONS:
             return self.distance_function(split_latent_activations, reconstructed_latent_activations).item()
 
         raise NotImplementedError("Only LATENT_ACTIVATIONS reconstruction space is supported.")
@@ -90,7 +90,7 @@ class LatentActivationsReconstructionError(ReconstructionError):
     ):
         super().__init__(
             concept_explainer=concept_explainer,
-            reconstruction_space=ReconstructionSpace.LATENT_ACTIVATIONS,
+            reconstruction_space=ReconstructionSpaces.LATENT_ACTIVATIONS,
             distance_function=DistanceFunctions.EUCLIDEAN,
         )
 
@@ -102,7 +102,7 @@ class FID(ReconstructionError):
     ):
         super().__init__(
             concept_explainer=concept_explainer,
-            reconstruction_space=ReconstructionSpace.LATENT_ACTIVATIONS,
+            reconstruction_space=ReconstructionSpaces.LATENT_ACTIVATIONS,
             distance_function=DistanceFunctions.WASSERSTEIN_1D,
         )
 
