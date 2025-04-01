@@ -55,7 +55,7 @@ class IdentityConceptModel(BaseDictionaryLearning):
         """
         raise NotImplementedError("Identity concept model does not need to be fitted.")
 
-    def encode(self, activations: LatentActivations) -> ConceptsActivations:
+    def encode(self, activations: LatentActivations) -> ConceptsActivations:  # type: ignore
         """
         Forwards the latent activations as concepts.
 
@@ -67,7 +67,7 @@ class IdentityConceptModel(BaseDictionaryLearning):
         """
         return activations
 
-    def decode(self, concepts: ConceptsActivations) -> LatentActivations:
+    def decode(self, concepts: ConceptsActivations) -> LatentActivations:  # type: ignore
         """
         Forwards the concepts as latent activations.
 
@@ -79,7 +79,7 @@ class IdentityConceptModel(BaseDictionaryLearning):
         """
         return concepts
 
-    def get_dictionary(self):
+    def get_dictionary(self) -> torch.Tensor:  # type: ignore
         """
         Returns the identity matrix as the dictionary.
 
@@ -121,13 +121,14 @@ class NeuronsAsConcepts(ConceptAutoEncoderExplainer):
         """
         # extract the input size from the model activations
         self.model_with_split_points = model_with_split_points
-        input_size = self.model_with_split_points.get_latent_shape()[split_point][-1]
+        self.split_point: str = split_point  # type: ignore
+        input_size = self.model_with_split_points.get_latent_shape()[self.split_point][-1]
 
         # initialize
         super().__init__(
             model_with_split_points=model_with_split_points,
             concept_model=IdentityConceptModel(input_size),
-            split_point=split_point,
+            split_point=self.split_point,
         )
         self.has_differentiable_concept_encoder = True
         self.has_differentiable_concept_decoder = True

@@ -292,7 +292,6 @@ class SAEExplainer(ConceptAutoEncoderExplainer[oc_sae.SAE], Generic[_SAE_co]):
         return self.concept_model.decode(concepts.to(self.device))  # type: ignore
 
 
-# TODO: Rename, remove Overcomplete prefix
 class DictionaryLearningExplainer(ConceptAutoEncoderExplainer[oc_opt.BaseOptimDictionaryLearning], Generic[_BODL_co]):
     """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
 
