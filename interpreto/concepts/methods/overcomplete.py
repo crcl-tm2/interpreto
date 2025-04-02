@@ -638,13 +638,9 @@ class ICAConcepts(DictionaryLearningExplainer[oc_opt.SkICA]):
 class KMeansConcepts(DictionaryLearningExplainer[oc_opt.SkKMeans]):
     """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
 
-    `ConceptAutoEncoderExplainer` with the K-Means concepts from Mairal et al. (2009)[^5] as concept model.
+    `ConceptAutoEncoderExplainer` with the K-Means as concept model.
 
     K-Means implementation from [overcomplete.optimization.SkKMeans](https://kempnerinstitute.github.io/overcomplete/optimization/sklearn/) class.
-
-    [^5]:
-        J. Mairal, F. Bach, J. Ponce, G. Sapiro, [Online dictionary learning for sparse coding](https://www.di.ens.fr/~fbach/mairal_icml09.pdf)
-        Proceedings of the 26th Annual International Conference on Machine Learning, 2009, pp. 689-696.
     """
 
     @property
@@ -672,13 +668,9 @@ class DictionaryLearningConcepts(DictionaryLearningExplainer[oc_opt.SkDictionary
 class SparsePCAConcepts(DictionaryLearningExplainer[oc_opt.SkSparsePCA]):
     """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
 
-    `ConceptAutoEncoderExplainer` with the SparsePCA concepts from Mairal et al. (2009)[^5] as concept model.
+    `ConceptAutoEncoderExplainer` with SparsePCA as concept model.
 
     SparsePCA implementation from [overcomplete.optimization.SkSparsePCA](https://kempnerinstitute.github.io/overcomplete/optimization/sklearn/) class.
-
-    [^5]:
-        J. Mairal, F. Bach, J. Ponce, G. Sapiro, [Online dictionary learning for sparse coding](https://www.di.ens.fr/~fbach/mairal_icml09.pdf)
-        Proceedings of the 26th Annual International Conference on Machine Learning, 2009, pp. 689-696.
     """
 
     @property
@@ -689,13 +681,9 @@ class SparsePCAConcepts(DictionaryLearningExplainer[oc_opt.SkSparsePCA]):
 class SVDConcepts(DictionaryLearningExplainer[oc_opt.SkSVD]):
     """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
 
-    `ConceptAutoEncoderExplainer` with the SVD concepts from Mairal et al. (2009)[^5] as concept model.
+    `ConceptAutoEncoderExplainer` with SVD as concept model.
 
     SVD implementation from [overcomplete.optimization.SkSVD](https://kempnerinstitute.github.io/overcomplete/optimization/sklearn/) class.
-
-    [^5]:
-        J. Mairal, F. Bach, J. Ponce, G. Sapiro, [Online dictionary learning for sparse coding](https://www.di.ens.fr/~fbach/mairal_icml09.pdf)
-        Proceedings of the 26th Annual International Conference on Machine Learning, 2009, pp. 689-696.
     """
 
     @property

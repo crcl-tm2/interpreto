@@ -31,7 +31,7 @@ from interpreto.commons.model_wrapping.model_with_split_points import ModelWithS
 from interpreto.concepts import NeuronsAsConcepts, PCAConcepts
 from interpreto.concepts.metrics import (
     FID,
-    LatentActivationsReconstructionError,
+    MSE,
     ReconstructionError,
     ReconstructionSpaces,
 )
@@ -51,7 +51,7 @@ def test_reconstruction_error(splitted_encoder_ml: ModelWithSplitPoints):
     activations = splitted_encoder_ml.get_activations("Interpreto is magic!")
     pca_concept_explainer.fit(activations)
 
-    for metric_class in [LatentActivationsReconstructionError, FID]:
+    for metric_class in [MSE, FID]:
         try:
             metric = metric_class(neurons_concept_explainer)
             assert metric.compute(activations[split]) == 0.0
@@ -78,7 +78,7 @@ def test_latent_activations_reconstruction_error(splitted_encoder_ml: ModelWithS
     )
     base_score = base_metric.compute(activations[split])
 
-    metric = LatentActivationsReconstructionError(pca_concept_explainer)
+    metric = MSE(pca_concept_explainer)
     score = metric.compute(activations[split])
 
     assert score == base_score

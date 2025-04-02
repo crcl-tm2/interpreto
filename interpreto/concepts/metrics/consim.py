@@ -24,53 +24,54 @@
 
 from __future__ import annotations
 
-from typing import Any
+# from typing import Any
 
-import torch
-from nnsight.intervention.graph import InterventionProxy
+# import torch
+# from nnsight.intervention.graph import InterventionProxy
 
-from interpreto.concepts.base import ConceptAutoEncoderExplainer
-from interpreto.typing import ConceptsActivations, LatentActivations
+# from interpreto.concepts.base import ConceptAutoEncoderExplainer
+# from interpreto.typing import ConceptsActivations, LatentActivations
 
 
-class ConSim:
-    def __init__(
-        self,
-        concept_explainer: ConceptAutoEncoderExplainer,
-        judge_llm: Any,
-    ):
-        self.concept_explainer = concept_explainer
+# TODO: make ConSim when the concept to output forward works, as well as attributions ic and co
+# class ConSim:
+#     def __init__(
+#         self,
+#         concept_explainer: ConceptAutoEncoderExplainer,
+#         judge_llm: Any,
+#     ):
+#         self.concept_explainer = concept_explainer
 
-    def extract_interesting_samples(
-        self,
-        inputs: list[str],
-        labels: list[str],
-        predictions: list[str],
-        seed: int = 0,
-    ) -> list[int]:
-        raise NotImplementedError
-        interesting_indices: list[int]
-        return interesting_indices
+#     def extract_interesting_samples(
+#         self,
+#         inputs: list[str],
+#         labels: list[str],
+#         predictions: list[str],
+#         seed: int = 0,
+#     ) -> list[int]:
+#         raise NotImplementedError
+#         interesting_indices: list[int]
+#         return interesting_indices
 
-    def compute_elements(
-        self,
-        interesting_samples: list[str] | None = None,
-        interesting_indices: list[int] | None = None,
-    ) -> tuple[LatentActivations, ConceptsActivations, torch.Tensor]:
-        raise NotImplementedError
-        interesting_latent_activations: LatentActivations
-        interesting_concepts_activations: ConceptsActivations
-        concepts_importance: torch.tensor
-        return latent_activations, concepts_activations, concepts_importance
+#     def compute_elements(
+#         self,
+#         interesting_samples: list[str] | None = None,
+#         interesting_indices: list[int] | None = None,
+#     ) -> tuple[LatentActivations, ConceptsActivations, torch.Tensor]:
+#         raise NotImplementedError
+#         interesting_latent_activations: LatentActivations
+#         interesting_concepts_activations: ConceptsActivations
+#         concepts_importance: torch.tensor
+#         return latent_activations, concepts_activations, concepts_importance
 
-    def generate_prompt(
-        self,
-        interesting_samples: list[str],
-        latent_activations: LatentActivations | InterventionProxy,
-        concepts_activations: ConceptsActivations,
-        labels: list[int],
-        predictions: list[int],
-    ) -> dict[str, str]:
-        raise NotImplementedError
-        prompt: dict[str, str]
-        return prompt
+#     def generate_prompt(
+#         self,
+#         interesting_samples: list[str],
+#         latent_activations: LatentActivations | InterventionProxy,
+#         concepts_activations: ConceptsActivations,
+#         labels: list[int],
+#         predictions: list[int],
+#     ) -> dict[str, str]:
+#         raise NotImplementedError
+#         prompt: dict[str, str]
+#         return prompt

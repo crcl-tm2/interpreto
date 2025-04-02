@@ -32,9 +32,17 @@ from interpreto.typing import ConceptsActivations, LatentActivations
 
 
 class Sparsity:
-    """Code [:octicons-mark-github-24: `concepts/metrics/complexity/sparsity.py`](https://github.com/FOR-sight-ai/interpreto/blob/main/interpreto/concepts/metrics/complexity/sparsity.py)
+    r"""Code [:octicons-mark-github-24: `concepts/metrics/sparsity_metrics.py`](https://github.com/FOR-sight-ai/interpreto/blob/main/interpreto/concepts/metrics/sparsity_metrics.py)
 
-    TODO: docstring
+    Evaluates the sparsity of the concepts activations.
+    It takes in the `concept_explainer` and the `latent_activations`, compute the `concept_activations` and then compute the sparsity of the `concept_activations`.
+
+    The sparsity is defined as:
+    $$ \sum_{x}^{X} \sum_{i=1}^{cpt} \mathbb{1} ( | t(h(x))_i | > \epsilon ) $$
+
+    Attributes:
+        concept_explainer (ConceptEncoderExplainer): The explainer used to compute concepts.
+        epsilon (float): The threshold used to compute the sparsity.
     """
 
     def __init__(self, concept_explainer: ConceptEncoderExplainer, epsilon: float = 0.0):
@@ -58,9 +66,17 @@ class Sparsity:
 
 
 class SparsityRatio(Sparsity):
-    """Code [:octicons-mark-github-24: `concepts/metrics/complexity/sparsity.py`](https://github.com/FOR-sight-ai/interpreto/blob/main/interpreto/concepts/metrics/complexity/sparsity.py)
+    r"""Code [:octicons-mark-github-24: `concepts/metrics/sparsity_metrics.py`](https://github.com/FOR-sight-ai/interpreto/blob/main/interpreto/concepts/metrics/sparsity_metrics.py)
 
-    TODO: docstring
+    Evaluates the sparsity ratio of the concepts activations.
+    It takes in the `concept_explainer` and the `latent_activations`, compute the `concept_activations` and then compute the sparsity ratio of the `concept_activations`.
+
+    With $A$ latent activations obtained through $A = h(X)$, the sparsity ratio is defined as:
+    $$ (1 / cpt) * \sum_{a}^{A} \sum_{i=1}^{cpt} \mathbb{1} ( | t(a)_i | > \epsilon ) $$
+
+    Attributes:
+        concept_explainer (ConceptEncoderExplainer): The explainer used to compute concepts.
+        epsilon (float): The threshold used to compute the sparsity.
     """
 
     def compute(self, latent_activations: LatentActivations | InterventionProxy) -> float:

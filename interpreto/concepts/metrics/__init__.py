@@ -25,7 +25,7 @@
 from .dictionary_metrics import ConceptMatchingAlgorithm, Stability
 from .reconstruction_metrics import (
     FID,
-    LatentActivationsReconstructionError,
+    MSE,
     ReconstructionError,
     ReconstructionSpaces,
 )
@@ -35,7 +35,7 @@ __all__ = [
     "ConceptMatchingAlgorithm",
     "Stability",
     "ReconstructionError",
-    "LatentActivationsReconstructionError",
+    "MSE",
     "FID",
     "ReconstructionSpaces",
     "Sparsity",

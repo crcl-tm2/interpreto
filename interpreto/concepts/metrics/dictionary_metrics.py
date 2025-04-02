@@ -80,7 +80,7 @@ def _cosine_max_distance(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
 
 
 class ConceptMatchingAlgorithm(Enum):
-    """Code [:octicons-mark-github-24: `concepts/metrics/complexity/stability.py`](https://github.com/FOR-sight-ai/interpreto/blob/main/interpreto/concepts/metrics/complexity/stability.py)
+    """Code [:octicons-mark-github-24: `concepts/metrics/dictionary_metrics.py`](https://github.com/FOR-sight-ai/interpreto/blob/main/interpreto/concepts/metrics/dictionary_metrics.py)
 
     Algorithm used to match concepts between dictionaries.
 
@@ -98,17 +98,48 @@ class ConceptMatchingAlgorithm(Enum):
 
 
 class Stability:
-    """Code [:octicons-mark-github-24: `concepts/metrics/complexity/stability.py`](https://github.com/FOR-sight-ai/interpreto/blob/main/interpreto/concepts/metrics/complexity/stability.py)
+    """Code [:octicons-mark-github-24: `concepts/metrics/dictionary_metrics.py`](https://github.com/FOR-sight-ai/interpreto/blob/main/interpreto/concepts/metrics/dictionary_metrics.py)
 
-    Stability metric between sets of dictionaries.
+    Stability metric between sets of dictionaries, introduced by Fel et al. (2023)[^1]. Also called Consistency by Paulo et Belrose (2025)[^2].
 
     - If only one dictionary is provided, the metric is a self comparison of the dictionary.
     - If two dictionaries are provided, the metric is a comparison between the two dictionaries.
     - If more than two dictionaries are provided, the metric is the mean of the pairwise comparisons.
 
+    [^1]:
+        Fel, T., Boutin, V., Béthune, L., Cadène, R., Moayeri, M., Andéol, L., Chavidal, M., & Serre, T.
+        [A holistic approach to unifying automatic concept extraction and concept importance estimation.](https://arxiv.org/abs/2306.07304)
+        Advances in Neural Information Processing Systems. 2023.
+
+    [^2]:
+        Paulo, G et Belrose, N.
+        [Sparse Autoencoders Trained on the Same Data Learn Different Features](https://arxiv.org/abs/2501.16615)
+        2025.
+
     Args:
-        concept_explainers (ConceptAutoEncoderExplainer | Float[torch.Tensor, "cpt d"]): The `ConceptAutoEncoderExplainer`s to compare.
+        concept_explainers (ConceptAutoEncoderExplainer | Float[torch.Tensor, "cpt d"]): The `ConceptAutoEncoderExplainer`s or dictionaries to compare.
+            Both types are supported and can be mixed.
         matching_algorithm (DistanceFunctionProtocol, optional): The algorithm used to match concepts between dictionaries. Defaults to ConceptMatchingAlgorithm.COSINE_HUNGARIAN.
+
+    Examples:
+        >>> import torch
+        >>> from interpreto.concepts import NMFConcepts
+        >>> from interpreto.concepts.metrics import Stability
+
+        >>> # Iterate on random seeds
+        >>> concept_explainers = []
+        >>> for seed in range(10):
+        ...     # set seed
+        ...     torch.manual_seed(seed)
+        ...     # Create a concept model
+        ...     nmf_explainer = NMFConcepts(model_with_split_points, nb_concepts=20, device="cuda", force_relu=True)
+        ...     # Fit the concept model
+        ...     nmf_explainer.fit(activations)
+        ...     concept_explainers.append(nmf_explainer)
+
+        >>> # Compute the stability metric
+        >>> stability = Stability(*concept_explainers)
+        >>> score = stability.compute()
 
     Raises:
         ValueError: If no `ConceptAutoEncoderExplainer`s or dictionary are provided.
@@ -159,7 +190,7 @@ class Stability:
         """Compute the mean score over pairwise comparison scores between dictionaries.
 
         Returns:
-            float: The comparison score.
+            float: The stability score.
         """
         comparisons = []
         for dict_1, dict_2 in combinations(self.dictionaries, 2):
