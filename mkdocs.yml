@@ -13,6 +13,7 @@ nav:
   - API Reference:
     - Model Wrapping: api/commons/model_wrapping.md
     - Concept Explainers:
+      - Overview: api/concepts/overview.md
       - Methods:
         - Base Classes: api/concepts/methods/base.md
         - Cockatiel: api/concepts/methods/cockatiel.md
@@ -28,7 +29,6 @@ nav:
         - Dictionary Metrics: api/concepts/metrics/dictionary_metrics.md
         - Reconstruction Metrics: api/concepts/metrics/reconstruction_metrics.md
         - Sparsity: api/concepts/metrics/sparsity_metrics.md
-      - Overview: api/concepts/overview.md
     - Attribution Explainers:
       - Overview: api/attributions/overview.md
       - Raw Gradients: api/attributions/raw_gradients.md
