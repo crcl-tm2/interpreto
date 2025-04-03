@@ -42,7 +42,7 @@ class GenerationInferenceWrapper(InferenceWrapper):
 
     @get_logits.register(Mapping)
     def _(self, model_inputs: Mapping[str, torch.Tensor]):
-        model_inputs = self._embed(model_inputs)
+        model_inputs = self.embed(model_inputs)
         emb_dim = model_inputs["inputs_embeds"].dim()
         match emb_dim:
             case 2:  # shape: (l, d)
@@ -73,51 +73,50 @@ class GenerationInferenceWrapper(InferenceWrapper):
         )
 
     @get_targeted_logits.register(Mapping)
-    def _(self, model_inputs: Mapping[str, torch.Tensor], targets: Mapping[str, torch.Tensor]):
+    def _(self, model_inputs: Mapping[str, torch.Tensor], targets: torch.Tensor):
         # remove last target token from the model inputs
         # to avoid using the last token in the generation process
         model_inputs = {
             key: value[..., :-1, :] if key == "inputs_embeds" else value[..., :-1]
             for key, value in model_inputs.items()
         }
-        model_inputs = self._embed(model_inputs)
-        if "input_ids" not in targets:
-            raise ValueError("targets must contain 'input_ids' for generative inference.")
+        model_inputs = self.embed(model_inputs)
+
         # Get complete logits regardless of the input's shape.
         logits = self.get_logits(model_inputs)  # (l-1, v) | (n, l-1, v) | (n, p, l-1, v)
-        target_length = targets["input_ids"].shape[-1]  # lt < l
+        target_length = targets.shape[-1]  # lt < l
 
         # assume the sequence dimension is the second-to-last.
         target_logits = logits[..., -target_length:, :]
 
-        if targets["input_ids"].shape != target_logits.shape[:-1]:
+        if targets.shape != target_logits.shape[:-1]:
             raise ValueError(
                 "target logits shape without the vocabulary dimension must match the target inputs ids shape."
-                f"Got {target_logits.shape[:-1]} and {targets['input_ids'].shape}."
+                f"Got {target_logits.shape[:-1]} and {targets.shape}."
             )
 
         # For a batch case, unsqueeze the targets so that they match the logits shape.
-        selected_logits = target_logits.gather(dim=-1, index=targets["input_ids"].unsqueeze(-1)).squeeze(-1)
+        selected_logits = target_logits.gather(dim=-1, index=targets.unsqueeze(-1)).squeeze(-1)
 
         return selected_logits
 
     @singledispatchmethod
-    def get_targets(self, model_inputs, **generation_kwargs):
+    def get_inputs_to_explain_and_targets(self, model_inputs, **generation_kwargs):
         raise NotImplementedError(
-            f"type {type(model_inputs)} not supported for method get_targets in class {self.__class__.__name__}"
+            f"type {type(model_inputs)} not supported for method get_inputs_to_explain_and_targets in class {self.__class__.__name__}"
         )
 
-    @get_targets.register(Mapping)
-    def _(self, model_inputs: Mapping[str, torch.Tensor], **generation_kwargs) -> Mapping[str, torch.Tensor]:
+    @get_inputs_to_explain_and_targets.register(Mapping)
+    def _(
+        self, model_inputs: Mapping[str, torch.Tensor], **generation_kwargs
+    ) -> tuple[Mapping[str, torch.Tensor], torch.Tensor]:
         # Generate token IDs using model.generate with additional generation parameters.
         full_ids = self.model.generate(**model_inputs, **generation_kwargs)
         original_length = model_inputs["attention_mask"].shape[-1]
-        generated_ids = full_ids[..., original_length:]
-        generated_attention_mask = torch.ones_like(generated_ids)
-        full_attention_mask = torch.cat([model_inputs["attention_mask"], generated_attention_mask], dim=-1)
+        targets_ids = full_ids[..., original_length:]
+        full_attention_mask = torch.cat([model_inputs["attention_mask"], torch.ones_like(targets_ids)], dim=-1)
         full_mapping = {"input_ids": full_ids, "attention_mask": full_attention_mask}
-        generated_mapping = {"input_ids": generated_ids, "attention_mask": generated_attention_mask}
-        return full_mapping, generated_mapping
+        return full_mapping, targets_ids
 
     @singledispatchmethod
     def get_gradients(self, model_inputs, targets):
@@ -126,8 +125,8 @@ class GenerationInferenceWrapper(InferenceWrapper):
         )
 
     @get_gradients.register(Mapping)
-    def _(self, model_inputs: Mapping[str, torch.Tensor], targets: Mapping[str, torch.Tensor]):
-        model_inputs = self._embed(model_inputs)
+    def _(self, model_inputs: Mapping[str, torch.Tensor], targets: torch.Tensor):
+        model_inputs = self.embed(model_inputs)
         inputs_embeds = model_inputs["inputs_embeds"]
 
         def get_score(inputs_embeds: torch.Tensor):
