@@ -55,6 +55,5 @@ class IntegratedGradients(GradientExplainer):
             perturbator=LinearInterpolationPerturbator(baseline=baseline, n_perturbations=n_interpolations),
             inference_wrapper=ClassificationInferenceWrapper(model, batch_size=batch_size, device=device),
             aggregator=MeanAggregator(),  # TODO: check if we need a trapezoidal mean
-            batch_size=batch_size,
             device=device,
         )
