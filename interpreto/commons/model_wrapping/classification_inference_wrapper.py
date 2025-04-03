@@ -24,120 +24,20 @@
 
 from __future__ import annotations
 
-from collections.abc import Generator, Iterable, Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from functools import singledispatchmethod
-from typing import Any
-import warnings
 
 import torch
 
 from interpreto.commons.generator_tools import PersistentGenerator, enumerate_generator
 from interpreto.commons.model_wrapping.inference_wrapper import InferenceWrapper
 
-#TODO : move that somewhere else
-def concat_and_pad(
-    t1: torch.Tensor | None,
-    t2: torch.Tensor,
-    dim: int = 0,
-    pad_value: int = 0,
-    pad_dims: Iterable[int] | None = None,
-) -> torch.Tensor:
-    if t1 is None:
-        return t2
-    for pad_dim in pad_dims or []:
-        pad = [0, 0] * t1.dim()
-        if t1.shape[pad_dim] > t2.shape[pad_dim]:
-            pad[~2 * (pad_dim % t1.dim())] = t1.shape[pad_dim] - t2.shape[pad_dim]
-            t2 = torch.nn.functional.pad(t2, pad, value=pad_value)
-        elif t2.shape[pad_dim] > t1.shape[pad_dim]:
-            pad[~2 * (pad_dim % t1.dim())] = t2.shape[pad_dim] - t1.shape[pad_dim]
-            t1 = torch.nn.functional.pad(t1, pad, value=pad_value)
-    return torch.cat([t1, t2], dim=dim)
 
 class ClassificationInferenceWrapper(InferenceWrapper):
+    PAD_LEFT = False
     """
         Basic inference wrapper for classification tasks.
     """
-    @singledispatchmethod
-    def get_logits(self, model_inputs:Any)->torch.Tensor|Generator[torch.Tensor, None, None]:
-        raise NotImplementedError(
-            f"type {type(model_inputs)} not supported for method get_logits in class {self.__class__.__name__}"
-        )
-
-    @get_logits.register(Mapping)
-    def _(self, model_inputs: Mapping[str, torch.Tensor])->torch.Tensor:
-        model_inputs = self._embed(model_inputs)
-        match model_inputs["inputs_embeds"].dim():
-            case 2:  # (l, d)
-                return self.call_model(model_inputs).logits
-            case 3:  # (p, l, d) or (n, l, d)
-                embeds_chunks = model_inputs["inputs_embeds"].split(self.batch_size)
-                mask_chunks = model_inputs["attention_mask"].split(self.batch_size)
-                return torch.cat(
-                    [
-                        self.call_model({"inputs_embeds": embeds_chunk, "attention_mask": mask_chunk}).logits
-                        for embeds_chunk, mask_chunk in zip(embeds_chunks, mask_chunks, strict=False)
-                    ],
-                )
-            case _:  # (..., l, d) like (n, p, l, d)
-                return self.get_logits({k:v.flatten(0, -3) for k, v in model_inputs.items()}).view(
-                    *model_inputs["inputs_embeds"].shape[:-1], -1
-                )
-
-    @get_logits.register(Iterable)
-    def _(self, model_inputs: Iterable[Mapping[str, torch.Tensor]]) -> Generator[torch.Tensor, None, None]:
-
-        model_inputs = iter(model_inputs)
-
-        # TODO : Check that tokenizers other than bert also use 0 as pad_token_id, otherwise, fix this
-        pad_token_id = 0
-
-        result_buffer: torch.Tensor | None = None
-        result_indexes: list[int] = []
-
-        batch: torch.Tensor | None = None
-        batch_mask: torch.Tensor | None = None
-
-        input_buffer = torch.zeros(0)
-        mask_buffer = torch.zeros(0)
-
-        last_item = False
-
-        while True:
-            if result_buffer is not None and len(result_indexes) and len(result_buffer) >= result_indexes[0]:
-                index = result_indexes.pop(0)
-                yield result_buffer[:index]
-                result_buffer = result_buffer[index:]
-                if last_item and not result_indexes:
-                    break
-                continue
-            if last_item or batch is not None and len(batch) == self.batch_size:
-                logits = self.call_model({"inputs_embeds": batch, "attention_mask": batch_mask}).logits
-                result_buffer = concat_and_pad(result_buffer, logits)
-                batch = batch_mask = None
-                continue
-            if input_buffer.numel():
-                missing_length = self.batch_size - len(batch if batch is not None else ())
-                batch = concat_and_pad(batch, input_buffer[:missing_length], 0, pad_token_id, (1,))
-                batch_mask = concat_and_pad(batch_mask, mask_buffer[:missing_length], 0, 0, (-1,))
-                input_buffer = input_buffer[missing_length:]
-                mask_buffer = mask_buffer[missing_length:]
-                continue
-            try:
-                next_item = self._embed(next(model_inputs))
-                input_buffer = self._reshape_inputs(next_item["inputs_embeds"], non_batch_dims=2)
-                mask_buffer = self._reshape_inputs(next_item["attention_mask"], non_batch_dims=1)
-                result_indexes += [len(input_buffer)]
-            except StopIteration:
-                if last_item:
-                    raise
-                last_item = True
-        if any(len(a) for a in [result_indexes, result_buffer, input_buffer, mask_buffer]):
-            warnings.warn()
-        assert len(result_indexes) == len(result_buffer) == len(input_buffer) == len(mask_buffer) == 0, (
-            "Some data were not well fetched, please check your code  notify it to the developers"
-        )
-
     def _process_target(self, target: torch.Tensor, logits: torch.Tensor) -> torch.Tensor:
         # TODO : refaire ça proprement
         match target.dim():
@@ -155,20 +55,6 @@ class ClassificationInferenceWrapper(InferenceWrapper):
             f"Target tensor should have 0, 1 or 2 dimensions, but got {target.dim()} dimensions"
         )
 
-    def _reshape_inputs(self, tensor: torch.Tensor, non_batch_dims: int = 2)->torch.Tensor:
-        # TODO : refaire ça proprement
-        assert tensor.dim() >= non_batch_dims, (
-            "The given tensor have less dimensions than non_batch_dims parameter"
-        )
-        if tensor.dim() == non_batch_dims:
-            return tensor.unsqueeze(0)
-        if tensor.dim() == non_batch_dims + 1:
-            return tensor
-        assert tensor.shape[0] == 1, (
-            "When passing a sequence or a generator of inputs to the inference wrapper, please consider giving sequence of perturbations of single elements instead of batches (shape should be (1, n_perturbations, ...))"
-        )
-        return self._reshape_inputs(tensor[0], non_batch_dims=non_batch_dims)
-
     @singledispatchmethod
     def get_targets(self, model_inputs):
         raise NotImplementedError(
@@ -184,18 +70,18 @@ class ClassificationInferenceWrapper(InferenceWrapper):
         yield from (prediction.argmax(dim=-1) for prediction in self.get_logits(iter(model_inputs)))
 
     @singledispatchmethod
-    def get_target_logits(self, model_inputs, targets: torch.Tensor):
+    def get_targeted_logits(self, model_inputs, targets: torch.Tensor):
         raise NotImplementedError(
             f"type {type(model_inputs)} not supported for method get_target_logits in class {self.__class__.__name__}"
         )
 
-    @get_target_logits.register(Mapping)
+    @get_targeted_logits.register(Mapping)
     def _(self, model_inputs: Mapping[str, torch.Tensor], targets: torch.Tensor):
         logits = self.get_logits(model_inputs)
         targets = self._process_target(targets, logits)
         return logits.gather(-1, targets)
 
-    @get_target_logits.register(Iterable)
+    @get_targeted_logits.register(Iterable)
     def _(self, model_inputs: Iterable[Mapping[str, torch.Tensor]], targets: torch.Tensor):
         predictions = self.get_logits(iter(model_inputs))
         # TODO : refaire ça proprement
@@ -215,7 +101,7 @@ class ClassificationInferenceWrapper(InferenceWrapper):
     def _(self, model_inputs: Mapping[str, torch.Tensor], targets: torch.Tensor):
         model_inputs = self._embed(model_inputs)
         def f(embed):
-            return self.get_target_logits(embed, targets)
+            return self.get_targeted_logits(embed, targets)
         return torch.autograd.functional.jacobian(
             f, model_inputs["inputs_embeds"], create_graph=True, strict=False
         ).sum(dim=1).abs().mean(axis=-1)
@@ -224,7 +110,7 @@ class ClassificationInferenceWrapper(InferenceWrapper):
     def _(self, model_inputs: Iterable[Mapping[str, torch.Tensor]], targets: torch.Tensor):
         # TODO : see if we can do that without using persistent generator
         mi = PersistentGenerator(iter(model_inputs))
-        for index, element in enumerate_generator(self.get_target_logits(mi, targets)):
+        for index, element in enumerate_generator(self.get_targeted_logits(mi, targets)):
             element.grad = None
             element.backward(torch.ones_like(element), retain_graph=True)
             return mi[index]["inputs_embeds"].grad.abs().mean(axis=-1)

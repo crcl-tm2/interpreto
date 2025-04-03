@@ -101,7 +101,6 @@ class MaskwiseMeanAggregator(Aggregator):
     """
     TODO : add docstring
     """
-
     def aggregate(self, results: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         # TODO : this cast should not be there, check to solve the incompatible types error
         mask = mask.to(results.dtype)
