@@ -27,12 +27,32 @@ from __future__ import annotations
 from collections.abc import Generator, Iterable, Iterator, Mapping
 from functools import singledispatchmethod
 from typing import Any
+import warnings
 
 import torch
 
 from interpreto.commons.generator_tools import PersistentGenerator, enumerate_generator
 from interpreto.commons.model_wrapping.inference_wrapper import InferenceWrapper
 
+#TODO : move that somewhere else
+def concat_and_pad(
+    t1: torch.Tensor | None,
+    t2: torch.Tensor,
+    dim: int = 0,
+    pad_value: int = 0,
+    pad_dims: Iterable[int] | None = None,
+) -> torch.Tensor:
+    if t1 is None:
+        return t2
+    for pad_dim in pad_dims or []:
+        pad = [0, 0] * t1.dim()
+        if t1.shape[pad_dim] > t2.shape[pad_dim]:
+            pad[~2 * (pad_dim % t1.dim())] = t1.shape[pad_dim] - t2.shape[pad_dim]
+            t2 = torch.nn.functional.pad(t2, pad, value=pad_value)
+        elif t2.shape[pad_dim] > t1.shape[pad_dim]:
+            pad[~2 * (pad_dim % t1.dim())] = t2.shape[pad_dim] - t1.shape[pad_dim]
+            t1 = torch.nn.functional.pad(t1, pad, value=pad_value)
+    return torch.cat([t1, t2], dim=dim)
 
 class ClassificationInferenceWrapper(InferenceWrapper):
     """
@@ -51,45 +71,22 @@ class ClassificationInferenceWrapper(InferenceWrapper):
             case 2:  # (l, d)
                 return self.call_model(model_inputs).logits
             case 3:  # (p, l, d) or (n, l, d)
-                chunks = model_inputs["inputs_embeds"].split(self.batch_size)
+                embeds_chunks = model_inputs["inputs_embeds"].split(self.batch_size)
                 mask_chunks = model_inputs["attention_mask"].split(self.batch_size)
                 return torch.cat(
                     [
-                        self.call_model({"inputs_embeds": chunk, "attention_mask": mask_chunk}).logits
-                        for chunk, mask_chunk in zip(chunks, mask_chunks, strict=False)
+                        self.call_model({"inputs_embeds": embeds_chunk, "attention_mask": mask_chunk}).logits
+                        for embeds_chunk, mask_chunk in zip(embeds_chunks, mask_chunks, strict=False)
                     ],
-                    dim=0,
                 )
             case _:  # (..., l, d) like (n, p, l, d)
-                batch_dims = model_inputs["inputs_embeds"].shape[:-1]
-                flat_input = model_inputs["inputs_embeds"].flatten(0, -3)
-                flat_mask = model_inputs["attention_mask"].flatten(0, -3)
-                return self.get_logits({"inputs_embeds": flat_input, "attention_mask": flat_mask}).view(
-                    *batch_dims, -1
+                return self.get_logits({k:v.flatten(0, -3) for k, v in model_inputs.items()}).view(
+                    *model_inputs["inputs_embeds"].shape[:-1], -1
                 )
 
     @get_logits.register(Iterable)
     def _(self, model_inputs: Iterable[Mapping[str, torch.Tensor]]) -> Generator[torch.Tensor, None, None]:
-        
-        def concat_and_pad(
-            t1: torch.Tensor | None,
-            t2: torch.Tensor,
-            dim: int = 0,
-            pad_value: int | None = None,
-            pad_dim: int | None = None,
-        ) -> torch.Tensor:
-            if t1 is not None:
-                if pad_value is not None and pad_dim is not None:
-                    assert t1.dim() == t2.dim(), "tensors should have the same number of dimensions"
-                    pad = [0, 0] * t1.dim()
-                    pad[~2 * (pad_dim % t1.dim())] = abs(t1.shape[pad_dim] - t2.shape[pad_dim])
-                    # TODO : rewrite this
-                    if t1.shape[pad_dim] > t2.shape[pad_dim]:
-                        t2 = torch.nn.functional.pad(t2, pad, value=pad_value)
-                    elif t1.shape[pad_dim] < t2.shape[pad_dim]:
-                        t1 = torch.nn.functional.pad(t1, pad, value=pad_value)
-                return torch.cat([t1, t2], dim=dim)
-            return t2
+
         model_inputs = iter(model_inputs)
 
         # TODO : Check that tokenizers other than bert also use 0 as pad_token_id, otherwise, fix this
@@ -121,8 +118,8 @@ class ClassificationInferenceWrapper(InferenceWrapper):
                 continue
             if input_buffer.numel():
                 missing_length = self.batch_size - len(batch if batch is not None else ())
-                batch = concat_and_pad(batch, input_buffer[:missing_length], 0, pad_token_id, 1)
-                batch_mask = concat_and_pad(batch_mask, mask_buffer[:missing_length], 0, 0, -1)
+                batch = concat_and_pad(batch, input_buffer[:missing_length], 0, pad_token_id, (1,))
+                batch_mask = concat_and_pad(batch_mask, mask_buffer[:missing_length], 0, 0, (-1,))
                 input_buffer = input_buffer[missing_length:]
                 mask_buffer = mask_buffer[missing_length:]
                 continue
@@ -135,8 +132,10 @@ class ClassificationInferenceWrapper(InferenceWrapper):
                 if last_item:
                     raise
                 last_item = True
+        if any(len(a) for a in [result_indexes, result_buffer, input_buffer, mask_buffer]):
+            warnings.warn()
         assert len(result_indexes) == len(result_buffer) == len(input_buffer) == len(mask_buffer) == 0, (
-            "Some data were not well fetched, please notify it to the developers"
+            "Some data were not well fetched, please check your code  notify it to the developers"
         )
 
     def _process_target(self, target: torch.Tensor, logits: torch.Tensor) -> torch.Tensor:

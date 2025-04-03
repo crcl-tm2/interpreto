@@ -11,5 +11,5 @@ import torch
 
 TokenEmbedding = Any
 Activation = Any
-ModelInput = str | Iterable[str] | Mapping[str, torch.Tensor] | torch.Tensor
+ModelInputs = str | Mapping[str, torch.Tensor] | Iterable[str] |Iterable[Mapping[str, torch.Tensor]]
 TensorBaseline = Optional[Union[torch.Tensor, float, int]]  # noqa: UP007

@@ -39,7 +39,8 @@ from interpreto.attributions.aggregations.base import Aggregator
 from interpreto.attributions.perturbations.base import BasePerturbator
 from interpreto.commons.generator_tools import PersistentTupleGeneratorWrapper
 from interpreto.commons.granularity import GranularityLevel
-from interpreto.typing import ModelInput
+from interpreto.commons.model_wrapping.inference_wrapper import InferenceWrapper
+from interpreto.typing import ModelInputs
 
 SingleAttribution = (
     Float[torch.Tensor, "l"] | Float[torch.Tensor, "l c"] | Float[torch.Tensor, "l l_g"] | Float[torch.Tensor, "l l_t"]
@@ -86,7 +87,7 @@ class AttributionExplainer:
 
     def __init__(
         self,
-        inference_wrapper: Callable,
+        inference_wrapper: InferenceWrapper,
         perturbator: BasePerturbator | None = None,
         aggregator: Aggregator | None = None,
         device: torch.device | None = None,
@@ -99,15 +100,14 @@ class AttributionExplainer:
         self.granularity_level = granularity_level
 
     @abstractmethod
-    def explain(self, inputs: ModelInput, targets: torch.Tensor | None = None) -> Any:
-        # TODO : give more generic type for model output / target
+    def explain(self, model_inputs: ModelInputs, targets: torch.Tensor | None = None) -> Any:
         """
         main process of attribution method
         """
         raise NotImplementedError
 
-    def __call__(self, inputs: ModelInput, targets: torch.Tensor | None = None) -> Any:
-        return self.explain(inputs, targets)
+    def __call__(self, model_inputs: ModelInputs, targets: torch.Tensor | None = None) -> Any:
+        return self.explain(model_inputs, targets)
 
 
 class InferenceExplainer(AttributionExplainer):
@@ -115,10 +115,11 @@ class InferenceExplainer(AttributionExplainer):
     Black box model explainer
     """
 
-    def explain(self, inputs: ModelInput, targets: torch.Tensor | None = None) -> Any:
+    def explain(self, model_inputs: ModelInput, targets: torch.Tensor | None = None) -> Any:
         """
         main process of attribution method
         """
+
         self.inference_wrapper.to(self.device)
         # TODO : eventually remove sort ? Or replace with a repositioning of the longest sequence ?
         tokens = [self.perturbator.tokenizer(item, return_tensors="pt") for item in inputs]
