@@ -23,26 +23,25 @@
 # SOFTWARE.
 from __future__ import annotations
 
-from typing import Any
 import warnings
-from collections.abc import Iterable, Mapping, Generator
+from collections.abc import Generator, Iterable, Mapping
 from functools import singledispatchmethod
+from typing import Any
 
 import torch
 from transformers import PreTrainedModel
 
 
-
-#TODO : move that somewhere else
+# TODO : move that somewhere else
 def concat_and_pad(
     *tensors: torch.Tensor | None,
-    pad_left : bool,
+    pad_left: bool,
     dim: int = 0,
     pad_value: int = 0,
     pad_dims: Iterable[int] | None = None,
 ) -> torch.Tensor:
     _tensors = [a for a in tensors if a is not None]
-    tensors_dim = _tensors[0].dim() #should be equal for all tensors, otherwise raise an error
+    tensors_dim = _tensors[0].dim()  # should be equal for all tensors, otherwise raise an error
     pad_dims = pad_dims or []
     max_length_per_dim = [max(t.shape[d] for t in _tensors) for d in pad_dims]
 
@@ -54,6 +53,7 @@ def concat_and_pad(
             pad[pad_index] = pad_length - t.shape[pad_dim]
         res += [torch.nn.functional.pad(t, pad, value=pad_value)]
     return torch.cat(res, dim=dim)
+
 
 class InferenceWrapper:
     PAD_LEFT = True
@@ -80,7 +80,7 @@ class InferenceWrapper:
     def cuda(self):
         self.device = torch.device("cuda")
 
-    def _embed(self, model_inputs: Mapping[str, torch.Tensor]):
+    def embed(self, model_inputs: Mapping[str, torch.Tensor]):
         if "inputs_embeds" in model_inputs:
             return model_inputs
         if "input_ids" in model_inputs:
@@ -101,26 +101,26 @@ class InferenceWrapper:
     #             break
     #     return self.model(**inputs)
 
-    def call_model(self, input_embeds:torch.Tensor, attention_mask:torch.Tensor):
+    def call_model(self, input_embeds: torch.Tensor, attention_mask: torch.Tensor):
         input_embeds.to(self.device)
         attention_mask.to(self.device)
         if input_embeds.shape[0] > self.batch_size:
             warnings.warn(
                 f"Batch size of {input_embeds.shape[0]} is greater than the wrapper's batch size of {self.batch_size}. "
                 f"Consider adjust the batch size or the wrapper of split your data.",
-                stacklevel=1
+                stacklevel=1,
             )
         return self.model(inputs_embeds=input_embeds, attention_mask=attention_mask)
-    
+
     @singledispatchmethod
-    def get_logits(self, model_inputs:Any)->torch.Tensor|Generator[torch.Tensor, None, None]:
+    def get_logits(self, model_inputs: Any) -> torch.Tensor | Generator[torch.Tensor, None, None]:
         raise NotImplementedError(
             f"type {type(model_inputs)} not supported for method get_logits in class {self.__class__.__name__}"
         )
 
     @get_logits.register(Mapping)
-    def _(self, model_inputs: Mapping[str, torch.Tensor])->torch.Tensor:
-        model_inputs = self._embed(model_inputs)
+    def _(self, model_inputs: Mapping[str, torch.Tensor]) -> torch.Tensor:
+        model_inputs = self.embed(model_inputs)
         match model_inputs["inputs_embeds"].dim():
             case 2:  # (l, d)
                 return self.call_model(**model_inputs).logits
@@ -134,15 +134,13 @@ class InferenceWrapper:
                     ],
                 )
             case _:  # (..., l, d) like (n, p, l, d)
-                return self.get_logits({k:v.flatten(0, -3) for k, v in model_inputs.items()}).view(
+                return self.get_logits({k: v.flatten(0, -3) for k, v in model_inputs.items()}).view(
                     *model_inputs["inputs_embeds"].shape[:-1], -1
                 )
 
-    def _reshape_inputs(self, tensor: torch.Tensor, non_batch_dims: int = 2)->torch.Tensor:
+    def _reshape_inputs(self, tensor: torch.Tensor, non_batch_dims: int = 2) -> torch.Tensor:
         # TODO : refaire ça proprement
-        assert tensor.dim() >= non_batch_dims, (
-            "The given tensor have less dimensions than non_batch_dims parameter"
-        )
+        assert tensor.dim() >= non_batch_dims, "The given tensor have less dimensions than non_batch_dims parameter"
         if tensor.dim() == non_batch_dims:
             return tensor.unsqueeze(0)
         if tensor.dim() == non_batch_dims + 1:
@@ -154,11 +152,13 @@ class InferenceWrapper:
 
     @get_logits.register(Iterable)
     def _(self, model_inputs: Iterable[Mapping[str, torch.Tensor]]) -> Generator[torch.Tensor, None, None]:
-
         model_inputs = iter(model_inputs)
 
-        # TODO : Check that tokenizers other than bert also use 0 as pad_token_id, otherwise, fix this
-        pad_token_id = 0
+        if self.tokenizer.pad_token_id is None:
+            raise ValueError(
+                "Asking to pad but the tokenizer does not have a padding token. Please select a token to use as pad_token (tokenizer.pad_token = tokenizer.eos_token e.g.) or add a new pad token via tokenizer.add_special_tokens({'pad_token': '[PAD]'})"
+            )
+        pad_token_id = self.tokenizer.pad_token_id
 
         result_buffer: torch.Tensor | None = None
         result_indexes: list[int] = []
@@ -186,13 +186,27 @@ class InferenceWrapper:
                 continue
             if input_buffer.numel():
                 missing_length = self.batch_size - len(batch if batch is not None else ())
-                batch = concat_and_pad(batch, input_buffer[:missing_length], pad_left=self.PAD_LEFT, dim=0, pad_value=pad_token_id, pad_dims=(1,))
-                batch_mask = concat_and_pad(batch_mask, mask_buffer[:missing_length], pad_left=self.PAD_LEFT, dim=0, pad_value=0, pad_dims=(-1,))
+                batch = concat_and_pad(
+                    batch,
+                    input_buffer[:missing_length],
+                    pad_left=self.PAD_LEFT,
+                    dim=0,
+                    pad_value=pad_token_id,
+                    pad_dims=(1,),
+                )
+                batch_mask = concat_and_pad(
+                    batch_mask,
+                    mask_buffer[:missing_length],
+                    pad_left=self.PAD_LEFT,
+                    dim=0,
+                    pad_value=0,
+                    pad_dims=(-1,),
+                )
                 input_buffer = input_buffer[missing_length:]
                 mask_buffer = mask_buffer[missing_length:]
                 continue
             try:
-                next_item = self._embed(next(model_inputs))
+                next_item = self.embed(next(model_inputs))
                 input_buffer = self._reshape_inputs(next_item["inputs_embeds"], non_batch_dims=2)
                 mask_buffer = self._reshape_inputs(next_item["attention_mask"], non_batch_dims=1)
                 result_indexes += [len(input_buffer)]
@@ -201,4 +215,6 @@ class InferenceWrapper:
                     raise
                 last_item = True
         if any(len(a) for a in [result_indexes, result_buffer, input_buffer, mask_buffer]):
-            warnings.warn("Some data were not well fetched in inference wrapper, please check your code if you made custom method or notify it to the developers")
+            warnings.warn(
+                "Some data were not well fetched in inference wrapper, please check your code if you made custom method or notify it to the developers"
+            )

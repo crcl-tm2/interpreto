@@ -38,6 +38,7 @@ class ClassificationInferenceWrapper(InferenceWrapper):
     """
         Basic inference wrapper for classification tasks.
     """
+
     def _process_target(self, target: torch.Tensor, logits: torch.Tensor) -> torch.Tensor:
         # TODO : refaire ça proprement
         match target.dim():
@@ -51,9 +52,7 @@ class ClassificationInferenceWrapper(InferenceWrapper):
                 if target.shape[0] == 1:
                     return target.expand(logits.shape[0], -1)
                 return target
-        raise ValueError(
-            f"Target tensor should have 0, 1 or 2 dimensions, but got {target.dim()} dimensions"
-        )
+        raise ValueError(f"Target tensor should have 0, 1 or 2 dimensions, but got {target.dim()} dimensions")
 
     @singledispatchmethod
     def get_targets(self, model_inputs):
@@ -99,12 +98,17 @@ class ClassificationInferenceWrapper(InferenceWrapper):
 
     @get_gradients.register(Mapping)
     def _(self, model_inputs: Mapping[str, torch.Tensor], targets: torch.Tensor):
-        model_inputs = self._embed(model_inputs)
+        model_inputs = self.embed(model_inputs)
+
         def f(embed):
             return self.get_targeted_logits(embed, targets)
-        return torch.autograd.functional.jacobian(
-            f, model_inputs["inputs_embeds"], create_graph=True, strict=False
-        ).sum(dim=1).abs().mean(axis=-1)
+
+        return (
+            torch.autograd.functional.jacobian(f, model_inputs["inputs_embeds"], create_graph=True, strict=False)
+            .sum(dim=1)
+            .abs()
+            .mean(axis=-1)
+        )
 
     @get_gradients.register(Iterable)
     def _(self, model_inputs: Iterable[Mapping[str, torch.Tensor]], targets: torch.Tensor):
