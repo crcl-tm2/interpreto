@@ -24,7 +24,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, MutableMapping
 from functools import singledispatchmethod
 
 import torch
@@ -41,14 +41,14 @@ class GenerationInferenceWrapper(InferenceWrapper):
         """
         Abstract method to prepare inputs and targets for explanation in a generation setting.
 
-        This method should be implemented for different input types (e.g., Mapping, Iterable).
+        This method should be implemented for different input types (e.g., MutableMapping, Iterable).
         It takes inputs to the model and returns a tuple:
             - A full input including the original prompt and the generated continuation.
             - The target token IDs (i.e., the generated part only), used for computing gradients or scores.
 
         Parameters:
-            model_inputs: The model inputs. Can be a single Mapping or an Iterable
-                of Mappings. Each Mapping should contain at least "input_ids" or "input_embeds" and "attention_mask"
+            model_inputs: The model inputs. Can be a single MutableMapping or an Iterable
+                of MutableMappings. Each MutableMapping should contain at least "input_ids" or "input_embeds" and "attention_mask"
                 (as expected by Hugging Face models), representing one or multiple sequences.
             **generation_kwargs: Optional keyword arguments passed directly to `model.generate()`.
                 These control the decoding strategy and can include:
@@ -64,20 +64,20 @@ class GenerationInferenceWrapper(InferenceWrapper):
             f"type {type(model_inputs)} not supported for method get_inputs_to_explain_and_targets in class {self.__class__.__name__}"
         )
 
-    @get_inputs_to_explain_and_targets.register(Mapping)
+    @get_inputs_to_explain_and_targets.register(MutableMapping)
     def _(
-        self, model_inputs: Mapping[str, torch.Tensor], **generation_kwargs
-    ) -> tuple[Mapping[str, torch.Tensor], torch.Tensor]:
+        self, model_inputs: MutableMapping[str, torch.Tensor], **generation_kwargs
+    ) -> tuple[MutableMapping[str, torch.Tensor], torch.Tensor]:
         """
-        Given a batch of input sequences (as a single Mapping), this method generates continuations
+        Given a batch of input sequences (as a single MutableMapping), this method generates continuations
         using the model and returns:
 
-            1. A new Mapping that contains the full sequences (input + generated tokens) and updated
+            1. A new MutableMapping that contains the full sequences (input + generated tokens) and updated
                attention masks.
             2. A tensor containing only the token IDs of the generated part (targets).
 
         Input:
-            - model_inputs: a Mapping (e.g., a dictionary with "input_ids" and "attention_mask")
+            - model_inputs: a MutableMapping (e.g., a dictionary with "input_ids" and "attention_mask")
               corresponding to one or multiple input sequences in a batch.
             - generation_kwargs: additional keyword arguments passed to `model.generate()`
               (e.g., max_new_tokens, do_sample, temperature).
@@ -86,9 +86,9 @@ class GenerationInferenceWrapper(InferenceWrapper):
             - Calls `model.generate()` to produce full sequences including both input and generated tokens.
             - Extracts the generated part (i.e., the new tokens after the input) based on the original
               attention mask length.
-            - Concatenates the original inputs and generated tokens into a new Mapping with updated
+            - Concatenates the original inputs and generated tokens into a new MutableMapping with updated
               attention masks.
-            - Returns the full Mapping and the target token IDs (i.e., generated part only).
+            - Returns the full MutableMapping and the target token IDs (i.e., generated part only).
 
         Returns:
             A tuple of:
@@ -105,10 +105,10 @@ class GenerationInferenceWrapper(InferenceWrapper):
 
     @get_inputs_to_explain_and_targets.register(Iterable)
     def _(
-        self, model_inputs: Iterable[Mapping[str, torch.Tensor]], **generation_kwargs
-    ) -> tuple[Mapping[str, torch.Tensor], torch.Tensor]:
+        self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]], **generation_kwargs
+    ) -> tuple[MutableMapping[str, torch.Tensor], torch.Tensor]:
         """
-        Applies get_inputs_to_explain_and_targets to each Mapping in an iterable (e.g., a list of batched inputs).
+        Applies get_inputs_to_explain_and_targets to each MutableMapping in an iterable (e.g., a list of batched inputs).
 
         Returns:
             A list of tuples (full_mapping, targets_ids) for each element in the input iterable.
@@ -121,20 +121,20 @@ class GenerationInferenceWrapper(InferenceWrapper):
     def get_targeted_logits(self, model_inputs, targets):
         """
         Abstract method to retrieve the logits associated with the target tokens.
-        Must be implemented per input type (e.g., Mapping, Iterable).
+        Must be implemented per input type (e.g., MutableMapping, Iterable).
         """
         raise NotImplementedError(
             f"type {type(model_inputs)} not supported for method get_targeted_logits in class {self.__class__.__name__}"
         )
 
-    @get_targeted_logits.register(Mapping)
-    def _(self, model_inputs: Mapping[str, torch.Tensor], targets: torch.Tensor):
+    @get_targeted_logits.register(MutableMapping)
+    def _(self, model_inputs: MutableMapping[str, torch.Tensor], targets: torch.Tensor):
         """
-        Retrieves the logits corresponding to the target token IDs for a single Mapping
+        Retrieves the logits corresponding to the target token IDs for a single MutableMapping
         (i.e., a batch of inputs stored as a dictionary of tensors).
 
         Input:
-            - model_inputs: a single Mapping (typically a dictionary) containing the batched inputs
+            - model_inputs: a single MutableMapping (typically a dictionary) containing the batched inputs
               for the model. These inputs correspond to the full sequence for each example in the batch,
               including both the original prompt and the generated tokens (i.e., input + generated/target).
             - targets: a tensor of shape (batch_size, target_length) containing the token IDs of the
@@ -180,7 +180,7 @@ class GenerationInferenceWrapper(InferenceWrapper):
         return selected_logits
 
     # @get_targeted_logits.register(Iterable)
-    # def _(self, model_inputs: Iterable[Mapping[str, torch.Tensor]], targets: Iterable[torch.Tensor]):
+    # def _(self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]], targets: Iterable[torch.Tensor]):
     #     # Get the logits for each model input and target pair.
     #     if len(model_inputs) != len(targets):
     #         raise ValueError(
@@ -194,7 +194,7 @@ class GenerationInferenceWrapper(InferenceWrapper):
     #     return torch.stack(selected_logits)
 
     @get_targeted_logits.register(Iterable)
-    def _(self, model_inputs: Iterable[Mapping[str, torch.Tensor]], targets: Iterable[torch.Tensor]):
+    def _(self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]], targets: Iterable[torch.Tensor]):
         """
         Retrieves logits for each pair of model input and target in an iterable.
         """
@@ -213,8 +213,8 @@ class GenerationInferenceWrapper(InferenceWrapper):
             f"type {type(model_inputs)} not supported for method get_gradients in class {self.__class__.__name__}"
         )
 
-    @get_gradients.register(Mapping)
-    def _(self, model_inputs: Mapping[str, torch.Tensor], targets: torch.Tensor):
+    @get_gradients.register(MutableMapping)
+    def _(self, model_inputs: MutableMapping[str, torch.Tensor], targets: torch.Tensor):
         """
         Computes gradients of the target logits with respect to the input embeddings.
 
@@ -242,7 +242,7 @@ class GenerationInferenceWrapper(InferenceWrapper):
 
     @get_gradients.register(Iterable)
     def _(
-        self, model_inputs: Iterable[Mapping[str, torch.Tensor]], targets: Iterable[torch.Tensor]
+        self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]], targets: Iterable[torch.Tensor]
     ) -> Iterable[torch.Tensor]:
         """
         Computes gradients for a batch of model input-target pairs.
@@ -254,7 +254,7 @@ class GenerationInferenceWrapper(InferenceWrapper):
 
     # @get_gradients.register(Iterable)
     # def _(
-    #     self, model_inputs: Iterable[Mapping[str, torch.Tensor]], targets: Iterable[torch.Tensor]
+    #     self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]], targets: Iterable[torch.Tensor]
     # ) -> Iterable[torch.Tensor]:
     #     model_inputs = [self.embed(model_input) for model_input in model_inputs]
 

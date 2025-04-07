@@ -44,8 +44,13 @@ def sentence():
     return "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
 
 
+# classification_models = [
+#     "distilbert-base-uncased-finetuned-sst-2-english",
+# ]
 classification_models = [
-    "distilbert-base-uncased-finetuned-sst-2-english",
+    "hf-internal-testing/tiny-random-DebertaV2Model",
+    "hf-internal-testing/tiny-random-xlm-roberta",
+    "hf-internal-testing/tiny-random-DistilBertModel",
 ]
 
 
