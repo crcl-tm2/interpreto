@@ -28,8 +28,9 @@ Basic standard classes for attribution methods
 
 from __future__ import annotations
 
+import itertools
 from abc import abstractmethod
-from collections.abc import Callable
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 import torch
@@ -40,7 +41,7 @@ from interpreto.attributions.perturbations.base import BasePerturbator
 from interpreto.commons.generator_tools import PersistentTupleGeneratorWrapper
 from interpreto.commons.granularity import GranularityLevel
 from interpreto.commons.model_wrapping.inference_wrapper import InferenceWrapper
-from interpreto.typing import ModelInputs
+from interpreto.typing import ModelInput
 
 SingleAttribution = (
     Float[torch.Tensor, "l"] | Float[torch.Tensor, "l c"] | Float[torch.Tensor, "l l_g"] | Float[torch.Tensor, "l l_t"]
@@ -99,18 +100,46 @@ class AttributionExplainer:
         self.device = device
         self.granularity_level = granularity_level
 
+    def process_model_inputs(self, model_inputs):
+        if isinstance(model_inputs, str):
+            return [self.perturbator.tokenizer(model_inputs, return_tensors="pt")]
+        if isinstance(model_inputs, Mapping):
+            if model_inputs["attention_mask"].shape[0] > 1:
+                n = next(iter(model_inputs.values())).shape[0]
+                return [{key: value[i] for key, value in model_inputs.items()} for i in range(n)]
+            return [model_inputs]
+        if isinstance(model_inputs, Iterable):
+            return list(itertools.chain(*[self.process_model_inputs(item) for item in model_inputs]))
+        raise ValueError(
+            f"type {type(model_inputs)} not supported for method process_model_inputs in class {self.__class__.__name__}"
+        )
+
+    def process_targets_generation(self, targets):
+        if isinstance(targets, str):
+            return [self.perturbator.tokenizer(targets, return_tensors="pt")["input_ids"]]
+        if isinstance(targets, Mapping):
+            targets = targets["input_ids"]
+            if targets.shape[0] > 1:
+                return list(targets.split(1, dim=0))
+            return [targets]
+        if isinstance(targets, Iterable):
+            return list(itertools.chain(*[self.process_targets(item) for item in targets]))
+        raise ValueError(
+            f"type {type(targets)} not supported for method process_targets in class {self.__class__.__name__}"
+        )
+
     @abstractmethod
-    def explain(self, model_inputs: ModelInputs, targets: torch.Tensor | None = None) -> Any:
+    def explain(self, model_inputs: ModelInput, targets: torch.Tensor | None = None) -> Any:
         """
         main process of attribution method
         """
         raise NotImplementedError
 
-    def __call__(self, model_inputs: ModelInputs, targets: torch.Tensor | None = None) -> Any:
+    def __call__(self, model_inputs: ModelInput, targets: torch.Tensor | None = None) -> Any:
         return self.explain(model_inputs, targets)
 
 
-class InferenceExplainer(AttributionExplainer):
+class ClassificationInferenceExplainer(AttributionExplainer):
     """
     Black box model explainer
     """
@@ -121,13 +150,14 @@ class InferenceExplainer(AttributionExplainer):
         """
 
         self.inference_wrapper.to(self.device)
-        # TODO : eventually remove sort ? Or replace with a repositioning of the longest sequence ?
-        tokens = [self.perturbator.tokenizer(item, return_tensors="pt") for item in inputs]
-        token_count = [len(item["input_ids"][0]) for item in tokens]
-        sorted_indices = sorted(range(len(token_count)), key=lambda k: token_count[k], reverse=True)
+        model_inputs = self.process_model_inputs(model_inputs)
+
+        # token_count = [len(item["input_ids"][0]) for item in model_inputs]
+        # sorted_indices = sorted(range(len(token_count)), key=lambda k: token_count[k], reverse=True)
 
         # Reference inference
-        logits = torch.stack(list(self.inference_wrapper.get_logits(tokens[i] for i in sorted_indices)))
+        # logits = torch.stack(list(self.inference_wrapper.get_logits(model_inputs[i] for i in sorted_indices)))
+        logits = torch.stack(self.inference_wrapper.get_logits(model_inputs))
 
         if targets is None:
             targets = logits.argmax(dim=-1)
@@ -135,9 +165,10 @@ class InferenceExplainer(AttributionExplainer):
         logits = logits.gather(-1, targets.unsqueeze(1))
 
         # Perturbation
-        pert_per_input_generator = PersistentTupleGeneratorWrapper(
-            self.perturbator.perturb(inputs[i]) for i in sorted_indices
-        )
+        # pert_per_input_generator = PersistentTupleGeneratorWrapper(
+        #     self.perturbator.perturb(model_inputs[i]) for i in sorted_indices
+        # )
+        pert_per_input_generator = PersistentTupleGeneratorWrapper(self.perturbator.perturb(model_inputs))
 
         target_logits = list(
             self.inference_wrapper.get_target_logits(pert_per_input_generator.get_subgenerator(0), targets)
@@ -148,20 +179,23 @@ class InferenceExplainer(AttributionExplainer):
         masks = list(pert_per_input_generator.get_subgenerator(1))
 
         # Unsort
-        unsorted_masks = [None] * len(masks)
-        unsorted_scores = [None] * len(scores)
-        for idx, original_idx in enumerate(sorted_indices):
-            unsorted_masks[original_idx] = masks[idx]
-            unsorted_scores[original_idx] = scores[idx]
+        # unsorted_masks = [None] * len(masks)
+        # unsorted_scores = [None] * len(scores)
+        # for idx, original_idx in enumerate(sorted_indices):
+        #     unsorted_masks[original_idx] = masks[idx]
+        #     unsorted_scores[original_idx] = scores[idx]
 
+        # contributions = [
+        #     self.aggregator(score.unsqueeze(0), mask).squeeze(0)
+        #     for score, mask in zip(unsorted_scores, unsorted_masks, strict=True)
+        # ]
         contributions = [
-            self.aggregator(score.unsqueeze(0), mask).squeeze(0)
-            for score, mask in zip(unsorted_scores, unsorted_masks, strict=True)
+            self.aggregator(score.unsqueeze(0), mask).squeeze(0) for score, mask in zip(scores, masks, strict=True)
         ]
 
-        tokens = [self.perturbator.tokenizer(item, return_tensors="pt") for item in inputs]
+        model_inputs = [self.perturbator.tokenizer(item, return_tensors="pt") for item in model_inputs]
 
-        decompositions = [GranularityLevel.get_decomposition(t, self.granularity_level) for t in tokens]
+        decompositions = [GranularityLevel.get_decomposition(t, self.granularity_level) for t in model_inputs]
         return [
             AttributionOutput(
                 c, [self.perturbator.tokenizer.decode(token_ids, skip_special_tokens=True) for token_ids in d[0]]
@@ -170,11 +204,114 @@ class InferenceExplainer(AttributionExplainer):
         ]
 
 
-class GradientExplainer(InferenceExplainer):
+class GenerationInferenceExplainer(AttributionExplainer):
+    """
+    Inference based explainer
+    """
+
+    def explain(self, model_inputs: ModelInput, targets: ModelInput | None = None) -> Any:
+        """
+        main process of attribution method
+        """
+        self.inference_wrapper.to(self.device)
+        model_inputs = self.process_model_inputs(model_inputs)
+
+        if targets is None:
+            model_inputs_to_explain, targets = self.inference_wrapper.get_inputs_to_explain_and_targets(model_inputs)
+        else:
+            targets = self.process_targets_generation(targets)
+            model_inputs_to_explain = []
+            for model_input, target in zip(model_inputs, targets, strict=True):
+                model_input = self.inference_wrapper.embed(model_input)
+                with torch.no_grad():
+                    target_embed = self.inference_wrapper.model.get_input_embeddings()(target)
+                model_inputs_to_explain.append(
+                    {
+                        "inputs_embeds": torch.cat([model_input["inputs_embeds"], target_embed], dim=1),
+                        "attention_mask": torch.cat([model_input["attention_mask"], torch.ones_like(target)], dim=1),
+                    }
+                )
+
+        # Perturbation
+        pert_per_input_generator = PersistentTupleGeneratorWrapper(
+            self.perturbator.perturb(model_input) for model_input in model_inputs_to_explain
+        )
+
+        targeted_logits = list(
+            self.inference_wrapper.get_targeted_logits(pert_per_input_generator.get_subgenerator(0), targets)
+        )
+
+        masks = list(pert_per_input_generator.get_subgenerator(1))
+
+        contributions = [
+            self.aggregator(targeted_logit.unsqueeze(0), mask).squeeze(0)
+            for targeted_logit, mask in zip(targeted_logits, masks, strict=True)
+        ]
+
+        decompositions = [
+            GranularityLevel.get_decomposition(t, self.granularity_level) for t in model_inputs_to_explain
+        ]
+        return [
+            AttributionOutput(
+                c, [self.perturbator.tokenizer.decode(token_ids, skip_special_tokens=True) for token_ids in d[0]]
+            )
+            for c, d in zip(contributions, decompositions, strict=True)
+        ]
+
+
+class GenerationGradientExplainer(AttributionExplainer):
+    # TODO: a faire
     """
     Explainer using differentiability of model to produce explanations (integrated gradients, deeplift...)
     Can be fully constructed from a perturbation and an aggregation
     Subclasses of this explainer are mostly reductions to a specific perturbation or aggregation
     """
 
-    # TODO
+    def explain(self, model_inputs: ModelInput, targets: ModelInput | None = None) -> Any:
+        """
+        main process of attribution method
+        """
+        self.inference_wrapper.to(self.device)
+        model_inputs = self.process_model_inputs(model_inputs)
+
+        if targets is None:
+            model_inputs_to_explain, targets = self.inference_wrapper.get_inputs_to_explain_and_targets(model_inputs)
+        else:
+            targets = self.process_targets_generation(targets)
+            model_inputs_to_explain = []
+            for model_input, target in zip(model_inputs, targets, strict=True):
+                model_input = self.inference_wrapper.embed(model_input)
+                with torch.no_grad():
+                    target_embed = self.inference_wrapper.model.get_input_embeddings()(target)
+                model_inputs_to_explain.append(
+                    {
+                        "inputs_embeds": torch.cat([model_input["inputs_embeds"], target_embed], dim=1),
+                        "attention_mask": torch.cat([model_input["attention_mask"], torch.ones_like(target)], dim=1),
+                    }
+                )
+
+        # Perturbation
+        pert_per_input_generator = PersistentTupleGeneratorWrapper(
+            self.perturbator.perturb(model_input) for model_input in model_inputs_to_explain
+        )
+
+        targeted_logits = list(
+            self.inference_wrapper.get_targeted_logits(pert_per_input_generator.get_subgenerator(0), targets)
+        )
+
+        masks = list(pert_per_input_generator.get_subgenerator(1))
+
+        contributions = [
+            self.aggregator(targeted_logit.unsqueeze(0), mask).squeeze(0)
+            for targeted_logit, mask in zip(targeted_logits, masks, strict=True)
+        ]
+
+        decompositions = [
+            GranularityLevel.get_decomposition(t, self.granularity_level) for t in model_inputs_to_explain
+        ]
+        return [
+            AttributionOutput(
+                c, [self.perturbator.tokenizer.decode(token_ids, skip_special_tokens=True) for token_ids in d[0]]
+            )
+            for c, d in zip(contributions, decompositions, strict=True)
+        ]
