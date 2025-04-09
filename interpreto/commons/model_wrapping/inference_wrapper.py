@@ -78,7 +78,7 @@ def concat_and_pad(
     _tensors = [a for a in tensors if a is not None and a.numel()]
     if not _tensors:
         raise ValueError("No tensors provided for concatenation.")
-    if any(t.dim() == _tensors[0].dim() for t in _tensors[1:]):
+    if any(t.dim() != _tensors[0].dim() for t in _tensors[1:]):
         raise ValueError("All tensors must have the same number of dimensions.")
     tensors_dim = _tensors[0].dim()
     pad_dims = pad_dims or []

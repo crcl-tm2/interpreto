@@ -138,9 +138,9 @@ class AttributionExplainer:
         if isinstance(model_inputs, str):
             return [self.perturbator.tokenizer(model_inputs, return_tensors="pt")]
         if isinstance(model_inputs, MutableMapping):
-            if model_inputs["attention_mask"].shape[0] > 1:
-                n = next(iter(model_inputs.values())).shape[0]
-                return [{key: value[i] for key, value in model_inputs.items()} for i in range(n)]
+            n = model_inputs["attention_mask"].shape[0]
+            if n > 1:
+                return [{key: value[i].unsqueeze(0) for key, value in model_inputs.items()} for i in range(n)]
             return [model_inputs]
         if isinstance(model_inputs, Iterable):
             return list(itertools.chain(*[self.process_model_inputs(item) for item in model_inputs]))
@@ -149,13 +149,13 @@ class AttributionExplainer:
         )
 
     @abstractmethod
-    def explain(self, model_inputs: ModelInputs, targets: ModelInputs | None = None) -> Any:
+    def explain(self, model_inputs: ModelInputs, targets: ModelInputs | torch.Tensor | None = None) -> Any:
         """
         Abstract method to compute attributions for given model inputs.
         """
         raise NotImplementedError
 
-    def __call__(self, model_inputs: ModelInputs, targets: ModelInputs | None = None) -> Any:
+    def __call__(self, model_inputs: ModelInputs, targets: ModelInputs | torch.Tensor | None = None) -> Any:
         """
         Enables the explainer instance to be called as a function.
 
@@ -200,8 +200,9 @@ class ClassificationAttributionExplainer(AttributionExplainer):
         """
         main process of attribution method
         """
-
+        # send model to device
         self.inference_wrapper.to(self.device)
+
         model_inputs = self.process_model_inputs(model_inputs)
 
         # token_count = [len(item["input_ids"][0]) for item in model_inputs]
@@ -209,7 +210,7 @@ class ClassificationAttributionExplainer(AttributionExplainer):
 
         # Reference inference
         # logits = torch.stack(list(self.inference_wrapper.get_logits(model_inputs[i] for i in sorted_indices)))
-        logits = torch.stack(self.inference_wrapper.get_logits(model_inputs))
+        logits = torch.stack(list(self.inference_wrapper.get_logits(model_inputs)))
 
         if targets is None:
             targets = logits.argmax(dim=-1)
@@ -220,6 +221,8 @@ class ClassificationAttributionExplainer(AttributionExplainer):
         # pert_per_input_generator = PersistentTupleGeneratorWrapper(
         #     self.perturbator.perturb(model_inputs[i]) for i in sorted_indices
         # )
+        a = self.perturbator.perturb(model_inputs)
+        test = PersistentTupleGeneratorWrapper(a)
         pert_per_input_generator = PersistentTupleGeneratorWrapper(self.perturbator.perturb(model_inputs))
 
         target_logits = list(
