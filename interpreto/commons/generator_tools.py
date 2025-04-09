@@ -2,9 +2,8 @@
 Tools for working with generators
 """
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Sequence
 from functools import singledispatchmethod
-from typing import Any
 
 
 def enumerate_generator(generator):
@@ -51,7 +50,7 @@ class PersistentGenerator(Iterator):
 
 
 class PersistentTupleGeneratorWrapper(Iterator):
-    def __init__(self, tuple_generator: Iterator[tuple]):
+    def __init__(self, tuple_generator: Iterator[Sequence]):
         self.generator = tuple_generator
         self.index = 0
         self.buffer = []

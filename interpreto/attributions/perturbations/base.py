@@ -27,7 +27,7 @@ Base classes for perturbations used in attribution methods
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, MutableMapping
 from functools import singledispatchmethod
 
 import torch
@@ -52,7 +52,7 @@ class BasePerturbator:
         self.inputs_embedder = inputs_embedder
 
     @singledispatchmethod
-    def perturb(self, inputs) -> tuple[Mapping[str, torch.Tensor], torch.Tensor | None]:
+    def perturb(self, inputs) -> tuple[MutableMapping[str, torch.Tensor], torch.Tensor | None]:
         """
         Main method called to perturb an input before giving it to a model
         Output is a mapping that can be passed directly to the model as kwargs
@@ -60,7 +60,7 @@ class BasePerturbator:
         Args:
             inputs (_type_): inputs given to the perturbator. It can be one of the following types :
              - str|Iterable[str] : a single string or a collection of strings to perturb
-             - Mapping[str, torch.Tensor] : a mapping of tensors to perturb, with keys similar to the keys found in the output of a tokenizer.
+             - MutableMapping[str, torch.Tensor] : a mapping of tensors to perturb, with keys similar to the keys found in the output of a tokenizer.
                                                             Direct output of a tokenizer can be passed to this method
              - torch.Tensor : a tensor to perturb. This is the case when the perturbator is used to perturb embeddings
 
@@ -68,14 +68,14 @@ class BasePerturbator:
             NotImplementedError: If the perturbator receives a type different from the ones listed above
 
         Returns:
-            Mapping[str, torch.Tensor]: A mapping of tensors that can be passed directly to the model as kwargs
+            MutableMapping[str, torch.Tensor]: A mapping of tensors that can be passed directly to the model as kwargs
         """
         raise NotImplementedError(
             f"Method perturb not implemented for type {type(inputs)} in {self.__class__.__name__}"
         )
 
     @perturb.register(str)
-    def _(self, inputs: str) -> tuple[Mapping[str, torch.Tensor], torch.Tensor | None]:
+    def _(self, inputs: str) -> tuple[MutableMapping[str, torch.Tensor], torch.Tensor | None]:
         """
         perturbation of a single string (transformed as a collection of 1 string for convenience)
 
@@ -85,7 +85,7 @@ class BasePerturbator:
         return self.perturb([inputs])
 
     @perturb.register(Iterable)
-    def _(self, inputs: Iterable[str]) -> tuple[Mapping[str, torch.Tensor], torch.Tensor | None]:
+    def _(self, inputs: Iterable[str]) -> tuple[MutableMapping[str, torch.Tensor], torch.Tensor | None]:
         """
         perturbation of a single string (transformed as a collection of 1 string for convenience)
 
@@ -111,8 +111,8 @@ class BasePerturbator:
         # Call the next perturbation step (identity if no further perturbation has been defined)
         return self.perturb(tokens)
 
-    @perturb.register(Mapping)
-    def _(self, inputs: Mapping[str, torch.Tensor]) -> tuple[Mapping[str, torch.Tensor], torch.Tensor | None]:
+    @perturb.register(MutableMapping)
+    def _(self, inputs: MutableMapping[str, torch.Tensor]) -> tuple[MutableMapping[str, torch.Tensor], torch.Tensor | None]:
         """
         Method called when we ask the perturbator to perturb a mapping of tensors, generally the output of a tokenizer
         The mapping should be similar to mappings returned by the tokenizer.
@@ -120,7 +120,7 @@ class BasePerturbator:
         Give directly the output of the tokenizer without modifying it would be the best and most common way to use this method
 
         Args:
-            inputs (Mapping[str, torch.Tensor]): output of the tokenizers
+            inputs (MutableMapping[str, torch.Tensor]): output of the tokenizers
         """
         assert "offset_mapping" in inputs, (
             "Offset mapping is required to perturb tokens, specify the 'return_offsets_mapping=True' parameter when tokenizing the input"
@@ -149,7 +149,7 @@ class BasePerturbator:
             return inputs, mask
 
     @perturb.register(torch.Tensor)
-    def _(self, inputs: torch.Tensor) -> Mapping[str, torch.Tensor]:
+    def _(self, inputs: torch.Tensor) -> MutableMapping[str, torch.Tensor]:
         """
         Method called when we ask the perturbator to perturb a tensor, generally embeddings
 
@@ -159,15 +159,15 @@ class BasePerturbator:
         perturbed_tensor, mask = self.perturb_tensors(inputs)
         return {"inputs_embeds": perturbed_tensor, "attention_mask": torch.ones(perturbed_tensor.shape[:-1])}, mask
 
-    def perturb_ids(self, model_inputs: Mapping) -> tuple[Mapping[str, torch.Tensor], torch.Tensor | None]:
+    def perturb_ids(self, model_inputs: MutableMapping) -> tuple[MutableMapping[str, torch.Tensor], torch.Tensor | None]:
         """
         Perturb the input of the model
 
         Args:
-            model_inputs (Mapping): Mapping given by the tokenizer
+            model_inputs (MutableMapping): Mapping given by the tokenizer
 
         Returns:
-            Mapping[str, torch.Tensor]: Perturbed mapping
+            MutableMapping[str, torch.Tensor]: Perturbed mapping
         """
         # add perturbation dimension
         model_inputs["input_ids"] = model_inputs["input_ids"].unsqueeze(1)
@@ -271,7 +271,7 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
 
     @staticmethod
     def get_gran_mask_from_real_mask(
-        model_inputs: Mapping[str, torch.Tensor],
+        model_inputs: MutableMapping[str, torch.Tensor],
         real_mask: torch.Tensor,
         granularity_level: GranularityLevel = GranularityLevel.DEFAULT,
     ) -> torch.Tensor:
@@ -279,7 +279,7 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
         Transforms a real token-wise mask to an approximation of its associated mask for a certain granularity level
 
         Args:
-            model_inputs (Mapping[str, torch.Tensor]): mapping given by the tokenizer
+            model_inputs (MutableMapping[str, torch.Tensor]): mapping given by the tokenizer
             p_mask (torch.Tensor): _description_
 
         Returns:
@@ -295,7 +295,7 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
         Transforms a specific granularity mask to a general token-wise mask
 
         Args:
-            model_inputs (Mapping[str, torch.Tensor]): mapping given by the tokenizer
+            model_inputs (MutableMapping[str, torch.Tensor]): mapping given by the tokenizer
             gran_assoc_matrix (torch.Tensor): association matrix for a specific granularity level
 
         Returns:
@@ -304,14 +304,14 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
         # TODO : eventually store gran matrix in tokens to avoid recomputing it ?
         return torch.einsum("npt,ntr->npr", gran_mask, gran_assoc_matrix)
 
-    def get_model_inputs_mask(self, model_inputs: Mapping) -> torch.Tensor:
+    def get_model_inputs_mask(self, model_inputs: MutableMapping) -> torch.Tensor:
         """
         Method returning the real mask to apply on the model inputs
         This method may be overriden in subclasses to provide a more specific mask
         default implementation gets the real mask from the specific granularity mask
 
         Args:
-            model_inputs (Mapping): mapping given by the tokenizer
+            model_inputs (MutableMapping): mapping given by the tokenizer
 
         Returns:
             torch.Tensor, torch.Tensor: real general mask and specific granularity mask (theoretical mask)
@@ -323,12 +323,12 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
         gran_assoc_matrix = GranularityLevel.get_association_matrix(model_inputs, self.granularity_level)
         return self.get_real_mask_from_gran_mask(gran_mask, gran_assoc_matrix)
 
-    def perturb_ids(self, model_inputs: Mapping) -> Mapping[str, torch.Tensor]:
+    def perturb_ids(self, model_inputs: MutableMapping) -> MutableMapping[str, torch.Tensor]:
         """
         Method called to perturb the inputs of the model
 
         Args:
-            model_inputs (Mapping): mapping given by the tokenizer
+            model_inputs (MutableMapping): mapping given by the tokenizer
 
         Returns:
             tuple: model_inputs with perturbations and the specific granularity mask
