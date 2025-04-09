@@ -388,7 +388,7 @@ class InferenceWrapper:
             except StopIteration:
                 if last_item:
                     # This should never happen
-                    raise
+                    break
                 last_item = True
         # Chack that all the buffers are empty
         if any(len(a) for a in [result_indexes, result_buffer, input_buffer, mask_buffer]):
