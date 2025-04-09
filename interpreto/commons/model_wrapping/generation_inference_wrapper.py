@@ -113,9 +113,12 @@ class GenerationInferenceWrapper(InferenceWrapper):
         Returns:
             A list of tuples (full_mapping, targets_ids) for each element in the input iterable.
         """
-        return [
-            self.get_inputs_to_explain_and_targets(model_input, **generation_kwargs) for model_input in model_inputs
-        ]
+        l_full_mappings, l_targets_ids = [], []
+        for model_input in model_inputs:
+            full_mappings, targets_ids = self.get_inputs_to_explain_and_targets(model_input, **generation_kwargs)
+            l_full_mappings.append(full_mappings)
+            l_targets_ids.append(targets_ids)
+        return l_full_mappings, l_targets_ids
 
     @singledispatchmethod
     def get_targeted_logits(self, model_inputs, targets):
