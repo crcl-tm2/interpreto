@@ -29,6 +29,7 @@ perform inference on various models. The InferenceWrapper class is designed to
 handle device management, embedding inputs, and batching of inputs for efficient
 processing. The class is designed to be subclassed for specific model types and tasks.
 """
+
 from __future__ import annotations
 
 import warnings
@@ -166,9 +167,7 @@ class InferenceWrapper:
         """
         self.device = torch.device("cuda")
 
-    def embed(
-        self, model_inputs: MutableMapping[str, torch.Tensor]
-    ) -> MutableMapping[str, torch.Tensor]:
+    def embed(self, model_inputs: MutableMapping[str, torch.Tensor]) -> MutableMapping[str, torch.Tensor]:
         """
         Embed the inputs using the model's input embeddings.
 
@@ -187,21 +186,13 @@ class InferenceWrapper:
         # If input ids are present, get the embeddings and add them to the model inputs
         if "input_ids" in model_inputs:
             base_shape = model_inputs["input_ids"].shape
-            flatten_embeds = self.model.get_input_embeddings()(
-                model_inputs.pop("input_ids").flatten(0, -2)
-            )
-            model_inputs["inputs_embeds"] = flatten_embeds.view(
-                *base_shape, flatten_embeds.shape[-1]
-            )
+            flatten_embeds = self.model.get_input_embeddings()(model_inputs.pop("input_ids").flatten(0, -2))
+            model_inputs["inputs_embeds"] = flatten_embeds.view(*base_shape, flatten_embeds.shape[-1])
             return model_inputs
         # If neither input ids nor input embeds are present, raise an error
-        raise ValueError(
-            "model_inputs should contain either 'input_ids' or 'inputs_embeds'"
-        )
+        raise ValueError("model_inputs should contain either 'input_ids' or 'inputs_embeds'")
 
-    def call_model(
-        self, input_embeds: torch.Tensor, attention_mask: torch.Tensor
-    ) -> BaseModelOutput:
+    def call_model(self, input_embeds: torch.Tensor, attention_mask: torch.Tensor) -> BaseModelOutput:
         """
         Perform a call to the wrapped model with the given input embeddings and attention mask.
 
@@ -229,9 +220,7 @@ class InferenceWrapper:
         return self.model(inputs_embeds=input_embeds, attention_mask=attention_mask)
 
     @singledispatchmethod
-    def get_logits(
-        self, model_inputs: Any
-    ) -> torch.Tensor | Generator[torch.Tensor, None, str]:
+    def get_logits(self, model_inputs: Any) -> torch.Tensor | Generator[torch.Tensor, None, str]:
         """
         Get the logits from the model for the given inputs.
 
@@ -295,19 +284,15 @@ class InferenceWrapper:
                 return torch.cat(
                     [
                         self.call_model(embeds_chunk, mask_chunk).logits
-                        for embeds_chunk, mask_chunk in zip(
-                            embeds_chunks, mask_chunks, strict=False
-                        )
+                        for embeds_chunk, mask_chunk in zip(embeds_chunks, mask_chunks, strict=False)
                     ],
                 )
-            case (
-                _
-            ):  # (..., sequence_length, embedding_size) e.g. (batch_size, n_perturbations, sequence_length, embedding_size)
+            case _:  # (..., sequence_length, embedding_size) e.g. (batch_size, n_perturbations, sequence_length, embedding_size)
                 # flatten the first dimension to a single batch dimension
                 # then call the model on the flattened inputs and reshape the result to the original batch structure
-                return self._get_logits_from_mapping(
-                    {k: v.flatten(0, -3) for k, v in model_inputs.items()}
-                ).view(*model_inputs["inputs_embeds"].shape[:-1], -1)
+                return self._get_logits_from_mapping({k: v.flatten(0, -3) for k, v in model_inputs.items()}).view(
+                    *model_inputs["inputs_embeds"].shape[:-1], -1
+                )
 
     @get_logits.register(Iterable)
     def _get_logits_from_iterable(
@@ -346,11 +331,7 @@ class InferenceWrapper:
         # Generation loop
         while True:
             # check if the ouput buffer contains enough data to correspond to the next element
-            if (
-                result_buffer is not None
-                and result_indexes
-                and len(result_buffer) >= result_indexes[0]
-            ):
+            if result_buffer is not None and result_indexes and len(result_buffer) >= result_indexes[0]:
                 # pop the first index from the result indexes
                 index = result_indexes.pop(0)
                 # yield the associated logits
@@ -366,18 +347,14 @@ class InferenceWrapper:
                 # Call the model
                 logits = self.call_model(batch, batch_mask).logits
                 # Concatenate the results to the output buffer
-                result_buffer = concat_and_pad(
-                    result_buffer, logits, pad_left=self.PAD_LEFT
-                )
+                result_buffer = concat_and_pad(result_buffer, logits, pad_left=self.PAD_LEFT)
                 # update batch and mask
                 batch = batch_mask = None
                 continue
             # check if the input buffer contains enough data to fill the batch
             if input_buffer.numel():
                 # calculate the missing length of the batch
-                missing_length = self.batch_size - len(
-                    batch if batch is not None else ()
-                )
+                missing_length = self.batch_size - len(batch if batch is not None else ())
                 # fill the batch with the missing data
                 batch = concat_and_pad(
                     batch,
@@ -403,12 +380,8 @@ class InferenceWrapper:
             try:
                 # Get next item and ensure embeddings are calculated
                 next_item = self.embed(next(model_inputs))
-                input_buffer = self._reshape_inputs(
-                    next_item["inputs_embeds"], non_batch_dims=2
-                )
-                mask_buffer = self._reshape_inputs(
-                    next_item["attention_mask"], non_batch_dims=1
-                )
+                input_buffer = self._reshape_inputs(next_item["inputs_embeds"], non_batch_dims=2)
+                mask_buffer = self._reshape_inputs(next_item["attention_mask"], non_batch_dims=1)
                 # update results index list
                 result_indexes += [len(input_buffer)]
             # If the input stream is empty
@@ -418,30 +391,25 @@ class InferenceWrapper:
                     raise
                 last_item = True
         # Chack that all the buffers are empty
-        if any(
-            len(a) for a in [result_indexes, result_buffer, input_buffer, mask_buffer]
-        ):
+        if any(len(a) for a in [result_indexes, result_buffer, input_buffer, mask_buffer]):
             warnings.warn(
-                "Some data were not well fetched in inference wrapper, please check your code if you made custom method or notify it to the developers", stacklevel=2
+                "Some data were not well fetched in inference wrapper, please check your code if you made custom method or notify it to the developers",
+                stacklevel=2,
             )
             return "Some data were not well fetched in inference wrapper"
         return "All data were well fetched in inference wrapper"
 
-    def _reshape_inputs(
-        self, tensor: torch.Tensor, non_batch_dims: int = 2
-    ) -> torch.Tensor:
+    def _reshape_inputs(self, tensor: torch.Tensor, non_batch_dims: int = 2) -> torch.Tensor:
         """
         reshape inputs to have a single batch dimension.
         """
         # TODO : see if there is a better way to do this
-        assert (
-            tensor.dim() >= non_batch_dims
-        ), "The given tensor have less dimensions than non_batch_dims parameter"
+        assert tensor.dim() >= non_batch_dims, "The given tensor have less dimensions than non_batch_dims parameter"
         if tensor.dim() == non_batch_dims:
             return tensor.unsqueeze(0)
         if tensor.dim() == non_batch_dims + 1:
             return tensor
-        assert (
-            tensor.shape[0] == 1
-        ), "When passing a sequence or a generator of inputs to the inference wrapper, please consider giving sequence of perturbations of single elements instead of batches (shape should be (1, n_perturbations, ...))"
+        assert tensor.shape[0] == 1, (
+            "When passing a sequence or a generator of inputs to the inference wrapper, please consider giving sequence of perturbations of single elements instead of batches (shape should be (1, n_perturbations, ...))"
+        )
         return self._reshape_inputs(tensor[0], non_batch_dims=non_batch_dims)

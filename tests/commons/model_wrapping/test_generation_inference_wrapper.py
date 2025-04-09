@@ -194,6 +194,7 @@ def test_generation_inference_wrapper_multiple_mappings(model_name, sentences):
     print("fmi2", full_model_inputs[1]["input_ids"].shape)
     # check that the logits shape is correct:
     logits2 = list(logits)
+    print(logits2)
     assert logits2[0].shape == (nb_split, full_shape1, model.config.vocab_size)
     assert torch.tensor(list(logits[1])).shape == (n_sentences - nb_split, full_shape2, model.config.vocab_size)
 
