@@ -326,7 +326,7 @@ class GenerationAttributionExplainer(AttributionExplainer):
             f"type {type(targets)} not supported for method process_targets in class {self.__class__.__name__}"
         )
 
-    def explain(self, model_inputs: ModelInputs, targets: ModelInputs | None = None) -> Any:
+    def explain(self, model_inputs: ModelInputs, targets: ModelInputs | None = None, **generation_kwargs) -> Any:
         """
         Computes attributions for generative models.
 
@@ -353,7 +353,9 @@ class GenerationAttributionExplainer(AttributionExplainer):
         model_inputs = self.process_model_inputs(model_inputs)
 
         if targets is None:
-            model_inputs_to_explain, targets = self.inference_wrapper.get_inputs_to_explain_and_targets(model_inputs)
+            model_inputs_to_explain, targets = self.inference_wrapper.get_inputs_to_explain_and_targets(
+                model_inputs, **generation_kwargs
+            )
         else:
             targets = self.process_targets(targets)
             model_inputs_to_explain = []

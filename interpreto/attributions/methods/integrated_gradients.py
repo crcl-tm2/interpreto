@@ -33,12 +33,12 @@ from typing import Any
 import torch
 
 from interpreto.attributions.aggregations import MeanAggregator
-from interpreto.attributions.base import GradientExplainer
+from interpreto.attributions.base import ClassificationAttributionExplainer
 from interpreto.attributions.perturbations import LinearInterpolationPerturbator
 from interpreto.commons.model_wrapping.classification_inference_wrapper import ClassificationInferenceWrapper
 
 
-class IntegratedGradients(GradientExplainer):
+class IntegratedGradients(ClassificationAttributionExplainer):
     """
     Integrated Gradients method
     """
@@ -55,5 +55,6 @@ class IntegratedGradients(GradientExplainer):
             perturbator=LinearInterpolationPerturbator(baseline=baseline, n_perturbations=n_interpolations),
             inference_wrapper=ClassificationInferenceWrapper(model, batch_size=batch_size, device=device),
             aggregator=MeanAggregator(),  # TODO: check if we need a trapezoidal mean
+            usegradient=True,
             device=device,
         )
