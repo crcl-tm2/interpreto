@@ -362,7 +362,7 @@ class InferenceWrapper:
                     break
                 continue
             # check if the batch of inputs is large enough to be processed (or if the last item is reached)
-            if last_item or batch is not None and len(batch) == self.batch_size:
+            if batch is not None and (last_item or len(batch) == self.batch_size):
                 # Call the model
                 logits = self.call_model(batch, batch_mask).logits
                 # Concatenate the results to the output buffer
