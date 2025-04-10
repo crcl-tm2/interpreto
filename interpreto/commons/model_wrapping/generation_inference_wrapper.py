@@ -170,7 +170,6 @@ class GenerationInferenceWrapper(InferenceWrapper):
 
         # assume the sequence dimension is the second-to-last.
         target_logits = logits[..., -target_length:, :]
-
         if targets.shape != target_logits.shape[:-1]:
             raise ValueError(
                 "target logits shape without the vocabulary dimension must match the target inputs ids shape."
@@ -205,7 +204,8 @@ class GenerationInferenceWrapper(InferenceWrapper):
         for logits, target in zip(all_logits, targets, strict=True):
             target_length = target.shape[-1]
             targeted_logits = logits[..., -target_length:, :]
-            yield targeted_logits
+            selected_logits = targeted_logits.gather(dim=-1, index=target.unsqueeze(-1)).squeeze(-1)
+            yield selected_logits
 
     @singledispatchmethod
     def get_gradients(self, model_inputs, targets):
@@ -251,8 +251,7 @@ class GenerationInferenceWrapper(InferenceWrapper):
         Computes gradients for a batch of model input-target pairs.
         """
         return [
-            self.get_gradients(model_input, target.unsqueeze(0).repeat(model_input["attention_mask"].shape[0], 1))
-            for model_input, target in zip(model_inputs, targets, strict=True)
+            self.get_gradients(model_input, target) for model_input, target in zip(model_inputs, targets, strict=True)
         ]
 
     # @get_gradients.register(Iterable)

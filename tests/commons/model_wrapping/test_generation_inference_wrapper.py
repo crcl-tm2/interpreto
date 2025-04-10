@@ -23,7 +23,6 @@
 # SOFTWARE.
 
 import pytest
-import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from interpreto.commons.model_wrapping.generation_inference_wrapper import GenerationInferenceWrapper
@@ -65,13 +64,20 @@ def prepare_model_and_tokenizer(model_name: str):
 
 @pytest.mark.parametrize("model_name", generation_models)
 def test_generation_inference_wrapper_single_sentence(model_name, sentence):
-    print("single sentence")
+    """
+    Tests the all function of the generation inference wrapper with a single sentence input.
+
+    The test ensures:
+      - The full model input is constructed by appending the target to the original input.
+      - The first part of the full input exactly matches the original input.
+      - The second part of the full input exactly matches the generated target.
+      - The logits, targeted logits, and gradient matrix have the expected shapes.
+    """
+
     # Model preparation
     tokenizer, model, inference_wrapper = prepare_model_and_tokenizer(model_name)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-    print("tokenizer.pad_token:", tokenizer.pad_token)
-    print("tokenizer.pad_token_id:", tokenizer.pad_token_id)
 
     model_inputs = tokenizer(sentence, return_tensors="pt", padding=True, truncation=True)
     model_inputs_length = model_inputs["input_ids"].shape[1]
@@ -81,32 +87,46 @@ def test_generation_inference_wrapper_single_sentence(model_name, sentence):
     )
     target_length = target.shape[1]
     full_shape = full_model_inputs["input_ids"].shape[1]
-    assert full_model_inputs["input_ids"][:, :-target_length].equal(
-        model_inputs["input_ids"]
-    )  # check that the first part of the full input is equal to the original input
-    assert full_model_inputs["input_ids"][:, -target_length:].equal(
-        target
-    )  # check that the second part of the full input is equal to the target
+    # Check that the first part of the full input is equal to the original input.
+    assert full_model_inputs["input_ids"][:, :-target_length].equal(model_inputs["input_ids"]), (
+        "For a single sentence, the first part of the full input does not match the original input."
+    )
+
+    # Check that the second part of the full input is equal to the target.
+    assert full_model_inputs["input_ids"][:, -target_length:].equal(target), (
+        "For a single sentence, the target part of the full input does not match the provided target."
+    )
 
     logits = inference_wrapper.get_logits(full_model_inputs)
-    assert logits.shape == (1, full_shape, model.config.vocab_size)  # check that the logits shape is correct
+    # Check that the logits shape is correct.
+    assert logits.shape == (1, full_shape, model.config.vocab_size), (
+        "For a single sentence, the logits shape is incorrect."
+    )
 
     targeted_logits = inference_wrapper.get_targeted_logits(full_model_inputs, target)
-    assert targeted_logits.shape == (1, target_length)  # check that the targeted logits shape is correct
+    # Check that the targeted logits shape is correct.
+    assert targeted_logits.shape == (1, target_length), (
+        "For a single sentence, the targeted logits shape is incorrect."
+    )
 
     grad_matrix = inference_wrapper.get_gradients(full_model_inputs, target)
-    assert grad_matrix.shape == (1, target_length, full_shape)  # check that the grad matrix shape is correct
-
-
-# test_generation_inference_wrapper_single_sentence(
-#     "hf-internal-testing/tiny-random-LlamaForCausalLM",
-#     "Once upon a time, in a village nestled between two mountains, there lived a curious child named Elio.",
-# )
+    # Check that the gradient matrix shape is correct.
+    assert grad_matrix.shape == (1, target_length, full_shape), (
+        "For a single sentence, the gradient matrix shape is incorrect."
+    )
 
 
 @pytest.mark.parametrize("model_name", generation_models)
 def test_generation_inference_wrapper_multiple_sentences(model_name, sentences):
-    print("multiple sentences")
+    """
+    Tests all function of the generation inference wrapper with multiple sentences input.
+
+    The test ensures:
+      - The full model input is constructed by appending the generated targets to the original inputs.
+      - The first part of the full input exactly matches the original input.
+      - The second part of the full input exactly matches the provided target.
+      - The logits, targeted logits, and gradient matrix have the expected shapes for all sentences.
+    """
     # Model preparation
     tokenizer, model, inference_wrapper = prepare_model_and_tokenizer(model_name)
     if tokenizer.pad_token is None:
@@ -120,44 +140,47 @@ def test_generation_inference_wrapper_multiple_sentences(model_name, sentences):
     )
     target_length = target.shape[1]
     full_shape = full_model_inputs["input_ids"].shape[1]
-    assert full_model_inputs["input_ids"][:, :-target_length].equal(
-        model_inputs["input_ids"]
-    )  # check that the first part of the full input is equal to the original input
-    assert full_model_inputs["input_ids"][:, -target_length:].equal(
-        target
-    )  # check that the second part of the full input is equal to the target
+    # Check that the first part of the full input is equal to the original input.
+    assert full_model_inputs["input_ids"][:, :-target_length].equal(model_inputs["input_ids"]), (
+        "For multiple sentences, the first part of the full input does not match the original input."
+    )
+
+    # Check that the second part of the full input is equal to the target.
+    assert full_model_inputs["input_ids"][:, -target_length:].equal(target), (
+        "For multiple sentences, the target part of the full input does not match the provided target."
+    )
 
     logits = inference_wrapper.get_logits(full_model_inputs)
-    assert logits.shape == (n_sentences, full_shape, model.config.vocab_size)  # check that the logits shape is correct
+    # Check that the logits shape is correct.
+    assert logits.shape == (n_sentences, full_shape, model.config.vocab_size), (
+        "For multiple sentences, the logits shape is incorrect."
+    )
 
     targeted_logits = inference_wrapper.get_targeted_logits(full_model_inputs, target)
-    assert targeted_logits.shape == (n_sentences, target_length)  # check that the targeted logits shape is correct
+    # Check that the targeted logits shape is correct.
+    assert targeted_logits.shape == (n_sentences, target_length), (
+        "For multiple sentences, the targeted logits shape is incorrect."
+    )
 
     grad_matrix = inference_wrapper.get_gradients(full_model_inputs, target)
-    assert grad_matrix.shape == (n_sentences, target_length, full_shape)  # check that the grad matrix shape is correct
-
-
-# test_generation_inference_wrapper_multiple_sentences(
-#     "hf-internal-testing/tiny-random-LlamaForCausalLM",
-#     [
-#         "Once upon a time, in a village nestled between two mountains, there lived a curious child named Elio.",
-#         "Write a short story about a robot who learns how to paint emotions.",
-#         "Describe a world where water flows upward instead of down.",
-#         "What would a conversation sound like between a dragon and a scientist?",
-#         "Explain quantum physics to a five-year-old using a bedtime story.",
-#         "Generate a poem about loneliness that ends on a hopeful note.",
-#         "Imagine a dialogue between the moon and the ocean.",
-#         "Continue the sentence: 'She opened the door and saw…'",
-#         "Invent a new holiday and describe how people celebrate it.",
-#         "Create a futuristic news headline for the year 3025.",
-#     ],
-# )
+    # Check that the gradient matrix shape is correct.
+    assert grad_matrix.shape == (n_sentences, target_length, full_shape), (
+        "For multiple sentences, the gradient matrix shape is incorrect."
+    )
 
 
 @pytest.mark.parametrize("model_name", generation_models)
 def test_generation_inference_wrapper_multiple_mappings(model_name, sentences):
+    """
+    Tests all function of the generation inference wrapper with multiple mappings.
+
+    This test verifies that:
+      - The full model inputs are correctly constructed by appending the target to the original inputs.
+      - The first part of each full input matches the corresponding original input.
+      - The second part of each full input exactly matches the generated target.
+      - The shapes of the logits, targeted logits, and gradient matrix are as expected for each mapping.
+    """
     # Model preparation
-    print("multiple mappings")
     tokenizer, model, inference_wrapper = prepare_model_and_tokenizer(model_name)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -183,44 +206,43 @@ def test_generation_inference_wrapper_multiple_mappings(model_name, sentences):
     full_shape2 = full_model_inputs[1]["input_ids"].shape[1]
 
     # check that the first part of the full input is equal to the original input:
-    assert full_model_inputs[0]["input_ids"][:, :-target_length1].equal(model_inputs[0]["input_ids"])
-    assert full_model_inputs[1]["input_ids"][:, :-target_length2].equal(model_inputs[1]["input_ids"])
+    assert full_model_inputs[0]["input_ids"][:, :-target_length1].equal(model_inputs[0]["input_ids"]), (
+        "The first part of the full input for mapping 0 does not match the original input."
+    )
+    assert full_model_inputs[1]["input_ids"][:, :-target_length2].equal(model_inputs[1]["input_ids"]), (
+        "The first part of the full input for mapping 1 does not match the original input."
+    )
     # check that the second part of the full input is equal to the target:
-    assert full_model_inputs[0]["input_ids"][:, -target_length1:].equal(target[0])
-    assert full_model_inputs[1]["input_ids"][:, -target_length2:].equal(target[1])
+    assert full_model_inputs[0]["input_ids"][:, -target_length1:].equal(target[0]), (
+        "The target part of the full input for mapping 0 does not match the target."
+    )
+    assert full_model_inputs[1]["input_ids"][:, -target_length2:].equal(target[1]), (
+        "The target part of the full input for mapping 1 does not match the target."
+    )
 
     logits = inference_wrapper.get_logits(full_model_inputs)
-    print("fmi1", full_model_inputs[0]["input_ids"].shape)
-    print("fmi2", full_model_inputs[1]["input_ids"].shape)
-    # check that the logits shape is correct:
     logits2 = list(logits)
-    print(logits2)
-    assert logits2[0].shape == (nb_split, full_shape1, model.config.vocab_size)
-    assert torch.tensor(list(logits[1])).shape == (n_sentences - nb_split, full_shape2, model.config.vocab_size)
+    # check that the logits shape is correct:
+    assert logits2[0].shape == (nb_split, full_shape1, model.config.vocab_size), (
+        "Logits shape for mapping 0 is incorrect."
+    )
+    assert logits2[1].shape == (n_sentences - nb_split, full_shape2, model.config.vocab_size), (
+        "Logits shape for mapping 1 is incorrect."
+    )
 
     targeted_logits = inference_wrapper.get_targeted_logits(full_model_inputs, target)
+    targeted_logits2 = list(targeted_logits)
     # check that the targeted logits shape is correct:
-    assert targeted_logits[0].shape == (nb_split, target_length1)
-    assert targeted_logits[1].shape == (n_sentences - nb_split, target_length2)
+    assert targeted_logits2[0].shape == (nb_split, target_length1), "Targeted logits shape for mapping 0 is incorrect."
+    assert targeted_logits2[1].shape == (n_sentences - nb_split, target_length2), (
+        "Targeted logits shape for mapping 1 is incorrect."
+    )
 
     grad_matrix = inference_wrapper.get_gradients(full_model_inputs, target)
     # check that the grad matrix shape is correct:
-    assert grad_matrix[0].shape == (nb_split, target_length1, full_shape1)
-    assert grad_matrix[1].shape == (n_sentences - nb_split, target_length2, full_shape2)
-
-
-test_generation_inference_wrapper_multiple_mappings(
-    "hf-internal-testing/tiny-random-LlamaForCausalLM",
-    [
-        "Once upon a time, in a village nestled between two mountains, there lived a curious child named Elio.",
-        "Write a short story about a robot who learns how to paint emotions.",
-        "Describe a world where water flows upward instead of down.",
-        "What would a conversation sound like between a dragon and a scientist?",
-        "Explain quantum physics to a five-year-old using a bedtime story.",
-        "Generate a poem about loneliness that ends on a hopeful note.",
-        "Imagine a dialogue between the moon and the ocean.",
-        "Continue the sentence: 'She opened the door and saw…'",
-        "Invent a new holiday and describe how people celebrate it.",
-        "Create a futuristic news headline for the year 3025.",
-    ],
-)
+    assert grad_matrix[0].shape == (nb_split, target_length1, full_shape1), (
+        "Gradient matrix shape for mapping 0 is incorrect."
+    )
+    assert grad_matrix[1].shape == (n_sentences - nb_split, target_length2, full_shape2), (
+        "Gradient matrix shape for mapping 1 is incorrect."
+    )
