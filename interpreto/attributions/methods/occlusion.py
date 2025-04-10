@@ -50,9 +50,16 @@ class ClassificationOcclusionExplainer(ClassificationAttributionExplainer):
         granularity_level: GranularityLevel = GranularityLevel.WORD,
         device: torch.device | None = None,
     ):
+        replace_token = "[REPLACE]"
+        if replace_token not in tokenizer.get_vocab():
+            tokenizer.add_tokens([replace_token])
+            model.resize_token_embeddings(len(tokenizer))
+        replace_token_id = tokenizer.convert_tokens_to_ids(replace_token)
+
         perturbator = OcclusionPerturbator(
             tokenizer=tokenizer,
             granularity_level=granularity_level,
+            replace_token_id=replace_token_id,
         )
         super().__init__(
             inference_wrapper=ClassificationInferenceWrapper(model, batch_size=batch_size, device=device),
@@ -72,9 +79,16 @@ class GenerationOcclusionExplainer(GenerationAttributionExplainer):
         granularity_level: GranularityLevel = GranularityLevel.WORD,
         device: torch.device | None = None,
     ):
+        replace_token = "[REPLACE]"
+        if replace_token not in tokenizer.get_vocab():
+            tokenizer.add_tokens([replace_token])
+            model.resize_token_embeddings(len(tokenizer))
+        replace_token_id = tokenizer.convert_tokens_to_ids(replace_token)
+
         perturbator = OcclusionPerturbator(
             tokenizer=tokenizer,
             granularity_level=granularity_level,
+            replace_token_id=replace_token_id,
         )
         super().__init__(
             inference_wrapper=GenerationInferenceWrapper(model, batch_size=batch_size, device=device),
