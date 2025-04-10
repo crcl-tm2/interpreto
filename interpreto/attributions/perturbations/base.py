@@ -24,95 +24,71 @@
 """
 Base classes for perturbations used in attribution methods
 """
+# TODO : remake all the docstrings of this file to fit with new method signatures
 
 from __future__ import annotations
 
+import itertools
 from collections.abc import Iterable, MutableMapping
 from functools import singledispatchmethod
+from typing import Any
 
 import torch
-from transformers import PreTrainedTokenizer
 
 from interpreto.commons.granularity import GranularityLevel
 
 
-class BasePerturbator:
+class Perturbator:
     """
     Base class for perturbators
     If this class is instanciated, it behaves as a no-op perturbator
     Perturbators can be defined by subclassing this class and implementing one (or many) of the following methods :
-    - perturb_strings
     - perturb_ids
-    - perturb_tensors
+    - perturb_embeds
     """
+    __slots__ = ("inputs_embedder",)
 
-    def __init__(self, tokenizer: PreTrainedTokenizer | None = None, inputs_embedder: torch.nn.Module | None = None):
-        # Tokenizer and embedders are optional
-        self.tokenizer = tokenizer
+    def __init__(self, inputs_embedder: torch.nn.Module | None = None):
+        # Embedders is optional
         self.inputs_embedder = inputs_embedder
 
-    @singledispatchmethod
-    def perturb(self, inputs) -> tuple[MutableMapping[str, torch.Tensor], torch.Tensor | None]:
+    # TODO : this function is replicated in the inference wrapper, enventually merge them
+    def _embed(self, model_inputs: MutableMapping[str, torch.Tensor]) -> MutableMapping[str, torch.Tensor]:
         """
-        Main method called to perturb an input before giving it to a model
-        Output is a mapping that can be passed directly to the model as kwargs
+        Embed the inputs using the inputs_embedder
 
         Args:
-            inputs (_type_): inputs given to the perturbator. It can be one of the following types :
-             - str|Iterable[str] : a single string or a collection of strings to perturb
-             - MutableMapping[str, torch.Tensor] : a mapping of tensors to perturb, with keys similar to the keys found in the output of a tokenizer.
-                                                            Direct output of a tokenizer can be passed to this method
-             - torch.Tensor : a tensor to perturb. This is the case when the perturbator is used to perturb embeddings
+            model_inputs (MutableMapping[str, torch.Tensor]): input mapping containing either "input_ids" or "inputs_embeds".
 
         Raises:
-            NotImplementedError: If the perturbator receives a type different from the ones listed above
+            ValueError: If neither "input_ids" nor "inputs_embeds" are present in the input mapping.
 
         Returns:
-            MutableMapping[str, torch.Tensor]: A mapping of tensors that can be passed directly to the model as kwargs
+            MutableMapping[str, torch.Tensor]: The input mapping with "inputs_embeds" added.
         """
+        # If input embeds are already present, return the unmodified model inputs
+        if "inputs_embeds" in model_inputs:
+            return model_inputs
+        # If no inputs embedder is provided, raise an error
+        if self.inputs_embedder is None:
+            raise ValueError("Cannot call _embed method from a Perturbator without an inputs embedder")
+        # If input ids are present, get the embeddings and add them to the model inputs
+        if "input_ids" in model_inputs:
+            base_shape = model_inputs["input_ids"].shape
+            flatten_embeds = self.inputs_embedder(model_inputs.pop("input_ids").flatten(0, -2))
+            model_inputs["inputs_embeds"] = flatten_embeds.view(*base_shape, flatten_embeds.shape[-1])
+            return model_inputs
+        # If neither input ids nor input embeds are present, raise an error
+        raise ValueError("model_inputs should contain either 'input_ids' or 'inputs_embeds'")
+
+    @singledispatchmethod
+    def perturb(self, inputs:Any) -> list[tuple[MutableMapping[str, torch.Tensor], torch.Tensor | None]]:
         raise NotImplementedError(
             f"Method perturb not implemented for type {type(inputs)} in {self.__class__.__name__}"
         )
 
-    @perturb.register(str)
-    def _(self, inputs: str) -> tuple[MutableMapping[str, torch.Tensor], torch.Tensor | None]:
-        """
-        perturbation of a single string (transformed as a collection of 1 string for convenience)
-
-        Args:
-            inputs (str): string to perturb
-        """
-        return self.perturb([inputs])
-
-    @perturb.register(Iterable)
-    def _(self, inputs: Iterable[str]) -> tuple[MutableMapping[str, torch.Tensor], torch.Tensor | None]:
-        """
-        perturbation of a single string (transformed as a collection of 1 string for convenience)
-
-        Args:
-            inputs (Iterable[str]): collection of strings to perturb
-        """
-        # If no tokenizer is provided, we raise an error
-        if self.tokenizer is None:
-            raise ValueError(
-                "A tokenizer is required to perturb strings. Please provide a tokenizer when initializing the perturbator or specify it with 'perturbator.tokenizer = some_tokenizer'"
-            )
-
-        # Call the tokenizer on the produced strings
-        tokens = self.tokenizer(
-            inputs,
-            truncation=True,
-            return_tensors="pt",
-            padding=True,
-            return_offsets_mapping=True,
-            return_special_tokens_mask=True,
-        )
-
-        # Call the next perturbation step (identity if no further perturbation has been defined)
-        return self.perturb(tokens)
-
     @perturb.register(MutableMapping)
-    def _(self, inputs: MutableMapping[str, torch.Tensor]) -> tuple[MutableMapping[str, torch.Tensor], torch.Tensor | None]:
+    def _perturb_mapping(self, inputs: MutableMapping[str, torch.Tensor]) -> list[tuple[MutableMapping[str, torch.Tensor], torch.Tensor | None]]:
         """
         Method called when we ask the perturbator to perturb a mapping of tensors, generally the output of a tokenizer
         The mapping should be similar to mappings returned by the tokenizer.
@@ -125,39 +101,23 @@ class BasePerturbator:
         assert "offset_mapping" in inputs, (
             "Offset mapping is required to perturb tokens, specify the 'return_offsets_mapping=True' parameter when tokenizing the input"
         )
+        mask = None
+        if "input_ids" in inputs:
+            # Call the tokens perturbation on the inputs ids
+            inputs, mask = self.perturb_ids(inputs)
 
-        # Call the tokens perturbation on the inputs ids
-        inputs, mask = self.perturb_ids(inputs)
-
-        # If no inputs have been provided, return the perturbed ids
-        if self.inputs_embedder is None:
-            return inputs, mask
-        # Check if an embedding perturbation has been defined
         try:
-            # If perturb_tensors has been defined, call it on the embeddings
+            # TODO : perform smart combination of perturbation masks on ids and on embeddings !
+            # inputs, ids_pert_mask = self.perturb_embeds(self._embed(inputs))
+            # final_mask = some_combination(ids_pert_mask, embeds_pert_mask) # something like a elementwise binary or on the tensors ?
+            # return inputs, final_mask
+            return [self.perturb_embeds(self._embed(inputs))]
+        except (ValueError, NotImplementedError):
+            return [(inputs, mask)]
 
-            embeddings, perturbation_mask = self.perturb_tensors(self.inputs_embedder(inputs))
-            # TODO : perform smart combination of perturbation masks
-            attention_mask = inputs["attention_mask"].unsqueeze(1).repeat(1, embeddings.shape[1], 1)
-
-            return {
-                "inputs_embeds": embeddings,
-                "attention_mask": attention_mask,
-            }, perturbation_mask  # add complementary data in dict
-        except NotImplementedError:
-            # If no embeddings perturbation has been defined to the, return the perturbed ids
-            return inputs, mask
-
-    @perturb.register(torch.Tensor)
-    def _(self, inputs: torch.Tensor) -> MutableMapping[str, torch.Tensor]:
-        """
-        Method called when we ask the perturbator to perturb a tensor, generally embeddings
-
-        Args:
-            inputs (torch.Tensor): inputs embeddings to perturb
-        """
-        perturbed_tensor, mask = self.perturb_tensors(inputs)
-        return {"inputs_embeds": perturbed_tensor, "attention_mask": torch.ones(perturbed_tensor.shape[:-1])}, mask
+    @perturb.register(Iterable)
+    def _perturb_iterable(self, inputs: Iterable[MutableMapping[str, torch.Tensor]]) -> list[tuple[MutableMapping[str, torch.Tensor], torch.Tensor | None]]:
+        return list(itertools.chain.from_iterable(self._perturb_mapping(inputs) for inputs in inputs))
 
     def perturb_ids(self, model_inputs: MutableMapping) -> tuple[MutableMapping[str, torch.Tensor], torch.Tensor | None]:
         """
@@ -174,30 +134,20 @@ class BasePerturbator:
         model_inputs["attention_mask"] = model_inputs["attention_mask"].unsqueeze(1)
         return model_inputs, torch.zeros_like(model_inputs["input_ids"])
 
-    def perturb_tensors(self, tensors: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor | None]:
-        """
-        Perturb the embeddings
-
-        Args:
-            tensors (torch.Tensor): inputs embeddings that may be given to the model
-            shape should be (batch_size, sequence_length, embedding_size)
-
-        Raises:
-            NotImplementedError: If this method is called without being implemented in the subclass, it will raise an error
-
-        Returns:
-            torch.Tensor: perturbed embeddings, shape would be (batch_size, n_perturbations, sequence_length, embedding_size)
-        """
-        raise NotImplementedError(f"No way to perturb embeddings has been defined in {self.__class__.__name__}")
+    def perturb_embeds(self, model_inputs: MutableMapping) -> tuple[MutableMapping[str, torch.Tensor], torch.Tensor | None]:
+        #inputs["attention_mask"] = inputs["attention_mask"].unsqueeze(1).repeat(1, embeddings.shape[1], 1)
+        raise NotImplementedError(f"No way to perturb input embeddings has been defined in {self.__class__.__name__}")
 
 
-class MaskBasedPerturbator(BasePerturbator):
+class MaskBasedPerturbator(Perturbator):
     """
     Base class for methods applying a mask to the input
     This class is just furnishing a default implementation for the apply_mask method
     This class should not be subclasses by perturbation methods.
     Please consider using TokenMaskBasedPerturbator or EmbeddingsMaskBasedPerturbator instead, depending on where you want to apply your mask
     """
+
+    __slots__ = ()
 
     def apply_mask(self, inputs: torch.Tensor, mask: torch.Tensor, mask_value: torch.Tensor) -> torch.Tensor:
         """
@@ -224,32 +174,26 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
     """
     Base class for perturbations consisting in applying masks on token (or groups of tokens)
     """
+    __slots__ = ("n_perturbations", "replace_token_id", "granularity_level")
 
     def __init__(
         self,
-        tokenizer: PreTrainedTokenizer | None = None,
+        replace_token_id: int,
         inputs_embedder: torch.nn.Module | None = None,
         n_perturbations: int = 1,
-        mask_token: str = None,
         granularity_level: GranularityLevel = GranularityLevel.TOKEN,
     ):
-        super().__init__(tokenizer=tokenizer, inputs_embedder=inputs_embedder)
+        super().__init__(inputs_embedder=inputs_embedder)
 
         # number of perturbations made by the "perturb" method
         self.n_perturbations = n_perturbations
-        # TODO : set general mask token if no tokenizer is given
-        self.mask_token = mask_token or self.tokenizer.mask_token if self.tokenizer is not None else "[MASK]"
+
+        # token id used to replace the masked tokens
+        self.replace_token_id = replace_token_id
 
         # granularity level of the perturbation (token masking, word masking...)
         # in most commons cases, this should be set to GranularityLevel.TOKEN
         self.granularity_level = granularity_level
-
-    @property
-    def mask_token_id(self) -> int:
-        """
-        Returns the mask token id
-        """
-        return self.tokenizer.convert_tokens_to_ids(self.mask_token)
 
     def get_mask(self, num_sequences: int, mask_dim: int) -> torch.Tensor:
         """
@@ -316,14 +260,14 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
         Returns:
             torch.Tensor, torch.Tensor: real general mask and specific granularity mask (theoretical mask)
         """
-        perturbation_dimension = GranularityLevel.get_length(model_inputs, self.granularity_level).max().int().item()
+        perturbation_dimension = int(GranularityLevel.get_length(model_inputs, self.granularity_level).max().item())
         batch_size = model_inputs["input_ids"].shape[0]
         gran_mask = self.get_mask(batch_size, perturbation_dimension)
         model_inputs["mask"] = gran_mask
         gran_assoc_matrix = GranularityLevel.get_association_matrix(model_inputs, self.granularity_level)
         return self.get_real_mask_from_gran_mask(gran_mask, gran_assoc_matrix)
 
-    def perturb_ids(self, model_inputs: MutableMapping) -> MutableMapping[str, torch.Tensor]:
+    def perturb_ids(self, model_inputs: MutableMapping) -> tuple[MutableMapping[str, torch.Tensor], torch.Tensor | None]:
         """
         Method called to perturb the inputs of the model
 
@@ -334,7 +278,7 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
             tuple: model_inputs with perturbations and the specific granularity mask
         """
         batch_size = model_inputs["input_ids"].shape[0]
-        mask_dim = GranularityLevel.get_length(model_inputs, self.granularity_level).max().int().item()
+        mask_dim = int(GranularityLevel.get_length(model_inputs, self.granularity_level).max().item())
         gran_mask = self.get_mask(batch_size, mask_dim)
         real_mask = self.get_real_mask_from_gran_mask(
             gran_mask, GranularityLevel.get_association_matrix(model_inputs, self.granularity_level)
@@ -346,7 +290,7 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
             self.apply_mask(
                 inputs=model_inputs["input_ids"].unsqueeze(-1),
                 mask=real_mask,
-                mask_value=torch.Tensor([self.mask_token_id]),
+                mask_value=torch.Tensor([self.replace_token_id]),
             )
             .squeeze(-1)
             .to(torch.int)
@@ -366,17 +310,17 @@ class EmbeddingsMaskBasedPerturbator(MaskBasedPerturbator):
     """
     Base class for perturbations consisting in applying masks on embeddings
     """
+    __slots__ = ("replacement_vector", "n_perturbations")
 
     def __init__(
         self,
-        tokenizer: PreTrainedTokenizer | None = None,
         inputs_embedder: torch.nn.Module | None = None,
         n_perturbations: int = 1,
-        default_mask_vector: torch.Tensor = None,
+        replacement_vector: torch.Tensor | None = None,
     ):
-        super().__init__(tokenizer=tokenizer, inputs_embedder=inputs_embedder)
+        super().__init__(inputs_embedder=inputs_embedder)
         self.n_perturbations = n_perturbations
-        self.default_mask_vector = default_mask_vector or torch.zeros(self.inputs_embedder.embedding_dim)
+        self.replacement_vector = replacement_vector
 
     def get_mask(self, embeddings: torch.Tensor) -> torch.Tensor:
         """
@@ -391,24 +335,30 @@ class EmbeddingsMaskBasedPerturbator(MaskBasedPerturbator):
         """
         raise NotImplementedError(f"Method get_mask not implemented in {self.__class__.__name__}")
 
-    def perturb_embeddings(self, embeddings):
+    def perturb_embeds(self, model_inputs: MutableMapping) -> tuple[MutableMapping[str, torch.Tensor], torch.Tensor | None]:
+        replacement_vector = self.replacement_vector
+        if replacement_vector is None:
+            replacement_vector = torch.zeros(model_inputs["inputs_embeds"].shape[-1], device=model_inputs["inputs_embeds"].device)
+
+        embeddings = model_inputs["inputs_embeds"]
         mask = self.get_mask(embeddings)
-        perturbed_embeddings = self.apply_mask(embeddings, mask, self.default_mask_vector)
-        return {"real_mask": mask, "inputs_embeds": perturbed_embeddings}
+        model_inputs["inputs_embeds"] = self.apply_mask(embeddings, mask, replacement_vector)
+        return model_inputs, mask
 
 
 class OcclusionPerturbator(TokenMaskBasedPerturbator):
     """
     Basic class for occlusion perturbations
     """
+    __slots__ = ()
 
     def __init__(
         self,
-        tokenizer: PreTrainedTokenizer | None = None,
         inputs_embedder: torch.nn.Module | None = None,
         granularity_level: GranularityLevel = GranularityLevel.TOKEN,
+        replace_token_id: int = 0,
     ):
-        super().__init__(tokenizer=tokenizer, inputs_embedder=inputs_embedder, n_perturbations=-1)
+        super().__init__(replace_token_id, inputs_embedder=inputs_embedder, n_perturbations=-1)
         self.granularity_level = granularity_level
 
     def get_mask(self, num_sequences: int, mask_dim: int) -> torch.Tensor:
@@ -416,17 +366,20 @@ class OcclusionPerturbator(TokenMaskBasedPerturbator):
         return torch.eye(mask_dim).unsqueeze(0).repeat(num_sequences, 1, 1)
 
 
-class GaussianNoisePerturbator(BasePerturbator):
+class GaussianNoisePerturbator(Perturbator):
     """
     Perturbator adding gaussian noise to the input tensor
     """
+    __slots__ = ("n_perturbations", "std")
 
-    def __init__(self, n_perturbations: int = 10, *, std: float = 0.1):
-        super().__init__(None, None)
+    def __init__(self, inputs_embedder: torch.nn.Module | None = None, n_perturbations: int = 10, *, std: float = 0.1):
+        super().__init__(inputs_embedder)
         self.n_perturbations = n_perturbations
         self.std = std
 
-    def perturb_tensors(self, tensors: torch.Tensor) -> torch.Tensor:
-        perturbations = tensors.unsqueeze(1).repeat(1, self.n_perturbations, 1, 1)
-        noise = torch.randn_like(perturbations) * self.std
-        return perturbations + noise
+    def perturb_embeds(self, model_inputs: MutableMapping) -> tuple[MutableMapping[str, torch.Tensor], torch.Tensor | None]:
+        model_inputs["input_embeds"] = model_inputs["input_embeds"].unsqueeze(1).repeat(1, self.n_perturbations, 1, 1)
+        model_inputs["attention_mask"] = model_inputs["attention_mask"].unsqueeze(1).repeat(1, self.n_perturbations, 1, 1)
+        # add noise
+        model_inputs["input_embeds"] += torch.randn_like(model_inputs["input_embeds"]) * self.std
+        return model_inputs, None # return noise ? noise.bool().long() ?

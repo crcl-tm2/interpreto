@@ -35,16 +35,16 @@ from typing import Any
 import torch
 
 
-class Aggregator(ABC):
+class Aggregator:
     """
     Abstract class for aggregation made at the end of attribution methods
     """
 
-    @abstractmethod
     def aggregate(self, results: Iterable[Any], mask) -> Any:
         """
         Get results from multiple "Inference wrappers", aggregate results and gives an explanation
         """
+        return results
 
     def __call__(self, results: Iterable[Any], mask: Any):
         return self.aggregate(results, mask)

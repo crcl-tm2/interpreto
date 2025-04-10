@@ -50,13 +50,10 @@ class ClassificationOcclusionExplainer(ClassificationAttributionExplainer):
         granularity_level: GranularityLevel = GranularityLevel.WORD,
         device: torch.device | None = None,
     ):
-        perturbator = OcclusionPerturbator(
-            tokenizer=tokenizer,
-            granularity_level=granularity_level,
-        )
         super().__init__(
+            tokenizer=tokenizer,
             inference_wrapper=ClassificationInferenceWrapper(model, batch_size=batch_size, device=device),
-            perturbator=perturbator,
+            perturbator=OcclusionPerturbator(granularity_level=granularity_level),
             aggregator=MaskwiseMeanAggregator(),
             usegradient=False,
             granularity_level=granularity_level,
@@ -73,10 +70,10 @@ class GenerationOcclusionExplainer(GenerationAttributionExplainer):
         device: torch.device | None = None,
     ):
         perturbator = OcclusionPerturbator(
-            tokenizer=tokenizer,
             granularity_level=granularity_level,
         )
         super().__init__(
+            tokenizer=tokenizer,
             inference_wrapper=GenerationInferenceWrapper(model, batch_size=batch_size, device=device),
             perturbator=perturbator,
             aggregator=MaskwiseMeanAggregator(),

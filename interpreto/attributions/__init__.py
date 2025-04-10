@@ -1,3 +1,3 @@
-from .methods import IntegratedGradients, SobolAttribution
+from .methods import IntegratedGradients#, SobolAttribution
 
 __all__ = ["IntegratedGradients", "SobolAttribution"]
