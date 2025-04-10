@@ -28,10 +28,10 @@ Basic standard classes for attribution methods
 
 from __future__ import annotations
 
-from copy import deepcopy
 import itertools
 from abc import abstractmethod
 from collections.abc import Iterable, MutableMapping
+from copy import deepcopy
 from typing import Any
 
 import torch
@@ -56,6 +56,8 @@ class AttributionOutput:
     """
     Class to store the output of an attribution method.
     """
+
+    __slots__ = ("attributions", "elements")
 
     def __init__(
         self,
@@ -90,6 +92,8 @@ class AttributionExplainer:
     Subclasses must implement the abstract method 'explain'.
     """
 
+    _associated_inference_wrapper = InferenceWrapper
+
     def __init__(
         self,
         tokenizer: PreTrainedTokenizer,
@@ -112,6 +116,10 @@ class AttributionExplainer:
             device (torch.device, optional): The device on which computations will be performed.
             granularity_level (GranularityLevel): The level of granularity for the explanation (e.g., token, word, sentence).
         """
+        if not isinstance(inference_wrapper, self._associated_inference_wrapper):
+            raise ValueError(
+                f"Expected inference_wrapper to be of type {self._associated_inference_wrapper.__name__}, got {type(inference_wrapper)}"
+            )
         self.tokenizer = tokenizer
         self.inference_wrapper = inference_wrapper
         self.perturbator = perturbator or Perturbator()
@@ -119,6 +127,9 @@ class AttributionExplainer:
         self.usegradient = usegradient
         self.device = device
         self.granularity_level = granularity_level
+
+        # TODO : check this line, eventually move it
+        self.inference_wrapper.pad_token_id = self.tokenizer.pad_token_id
 
     def process_model_inputs(self, model_inputs):
         """
@@ -177,30 +188,7 @@ class ClassificationAttributionExplainer(AttributionExplainer):
     Attribution explainer for classification models
     """
 
-    def __init__(
-        self,
-        tokenizer: PreTrainedTokenizer,
-        inference_wrapper: ClassificationInferenceWrapper,
-        perturbator: Perturbator | None = None,
-        aggregator: Aggregator | None = None,
-        usegradient: bool = False,
-        device: torch.device | None = None,
-        granularity_level: GranularityLevel = GranularityLevel.DEFAULT,
-    ):
-        if not isinstance(inference_wrapper, ClassificationInferenceWrapper):
-            raise ValueError(
-                f"Expected inference_wrapper to be of type ClassificationInferenceWrapper, got {type(inference_wrapper)}"
-            )
-        super().__init__(
-            tokenizer=tokenizer,
-            inference_wrapper=inference_wrapper,
-            perturbator=perturbator,
-            aggregator=aggregator,
-            usegradient=usegradient,
-            device=device,
-            granularity_level=granularity_level,
-        )
-        self.inference_wrapper.pad_token_id = self.tokenizer.pad_token_id
+    _associated_inference_wrapper = ClassificationInferenceWrapper
 
     def explain(self, model_inputs: ModelInputs, targets: torch.Tensor | None = None) -> Any:
         """
@@ -218,9 +206,13 @@ class ClassificationAttributionExplainer(AttributionExplainer):
 
         logits = logits.gather(-1, targets.unsqueeze(1))
 
-        pert_per_input_generator = PersistentTupleGeneratorWrapper(self.perturbator.perturb(m)[0] for m in model_inputs)
+        pert_per_input_generator = PersistentTupleGeneratorWrapper(
+            self.perturbator.perturb(m)[0] for m in model_inputs
+        )
 
-        target_logits = self.inference_wrapper.get_targeted_logits(pert_per_input_generator.get_subgenerator(0), targets)
+        target_logits = self.inference_wrapper.get_targeted_logits(
+            pert_per_input_generator.get_subgenerator(0), targets
+        )
 
         for element in target_logits:
             print(element)
@@ -236,9 +228,7 @@ class ClassificationAttributionExplainer(AttributionExplainer):
 
         decompositions = [GranularityLevel.get_decomposition(t, self.granularity_level) for t in model_inputs]
         return [
-            AttributionOutput(
-                c, [self.tokenizer.decode(token_ids, skip_special_tokens=True) for token_ids in d[0]]
-            )
+            AttributionOutput(c, [self.tokenizer.decode(token_ids, skip_special_tokens=True) for token_ids in d[0]])
             for c, d in zip(contributions, decompositions, strict=True)
         ]
 
@@ -248,43 +238,7 @@ class GenerationAttributionExplainer(AttributionExplainer):
     Attribution explainer for generation models
     """
 
-    def __init__(
-        self,
-        tokenizer: PreTrainedTokenizer,
-        inference_wrapper: GenerationInferenceWrapper,
-        perturbator: Perturbator | None = None,
-        aggregator: Aggregator | None = None,
-        usegradient: bool = False,
-        device: torch.device | None = None,
-        granularity_level: GranularityLevel = GranularityLevel.DEFAULT,
-    ):
-        """
-        Initializes the GenerationAttributionExplainer.
-
-        Args:
-            inference_wrapper (GenerationInferenceWrapper): A wrapper around a generative model.
-            perturbator (Perturbator, optional): Instance to generate perturbations for inputs.
-            aggregator (Aggregator, optional): Instance to aggregate computed scores.
-            usegradient (bool): If True, use gradient-based methods.
-            device (torch.device, optional): The device for computation.
-            granularity_level (GranularityLevel): Level of detail for the explanation.
-
-        Raises:
-            ValueError: If inference_wrapper is not an instance of GenerationInferenceWrapper.
-        """
-        if not isinstance(inference_wrapper, GenerationInferenceWrapper):
-            raise ValueError(
-                f"Expected inference_wrapper to be of type GenerationInferenceWrapper, got {type(inference_wrapper)}"
-            )
-        super().__init__(
-            tokenizer=tokenizer,
-            inference_wrapper=inference_wrapper,
-            perturbator=perturbator,
-            aggregator=aggregator,
-            usegradient=usegradient,
-            device=device,
-            granularity_level=granularity_level,
-        )
+    _associated_inference_wrapper = GenerationInferenceWrapper
 
     def process_targets(self, targets):
         """
@@ -349,13 +303,15 @@ class GenerationAttributionExplainer(AttributionExplainer):
             targets = self.process_targets(targets)
             model_inputs_to_explain = []
             for model_input, target in zip(model_inputs, targets, strict=True):
-                model_input = self.inference_wrapper.embed(model_input)
+                embed_model_input = self.inference_wrapper.embed(model_input)
                 with torch.no_grad():
                     target_embed = self.inference_wrapper.model.get_input_embeddings()(target)
                 model_inputs_to_explain.append(
                     {
-                        "inputs_embeds": torch.cat([model_input["inputs_embeds"], target_embed], dim=1),
-                        "attention_mask": torch.cat([model_input["attention_mask"], torch.ones_like(target)], dim=1),
+                        "inputs_embeds": torch.cat([embed_model_input["inputs_embeds"], target_embed], dim=1),
+                        "attention_mask": torch.cat(
+                            [embed_model_input["attention_mask"], torch.ones_like(target)], dim=1
+                        ),
                     }
                 )
 
@@ -386,8 +342,6 @@ class GenerationAttributionExplainer(AttributionExplainer):
         ]
         # Create and return AttributionOutput objects with the contributions and decoded token sequences:
         return [
-            AttributionOutput(
-                c, [self.tokenizer.decode(token_ids, skip_special_tokens=True) for token_ids in d[0]]
-            )
+            AttributionOutput(c, [self.tokenizer.decode(token_ids, skip_special_tokens=True) for token_ids in d[0]])
             for c, d in zip(contributions, decompositions, strict=True)
         ]

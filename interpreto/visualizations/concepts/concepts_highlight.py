@@ -4,10 +4,10 @@ Base classes for concepts visualizations
 
 from __future__ import annotations
 
-from typing import List, Tuple
 import json
 
 from interpreto.attributions.base import AttributionOutput
+
 from ..base import WordHighlightVisualization, tensor_to_list
 
 
@@ -19,8 +19,8 @@ class ConceptHighlightVisualization(WordHighlightVisualization):
     def __init__(
         self,
         attribution_output: AttributionOutput,
-        concepts_colors: List[Tuple],
-        concepts_names: List[str] = None,
+        concepts_colors: list[tuple],
+        concepts_names: list[str] = None,
         topk: int = 3,
         normalize: bool = True,
         highlight_border: bool = False,
@@ -105,10 +105,10 @@ class ConceptHighlightVisualization(WordHighlightVisualization):
 
     def make_concepts_descriptions(
         self,
-        concepts_colors: List[Tuple],
-        concepts_names: List[str],
-        min_values: List[float],
-        max_values: List[float],
+        concepts_colors: list[tuple],
+        concepts_names: list[str],
+        min_values: list[float],
+        max_values: list[float],
     ):
         """
         Create a structure describing the concepts
@@ -132,7 +132,9 @@ class ConceptHighlightVisualization(WordHighlightVisualization):
                 "min": min_value,
                 "max": max_value,
             }
-            for color, name, min_value, max_value in zip(concepts_colors, concepts_names, min_values, max_values)
+            for color, name, min_value, max_value in zip(
+                concepts_colors, concepts_names, min_values, max_values, strict=False
+            )
         ]
 
     def set_concept_name(self, concept_id: int, name: str):
@@ -145,7 +147,7 @@ class ConceptHighlightVisualization(WordHighlightVisualization):
         """
         self.data["concepts"][concept_id]["name"] = name
 
-    def set_concept_color(self, concept_id: int, color: Tuple):
+    def set_concept_color(self, concept_id: int, color: tuple):
         """
         Set the color of a concept
 

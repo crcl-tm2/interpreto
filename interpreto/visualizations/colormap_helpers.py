@@ -4,14 +4,12 @@ Helper functions for generating colormaps for concepts.
 
 from __future__ import annotations
 
-from typing import List
-
+import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import hsv_to_rgb
-import matplotlib.pyplot as plt
 
 
-def make_random_colors(nb_concepts: int) -> List[List[float]]:
+def make_random_colors(nb_concepts: int) -> list[list[float]]:
     """
     Generate random colors for the concepts.
 
@@ -31,7 +29,7 @@ def make_random_colors(nb_concepts: int) -> List[List[float]]:
     return colors
 
 
-def display_color_gradients(colors_list: List[dict]):
+def display_color_gradients(colors_list: list[dict]):
     """
     Display a gradient for each color in the list.
 

@@ -34,92 +34,85 @@ import torch
 from transformers import PreTrainedTokenizer
 
 from interpreto.attributions.aggregations.base import MaskwiseMeanAggregator
-from interpreto.attributions.base import ClassificationAttributionExplainer, GenerationAttributionExplainer
+from interpreto.attributions.base import (
+    AttributionExplainer,
+    ClassificationAttributionExplainer,
+    GenerationAttributionExplainer,
+)
 from interpreto.attributions.perturbations.base import OcclusionPerturbator
 from interpreto.commons.granularity import GranularityLevel
-from interpreto.commons.model_wrapping.classification_inference_wrapper import ClassificationInferenceWrapper
-from interpreto.commons.model_wrapping.generation_inference_wrapper import GenerationInferenceWrapper
 
 
-class ClassificationOcclusionExplainer(ClassificationAttributionExplainer):
-    def __init__(
-        self,
-        model: Any,
-        batch_size: int,
-        tokenizer: PreTrainedTokenizer,
-        granularity_level: GranularityLevel = GranularityLevel.WORD,
-        device: torch.device | None = None,
-    ):
-
-        replace_token = "[REPLACE]"
-        if replace_token not in tokenizer.get_vocab():
-            tokenizer.add_tokens([replace_token])
-            model.resize_token_embeddings(len(tokenizer))
-        replace_token_id = tokenizer.convert_tokens_to_ids(replace_token)
-
-        super().__init__(
-            tokenizer=tokenizer,
-            inference_wrapper=ClassificationInferenceWrapper(model, batch_size=batch_size, device=device),
-            perturbator=OcclusionPerturbator(granularity_level=granularity_level, replace_token_id=replace_token_id),
-            aggregator=MaskwiseMeanAggregator(),
-            usegradient=False,
-            granularity_level=granularity_level,
-        )
-
-
-class GenerationOcclusionExplainer(GenerationAttributionExplainer):
-    def __init__(
-        self,
-        model: Any,
-        batch_size: int,
-        tokenizer: PreTrainedTokenizer,
-        granularity_level: GranularityLevel = GranularityLevel.WORD,
-        device: torch.device | None = None,
-    ):
-        replace_token = "[REPLACE]"
-        if replace_token not in tokenizer.get_vocab():
-            tokenizer.add_tokens([replace_token])
-            model.resize_token_embeddings(len(tokenizer))
-        replace_token_id = tokenizer.convert_tokens_to_ids(replace_token)
-
-        super().__init__(
-            tokenizer=tokenizer,
-            inference_wrapper=GenerationInferenceWrapper(model, batch_size=batch_size, device=device),
-            perturbator=OcclusionPerturbator(granularity_level=granularity_level, replace_token_id=replace_token_id),
-            aggregator=MaskwiseMeanAggregator(),
-            usegradient=False,
-            granularity_level=granularity_level,
-        )
-
-
-class OcclusionExplainer:
-    def __new__(
-        cls,
-        model: Any,
-        batch_size: int,
-        tokenizer: PreTrainedTokenizer,
-        granularity_level: GranularityLevel = GranularityLevel.WORD,
-        device: torch.device | None = None,
-    ):
-        if model.__class__.__name__.endswith(
-            "ForSequenceClassification"
-        ):  # TODO: est ce que on supporte aussi d'autre modele que huggingface pour la classification?
-            return ClassificationOcclusionExplainer(
-                model=model,
-                batch_size=batch_size,
-                tokenizer=tokenizer,
-                granularity_level=granularity_level,
-                device=device,
-            )
+class OcclusionExplainer(AttributionExplainer):
+    def __new__(cls, model, **kwargs):
+        if cls != OcclusionExplainer:
+            return super().__new__(cls)
+        if model.__class__.__name__.endswith("ForSequenceClassification"):
+            return ClassificationOcclusionExplainer.__new__(ClassificationOcclusionExplainer, model, **kwargs)
         elif model.__class__.__name__.endswith("ForCausalLM"):
-            return GenerationOcclusionExplainer(
-                model=model,
-                batch_size=batch_size,
-                tokenizer=tokenizer,
-                granularity_level=granularity_level,
-                device=device,
-            )
-        else:
-            raise NotImplementedError(
-                "Model type not supported for OcclusionExplainer. Use an AutoModelForSequenceClassification or AutoModelForCausalLM model."
-            )
+            return GenerationOcclusionExplainer.__new__(GenerationOcclusionExplainer, model, **kwargs)
+        raise NotImplementedError(
+            "Model type not supported for OcclusionExplainer. Use an AutoModelForSequenceClassification or AutoModelForCausalLM model."
+        )
+
+    def __init__(
+        self,
+        model: Any,
+        batch_size: int,
+        tokenizer: PreTrainedTokenizer,
+        granularity_level: GranularityLevel = GranularityLevel.WORD,
+        device: torch.device | None = None,
+    ):
+        replace_token = "[REPLACE]"
+        if replace_token not in tokenizer.get_vocab():
+            tokenizer.add_tokens([replace_token])
+            model.resize_token_embeddings(len(tokenizer))
+        replace_token_id = tokenizer.convert_tokens_to_ids(replace_token)
+
+        super().__init__(
+            tokenizer=tokenizer,
+            inference_wrapper=self._associated_inference_wrapper(model, batch_size=batch_size, device=device),
+            perturbator=OcclusionPerturbator(granularity_level=granularity_level, replace_token_id=replace_token_id),  # type: ignore
+            aggregator=MaskwiseMeanAggregator(),
+            usegradient=False,
+            granularity_level=granularity_level,
+        )
+
+
+class ClassificationOcclusionExplainer(OcclusionExplainer, ClassificationAttributionExplainer): ...
+
+
+class GenerationOcclusionExplainer(OcclusionExplainer, GenerationAttributionExplainer): ...
+
+
+# class OcclusionExplainerFactory:
+#     def __new__(
+#         cls,
+#         model: Any,
+#         batch_size: int,
+#         tokenizer: PreTrainedTokenizer,
+#         granularity_level: GranularityLevel = GranularityLevel.WORD,
+#         device: torch.device | None = None,
+#     ):
+#         if model.__class__.__name__.endswith(
+#             "ForSequenceClassification"
+#         ):  # TODO: est ce que on supporte aussi d'autre modele que huggingface pour la classification?
+#             return ClassificationOcclusionExplainer(
+#                 model=model,
+#                 batch_size=batch_size,
+#                 tokenizer=tokenizer,
+#                 granularity_level=granularity_level,
+#                 device=device,
+#             )
+#         elif model.__class__.__name__.endswith("ForCausalLM"):
+#             return GenerationOcclusionExplainer(
+#                 model=model,
+#                 batch_size=batch_size,
+#                 tokenizer=tokenizer,
+#                 granularity_level=granularity_level,
+#                 device=device,
+#             )
+#         else:
+#             raise NotImplementedError(
+#                 "Model type not supported for OcclusionExplainer. Use an AutoModelForSequenceClassification or AutoModelForCausalLM model."
+#             )

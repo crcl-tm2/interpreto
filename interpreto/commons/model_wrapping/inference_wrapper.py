@@ -413,3 +413,96 @@ class InferenceWrapper:
             "When passing a sequence or a generator of inputs to the inference wrapper, please consider giving sequence of perturbations of single elements instead of batches (shape should be (1, n_perturbations, ...))"
         )
         return self._reshape_inputs(tensor[0], non_batch_dims=non_batch_dims)
+
+    def get_targeted_logits(
+        self, model_inputs: Any, targets: torch.Tensor
+    ) -> torch.Tensor | Generator[torch.Tensor, None, None]:
+        raise NotImplementedError(
+            f"get_targeted_logits not implemented for {self.__class__.__name__}. Implement this method is necessary to use gradient-based methods."
+        )
+
+    @singledispatchmethod
+    def get_gradients(self, model_inputs, targets):
+        """
+        Get the gradients of the logits associated to a given target with respect to the inputs.
+
+        Args:
+            model_inputs (Any): input mappings to be passed to the model or iterable of input mappings.
+            targets (torch.Tensor): target tensor to be used to get the logits.
+            targets shape should be either (t) or (n, t) where n is the batch size and t is the number of targets for which we want the logits.
+
+        Raises:
+            NotImplementedError: If the input type is not supported.
+
+        Returns:
+            torch.Tensor|Generator[torch.Tensor, None, None]: gradients of the logits.
+
+        Example:
+            Single input given as a mapping
+                >>> model_inputs = {"input_ids": torch.tensor([[1, 2, 3], [4, 5, 6]])}
+                >>> targets = torch.tensor([1, 2])
+                >>> gradients = wrapper.get_gradients(model_inputs, targets)
+                >>> print(gradients)
+            Sequence of inputs given as an iterable of mappings (generator, list, etc.)
+                >>> model_inputs = [{"input_ids": torch.tensor([[1, 2, 3], [4, 5, 6]])},
+                ...                 {"input_ids": torch.tensor([[7, 8, 9], [10, 11, 12]])}]
+                >>> targets = torch.tensor([[1, 2], [3, 4]])
+                >>> gradients = wrapper.get_gradients(model_inputs, targets)
+                >>> for grad in gradients:
+                ...     print(grad)
+        """
+        raise NotImplementedError(
+            f"type {type(model_inputs)} not supported for method get_gradients in class {self.__class__.__name__}"
+        )
+
+    @get_gradients.register(MutableMapping)
+    def _get_gradient_from_mapping(self, model_inputs: MutableMapping[str, torch.Tensor], targets: torch.Tensor):
+        """
+        Get the gradients of the logits associated to a given target with respect to the inputs.
+        registered for MutableMapping type.
+        This method uses torch.autograd.functional.jacobian to compute the gradients.
+
+        Args:
+            model_inputs (Iterable[MutableMapping[str, torch.Tensor]]): input mapping to be passed to the model
+            targets (torch.Tensor): target tensor to be used to get the logits.
+
+        Returns:
+            torch.Tensor: gradient of the output of the model with respect to the given inputs
+        """
+        model_inputs = self.embed(model_inputs)
+        inputs_embeds = model_inputs["inputs_embeds"]
+
+        def get_score(inputs_embeds: torch.Tensor):
+            return self.get_targeted_logits(
+                {"inputs_embeds": inputs_embeds, "attention_mask": model_inputs["attention_mask"]}, targets
+            )
+
+        # Compute gradient of the selected logits:
+        grad_matrix = torch.autograd.functional.jacobian(get_score, inputs_embeds)  # (n, lt, n, l, d)
+        grad_matrix = grad_matrix.abs().mean(dim=-1)  # (n, lt, n, l)  # average over the embedding dimension
+        n = grad_matrix.shape[0]  # number of examples in the batch
+        diag_grad_matrix = grad_matrix[
+            torch.arange(n), :, torch.arange(n), :
+        ]  # (n, lt, l) # remove the gradients of the other examples
+
+        return diag_grad_matrix
+
+    @get_gradients.register(Iterable)
+    def _get_gradient_from_iterable(
+        self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]], targets: Iterable[torch.Tensor]
+    ) -> Iterable[torch.Tensor]:
+        """
+        Get the gradients of the logits associated to a given target with respect to the inputs.
+        registered for Iterable type.
+
+        Args:
+            model_inputs (Iterable[MutableMapping[str, torch.Tensor]]): iterable input mappings to be passed to the model
+            targets (torch.Tensor): target tensor to be used to get the logits.
+
+        Yields:
+            torch.Tensor: gradients of the logits associated to the given target with respect to the inputs.
+        """
+        # TODO : see if we can do that in a more efficient way
+        yield from (
+            self.get_gradients(model_input, target) for model_input, target in zip(model_inputs, targets, strict=True)
+        )

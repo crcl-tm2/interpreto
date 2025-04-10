@@ -4,11 +4,10 @@ Base classes for attributions visualizations
 
 from __future__ import annotations
 
-from typing import List, Tuple
 import json
 
-from interpreto.visualizations.base import WordHighlightVisualization, tensor_to_list
 from interpreto.attributions.base import AttributionOutput
+from interpreto.visualizations.base import WordHighlightVisualization, tensor_to_list
 
 
 class SingleClassAttributionVisualization(WordHighlightVisualization):
@@ -19,7 +18,7 @@ class SingleClassAttributionVisualization(WordHighlightVisualization):
     def __init__(
         self,
         attribution_output_list: list[AttributionOutput],
-        color: Tuple = (1, 0.64, 0),
+        color: tuple = (1, 0.64, 0),
         normalize: bool = True,
         highlight_border: bool = False,
         css: str = None,
@@ -64,7 +63,7 @@ class SingleClassAttributionVisualization(WordHighlightVisualization):
 
     def make_classes_descriptions(
         self,
-        color: Tuple,
+        color: tuple,
         name: str = "None",
         min_value: float = 0,
         max_value: float = 1,
@@ -116,8 +115,8 @@ class MultiClassAttributionVisualization(WordHighlightVisualization):
     def __init__(
         self,
         attribution_output_list: list[AttributionOutput],
-        class_colors: List[Tuple],
-        class_names: List[str] = None,
+        class_colors: list[tuple],
+        class_names: list[str] = None,
         normalize: bool = True,
         highlight_border: bool = False,
         css: str = None,
@@ -168,10 +167,10 @@ class MultiClassAttributionVisualization(WordHighlightVisualization):
 
     def make_classes_descriptions(
         self,
-        class_colors: List[Tuple],
-        class_names: List[str],
-        min_values: List[float],
-        max_values: List[float],
+        class_colors: list[tuple],
+        class_names: list[str],
+        min_values: list[float],
+        max_values: list[float],
     ):
         """
         Create a structure describing the classes
@@ -193,7 +192,9 @@ class MultiClassAttributionVisualization(WordHighlightVisualization):
                 "min": min_value,
                 "max": max_value,
             }
-            for color, name, min_value, max_value in zip(class_colors, class_names, min_values, max_values)
+            for color, name, min_value, max_value in zip(
+                class_colors, class_names, min_values, max_values, strict=False
+            )
         ]
 
     def build_html(self):
@@ -222,7 +223,7 @@ class GenerationAttributionVisualization(WordHighlightVisualization):
     def __init__(
         self,
         attribution_output: AttributionOutput,
-        color: Tuple = (1, 0.64, 0),
+        color: tuple = (1, 0.64, 0),
         topk: int = 3,
         normalize: bool = True,
         highlight_border: bool = False,
@@ -284,7 +285,7 @@ class GenerationAttributionVisualization(WordHighlightVisualization):
 
     def make_classes_descriptions(
         self,
-        color: Tuple,
+        color: tuple,
         name: str = "None",
         min_value: float = 0.0,
         max_value: float = 1.0,

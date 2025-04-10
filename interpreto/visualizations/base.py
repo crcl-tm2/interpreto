@@ -4,11 +4,10 @@ Base classes for visualizations used in the lib
 
 from __future__ import annotations
 
-from typing import List
-
-from abc import ABC, abstractmethod
 import os
 import uuid
+from abc import ABC, abstractmethod
+
 import torch
 from IPython.display import HTML, display
 
@@ -33,11 +32,11 @@ class WordHighlightVisualization(ABC):
 
     def adapt_data(
         self,
-        inputs_sentences: List[List[str]],
-        inputs_attributions: List[torch.Tensor],
-        outputs_words: List[str],
+        inputs_sentences: list[list[str]],
+        inputs_attributions: list[torch.Tensor],
+        outputs_words: list[str],
         outputs_attributions: torch.Tensor,
-        concepts_descriptions: List[dict],
+        concepts_descriptions: list[dict],
     ):
         """
         Adapt the data to the expected format for the visualization
@@ -57,7 +56,7 @@ class WordHighlightVisualization(ABC):
             "concepts": concepts_descriptions,
             "inputs": [
                 {"words": words, "attributions": attributions}
-                for words, attributions in zip(inputs_sentences, inputs_attributions)
+                for words, attributions in zip(inputs_sentences, inputs_attributions, strict=False)
             ],
             "outputs": {"words": outputs_words, "attributions": outputs_attributions},
         }
@@ -78,11 +77,11 @@ class WordHighlightVisualization(ABC):
         # Load the JS and CSS files
         current_dir = os.path.dirname(os.path.abspath(__file__))
         js_file_path = os.path.join(current_dir, "visualisation.js")
-        with open(js_file_path, "r", encoding="utf-8") as file:
+        with open(js_file_path, encoding="utf-8") as file:
             js_content = file.read()
 
         css_file_path = os.path.join(current_dir, "visualisation.css")
-        with open(css_file_path, "r", encoding="utf-8") as file:
+        with open(css_file_path, encoding="utf-8") as file:
             css = file.read()
 
         html = f"""

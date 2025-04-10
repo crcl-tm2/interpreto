@@ -16,6 +16,7 @@ def enumerate_generator(generator):
         yield index, elem
         index += 1
 
+
 class SubGenerator(Iterator):
     def __init__(self, main_generator, position: int | slice):
         self.main_generator = main_generator

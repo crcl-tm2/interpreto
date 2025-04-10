@@ -1,14 +1,14 @@
 import os
-from matplotlib import pyplot as plt
 
-import torch
 import matplotlib.colors as mcolors
+import torch
+from matplotlib import pyplot as plt
 
 from interpreto.attributions.base import AttributionOutput
 from interpreto.visualizations.attributions.classification_highlight import (
-    SingleClassAttributionVisualization,
-    MultiClassAttributionVisualization,
     GenerationAttributionVisualization,
+    MultiClassAttributionVisualization,
+    SingleClassAttributionVisualization,
 )
 from interpreto.visualizations.concepts.concepts_highlight import (
     ConceptHighlightVisualization,
@@ -25,9 +25,7 @@ def test_attribution_monoclass():
             attributions = torch.rand(len(sentence), nb_classes)  # (l, c)
             yield AttributionOutput(elements=sentence, attributions=attributions)
 
-    single_class_classification_output = list(
-        gen_attributions_outputs(inputs_sentences)
-    )
+    single_class_classification_output = list(gen_attributions_outputs(inputs_sentences))
     viz = SingleClassAttributionVisualization(
         attribution_output_list=single_class_classification_output,
     )
@@ -113,9 +111,7 @@ def test_concepts():
     nb_concepts = 9
 
     def make_attributions_outputs(inputs, outputs):
-        attributions = torch.rand(
-            len(inputs) + len(outputs), len(outputs), nb_concepts
-        )  # (l, l_g, c)
+        attributions = torch.rand(len(inputs) + len(outputs), len(outputs), nb_concepts)  # (l, l_g, c)
         return AttributionOutput(elements=inputs + outputs, attributions=attributions)
 
     generation_output = make_attributions_outputs(inputs_sentence, outputs_sentence)
