@@ -198,6 +198,8 @@ class ClassificationAttributionExplainer(AttributionExplainer):
         self.inference_wrapper.to(self.device)
         model_inputs = self.process_model_inputs(model_inputs)
 
+        decompositions = [GranularityLevel.get_decomposition(t, self.granularity_level) for t in model_inputs]
+
         # see if deepcopy is necessary
         logits = torch.stack(list(self.inference_wrapper.get_logits(deepcopy(model_inputs))))
 
@@ -214,10 +216,6 @@ class ClassificationAttributionExplainer(AttributionExplainer):
             pert_per_input_generator.get_subgenerator(0), targets
         )
 
-        for element in target_logits:
-            print(element)
-            exit()
-
         scores = [logits[index] - target_logit for index, target_logit in enumerate_generator(target_logits)]
 
         masks = list(pert_per_input_generator.get_subgenerator(1))
@@ -226,7 +224,6 @@ class ClassificationAttributionExplainer(AttributionExplainer):
             self.aggregator(score.unsqueeze(0), mask).squeeze(0) for score, mask in zip(scores, masks, strict=True)
         ]
 
-        decompositions = [GranularityLevel.get_decomposition(t, self.granularity_level) for t in model_inputs]
         return [
             AttributionOutput(c, [self.tokenizer.decode(token_ids, skip_special_tokens=True) for token_ids in d[0]])
             for c, d in zip(contributions, decompositions, strict=True)
@@ -295,6 +292,11 @@ class GenerationAttributionExplainer(AttributionExplainer):
         self.inference_wrapper.to(self.device)
         model_inputs = self.process_model_inputs(model_inputs)
 
+        # Decompose each input for the desired granularity level.
+        decompositions = [
+            GranularityLevel.get_decomposition(t, self.granularity_level) for t in model_inputs_to_explain
+        ]
+
         if targets is None:
             model_inputs_to_explain, targets = self.inference_wrapper.get_inputs_to_explain_and_targets(
                 model_inputs, **generation_kwargs
@@ -336,10 +338,6 @@ class GenerationAttributionExplainer(AttributionExplainer):
             self.aggregator(score.unsqueeze(0), mask).squeeze(0) for score, mask in zip(scores, masks, strict=True)
         ]
 
-        # Decompose each input for the desired granularity level.
-        decompositions = [
-            GranularityLevel.get_decomposition(t, self.granularity_level) for t in model_inputs_to_explain
-        ]
         # Create and return AttributionOutput objects with the contributions and decoded token sequences:
         return [
             AttributionOutput(c, [self.tokenizer.decode(token_ids, skip_special_tokens=True) for token_ids in d[0]])
