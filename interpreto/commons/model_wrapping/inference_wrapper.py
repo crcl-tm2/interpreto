@@ -313,8 +313,11 @@ class InferenceWrapper:
 
         # If no pad token id has been given
         if self.pad_token_id is None:
+            # raise ValueError(
+            #     "Asking to pad but the tokenizer does not have a padding token. Please select a token to use as pad_token (tokenizer.pad_token = tokenizer.eos_token e.g.) or add a new pad token via tokenizer.add_special_tokens({'pad_token': '[PAD]'})"
+            # )
             raise ValueError(
-                "Asking to pad but the tokenizer does not have a padding token. Please select a token to use as pad_token (tokenizer.pad_token = tokenizer.eos_token e.g.) or add a new pad token via tokenizer.add_special_tokens({'pad_token': '[PAD]'})"
+                "Padding token is not set in the inference wrapper. Please assign it explicitly by setting: inference_wrapper.pad_token_id = tokenizer.pad_token_id"
             )
 
         result_buffer: torch.Tensor | None = None
