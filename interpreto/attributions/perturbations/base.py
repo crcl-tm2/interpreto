@@ -122,7 +122,7 @@ class Perturbator:
     def _perturb_iterable(
         self, inputs: Iterable[MutableMapping[str, torch.Tensor]]
     ) -> list[tuple[MutableMapping[str, torch.Tensor], torch.Tensor | None]]:
-        return list(itertools.chain.from_iterable(self._perturb_mapping(inputs) for inputs in inputs))
+        return list(itertools.chain.from_iterable(self._perturb_mapping(item) for item in inputs))
 
     def perturb_ids(
         self, model_inputs: MutableMapping

@@ -59,13 +59,13 @@ class ClassificationInferenceWrapper(InferenceWrapper):
         Returns:
             torch.Tensor: processed target tensor
         """
-        if target.dim() == 0:
-            target = target.view(1, 1, 1)
-        if target.dim() == 1:
-            target = target.view(1, 1, -1)
-        if target.shape[0]==1:
-            target = target.expand(*batch_dims, -1)
-        return target
+        if target.dim() in (0, 1):
+            target = target.view(*[1 for _ in batch_dims], -1)
+        if target.dim() == 2:
+            n, t = target.shape
+            assert n in (1, batch_dims[0]), f"target batch size {n} should be either 1 or logits batch size ({batch_dims[0]})"
+            target = target.view(n, *[1 for _ in batch_dims[1:]], t)
+        return target.expand(*batch_dims, -1)
         # match target.dim():
         #     case 0:
         #         # if target is a scalar, we add a (t) dimension and reprocess it
@@ -228,6 +228,6 @@ class ClassificationInferenceWrapper(InferenceWrapper):
         # TODO : refaire ça proprement
         if targets.dim() in (0, 1):
             targets = targets.view(1, -1)
-        single_index = int(targets.shape[0] > 1)
+        multiple_index = int(targets.shape[0] > 1)
         for index, logits in enumerate_generator(predictions):
-            yield logits.gather(-1, self._process_target(targets[single_index and index], logits.shape[:-1]))
+            yield logits.gather(-1, self._process_target(targets[multiple_index and index], logits.shape[:-1]))
