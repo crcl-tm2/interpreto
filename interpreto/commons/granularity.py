@@ -146,6 +146,12 @@ class GranularityLevel(Enum):
                     )
                 ]
             case GranularityLevel.WORD:
+                if not hasattr(tokens_ids, "word_ids") or not callable(tokens_ids.word_ids):
+                    raise ValueError(
+                        "This function requires tokenization with a fast tokenizer (i.e., tokenizer.is_fast=True), "
+                        "because it relies on `.word_ids()` to associate tokens with words. "
+                        "Please either use a fast tokenizer or switch to token-level granularity instead of word-level granularity."
+                    )
                 # TODO : refaire ça
                 res = []
                 for index, token_ids in enumerate(tokens_ids["input_ids"]):
