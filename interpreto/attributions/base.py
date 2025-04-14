@@ -73,7 +73,7 @@ class AttributionOutput:
                 - Shapes depend on the task:
                     - Classification (single class): `(l,)`
                     - Classification (all classes): `(l, c)`, where `c` is the number of classes.
-                    - Generative models: `(l, l_g)`, where `l_g` is the length of the generated part.
+                    - Generative models: `(l_g, l)`, where `l_g` is the length of the generated part.
                         - For non-generated elements, there are `l_g` attribution scores.
                         - For generated elements, scores are zero for previously generated tokens.
                     - Token classification: `(l, l_t)`, where `l_t` is the number of token classes. When the tokens are disturbed, l = l_t.
@@ -333,9 +333,10 @@ class GenerationAttributionExplainer(AttributionExplainer):
             for model_inputs_to_explain_text in model_inputs_to_explain_text
         ]
 
-        # print("model_inputs_to_explain", model_inputs_to_explain)
-
         # Decompose each input for the desired granularity level.
+        if self.granularity_level == GranularityLevel.TOKEN:
+            self.granularity_level = GranularityLevel.ALL_TOKENS  # equal for generative models
+
         decompositions = [
             GranularityLevel.get_decomposition(t, self.granularity_level) for t in model_inputs_to_explain
         ]

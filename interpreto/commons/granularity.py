@@ -63,6 +63,12 @@ class GranularityLevel(Enum):
 
     @staticmethod
     def __word_assoc_matrix(tokens_ids: Mapping[str, torch.Tensor]):
+        if not hasattr(tokens_ids, "word_ids") or not callable(tokens_ids.word_ids):
+            raise ValueError(
+                "This function requires tokenization with a fast tokenizer (i.e., tokenizer.is_fast=True), "
+                "because it relies on `.word_ids()` to associate tokens with words. "
+                "Please either use a fast tokenizer or switch to token-level granularity instead of word-level granularity."
+            )
         n, l_p = tokens_ids["input_ids"].shape
         l_t = GranularityLevel.get_length(tokens_ids, GranularityLevel.WORD).max()
         index_tensor = torch.nn.utils.rnn.pad_sequence(
