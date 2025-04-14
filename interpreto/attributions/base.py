@@ -308,10 +308,9 @@ class GenerationAttributionExplainer(AttributionExplainer):
         self.inference_wrapper.to(self.device)
         model_inputs = self.process_model_inputs(model_inputs)
 
-        # Decompose each input for the desired granularity level.
-        decompositions = [
-            GranularityLevel.get_decomposition(t, self.granularity_level) for t in model_inputs_to_explain
-        ]
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.inference_wrapper.pad_token_id = self.tokenizer.pad_token_id
 
         if targets is None:
             model_inputs_to_explain, targets = self.inference_wrapper.get_inputs_to_explain_and_targets(
@@ -332,11 +331,39 @@ class GenerationAttributionExplainer(AttributionExplainer):
                         ),
                     }
                 )
+        print("targets", targets)
+        # Add offsets mapping:
+        model_inputs_to_explain_text = [
+            self.tokenizer.decode(model_input_to_explain["input_ids"][0])
+            for model_input_to_explain in model_inputs_to_explain
+        ]
+        model_inputs_to_explain = [
+            self.tokenizer(model_inputs_to_explain_text, return_tensors="pt", return_offsets_mapping=True)
+            for model_inputs_to_explain_text in model_inputs_to_explain_text
+        ]
+
+        # print("model_inputs_to_explain", model_inputs_to_explain)
+
+        # Decompose each input for the desired granularity level.
+        decompositions = [
+            GranularityLevel.get_decomposition(t, self.granularity_level) for t in model_inputs_to_explain
+        ]
 
         # Generate perturbations for each processed input.
-        pert_per_input_generator = PersistentTupleGeneratorWrapper(
-            self.perturbator.perturb(model_input) for model_input in model_inputs_to_explain
-        )
+        # pert_per_input_generator = PersistentTupleGeneratorWrapper(
+        #     self.perturbator.perturb(model_input) for model_input in model_inputs_to_explain
+        # )
+        # buffer = list(pert_per_input_generator.generator)
+        # print("Buffer:", buffer)
+
+        # Pour chaque model_input, consommez toutes les perturbations et aplatissez le tout en une liste unique
+        all_perturbations = []
+        for model_input in model_inputs_to_explain:
+            # Ici, self.perturbator.perturb(model_input) doit renvoyer une liste (ou itérable) de tuples (mapping, mask)
+            perturbations = list(self.perturbator.perturb(model_input))
+            all_perturbations.extend(perturbations)
+        pert_per_input_generator = PersistentTupleGeneratorWrapper(all_perturbations)
+
         if self.usegradient:
             # Compute gradients for each perturbed input.
             scores = list(self.inference_wrapper.get_gradients(pert_per_input_generator.get_subgenerator(0), targets))

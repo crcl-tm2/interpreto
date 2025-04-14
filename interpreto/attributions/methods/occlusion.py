@@ -49,7 +49,7 @@ class OcclusionExplainer(AttributionExplainer):
             return super().__new__(cls)
         if model.__class__.__name__.endswith("ForSequenceClassification"):
             return ClassificationOcclusionExplainer.__new__(ClassificationOcclusionExplainer, model, **kwargs)
-        elif model.__class__.__name__.endswith("ForCausalLM"):
+        elif model.__class__.__name__.endswith("ForCausalLM") or model.__class__.__name__.endswith("LMHeadModel"):
             return GenerationOcclusionExplainer.__new__(GenerationOcclusionExplainer, model, **kwargs)
         raise NotImplementedError(
             "Model type not supported for OcclusionExplainer. Use an AutoModelForSequenceClassification or AutoModelForCausalLM model."
