@@ -45,7 +45,7 @@ class ClassificationInferenceWrapper(InferenceWrapper):
     # Padding is done on the right for classification tasks
     PAD_LEFT = False
 
-    def _process_target(self, target: torch.Tensor, logits: torch.Tensor) -> torch.Tensor:
+    def _process_target(self, target: torch.Tensor, batch_dims:tuple[int]|torch.Size) -> torch.Tensor:
         """
         Process the target tensor to match the shape of the logits tensor.
 
@@ -59,22 +59,28 @@ class ClassificationInferenceWrapper(InferenceWrapper):
         Returns:
             torch.Tensor: processed target tensor
         """
-        # TODO : find another way to do that
-        match target.dim():
-            case 0:
-                # if target is a scalar, we add a (t) dimension and reprocess it
-                return self._process_target(target.unsqueeze(0), logits)
-            case 1:  # (t)
-                # if target tensor count only one dimension, we repeat it along the batch dimension
-                index_shape = list(logits.shape)
-                index_shape[-1] = target.shape[0]
-                return target.expand(index_shape)
-            case 2:  # (n, t)
-                if target.shape[0] == 1:
-                    # if target tensor batch dimension is one, we repeat it
-                    return target.expand(logits.shape[0], -1)
-                return target
-        raise ValueError(f"Target tensor should have 0, 1 or 2 dimensions, but got {target.dim()} dimensions")
+        if target.dim() == 0:
+            target = target.view(1, 1, 1)
+        if target.dim() == 1:
+            target = target.view(1, 1, -1)
+        if target.shape[0]==1:
+            target = target.expand(*batch_dims, -1)
+        return target
+        # match target.dim():
+        #     case 0:
+        #         # if target is a scalar, we add a (t) dimension and reprocess it
+        #         return self._process_target(target.unsqueeze(0), logits)
+        #     case 1:  # (t)
+        #         # if target tensor count only one dimension, we repeat it along the batch dimension
+        #         index_shape = list(logits.shape)
+        #         index_shape[-1] = target.shape[0]
+        #         return target.expand(index_shape)
+        #     case 2:  # (n, t)
+        #         if target.shape[0] == 1:
+        #             # if target tensor batch dimension is one, we repeat it
+        #             return target.expand(logits.shape[0], -1)
+        #         return target
+        # raise ValueError(f"Target tensor should have 0, 1 or 2 dimensions, but got {target.dim()} dimensions")
 
     @singledispatchmethod
     def get_targets(self, model_inputs: Any) -> torch.Tensor | Generator[torch.Tensor, None, None]:
@@ -199,7 +205,7 @@ class ClassificationInferenceWrapper(InferenceWrapper):
             torch.Tensor: logits given by the model for the given targets.
         """
         logits = self._get_logits_from_mapping(model_inputs)
-        targets = self._process_target(targets, logits)
+        targets = self._process_target(targets, logits.shape[:-1])
         return logits.gather(-1, targets)
 
     @get_targeted_logits.register(Iterable)
@@ -224,4 +230,4 @@ class ClassificationInferenceWrapper(InferenceWrapper):
             targets = targets.view(1, -1)
         single_index = int(targets.shape[0] > 1)
         for index, logits in enumerate_generator(predictions):
-            yield logits.gather(-1, targets[single_index and index].unsqueeze(0).expand(logits.shape[0], -1))
+            yield logits.gather(-1, self._process_target(targets[single_index and index], logits.shape[:-1]))

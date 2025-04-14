@@ -83,6 +83,20 @@ class AttributionOutput:
         self.attributions = attributions
         self.elements = elements
 
+    def __repr__(self):
+        return (
+            f"AttributionOutput("
+            f"attributions={repr(self.attributions)}, "
+            f"elements={repr(self.elements)})"
+        )
+
+    def __str__(self):
+        return (
+            f"AttributionOutput("
+            f"attributions={self.attributions}, "
+            f"elements={self.elements})"
+        )
+
 
 class AttributionExplainer:
     """
@@ -206,7 +220,9 @@ class ClassificationAttributionExplainer(AttributionExplainer):
         if targets is None:
             targets = logits.argmax(dim=-1)
 
-        logits = logits.gather(-1, targets.unsqueeze(1))
+        targets = self.inference_wrapper._process_target(targets, logits.shape[:-1])
+
+        logits = logits.gather(-1, targets)
 
         pert_per_input_generator = PersistentTupleGeneratorWrapper(
             self.perturbator.perturb(m)[0] for m in model_inputs

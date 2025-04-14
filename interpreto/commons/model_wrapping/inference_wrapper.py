@@ -414,6 +414,7 @@ class InferenceWrapper:
         )
         return self._reshape_inputs(tensor[0], non_batch_dims=non_batch_dims)
 
+    @singledispatchmethod
     def get_targeted_logits(
         self, model_inputs: Any, targets: torch.Tensor
     ) -> torch.Tensor | Generator[torch.Tensor, None, None]:
