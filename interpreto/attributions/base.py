@@ -84,18 +84,10 @@ class AttributionOutput:
         self.elements = elements
 
     def __repr__(self):
-        return (
-            f"AttributionOutput("
-            f"attributions={repr(self.attributions)}, "
-            f"elements={repr(self.elements)})"
-        )
+        return f"AttributionOutput(attributions={repr(self.attributions)}, elements={repr(self.elements)})"
 
     def __str__(self):
-        return (
-            f"AttributionOutput("
-            f"attributions={self.attributions}, "
-            f"elements={self.elements})"
-        )
+        return f"AttributionOutput(attributions={self.attributions}, elements={self.elements})"
 
 
 class AttributionExplainer:
@@ -331,14 +323,13 @@ class GenerationAttributionExplainer(AttributionExplainer):
                         ),
                     }
                 )
-        print("targets", targets)
         # Add offsets mapping:
         model_inputs_to_explain_text = [
             self.tokenizer.decode(model_input_to_explain["input_ids"][0])
             for model_input_to_explain in model_inputs_to_explain
         ]
         model_inputs_to_explain = [
-            self.tokenizer(model_inputs_to_explain_text, return_tensors="pt", return_offsets_mapping=True)
+            self.tokenizer([model_inputs_to_explain_text], return_tensors="pt", return_offsets_mapping=True)
             for model_inputs_to_explain_text in model_inputs_to_explain_text
         ]
 
@@ -350,19 +341,9 @@ class GenerationAttributionExplainer(AttributionExplainer):
         ]
 
         # Generate perturbations for each processed input.
-        # pert_per_input_generator = PersistentTupleGeneratorWrapper(
-        #     self.perturbator.perturb(model_input) for model_input in model_inputs_to_explain
-        # )
-        # buffer = list(pert_per_input_generator.generator)
-        # print("Buffer:", buffer)
-
-        # Pour chaque model_input, consommez toutes les perturbations et aplatissez le tout en une liste unique
-        all_perturbations = []
-        for model_input in model_inputs_to_explain:
-            # Ici, self.perturbator.perturb(model_input) doit renvoyer une liste (ou itérable) de tuples (mapping, mask)
-            perturbations = list(self.perturbator.perturb(model_input))
-            all_perturbations.extend(perturbations)
-        pert_per_input_generator = PersistentTupleGeneratorWrapper(all_perturbations)
+        pert_per_input_generator = PersistentTupleGeneratorWrapper(
+            self.perturbator.perturb(item)[0] for item in model_inputs_to_explain
+        )
 
         if self.usegradient:
             # Compute gradients for each perturbed input.
