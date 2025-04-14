@@ -40,7 +40,7 @@ class SingleClassAttributionVisualization(WordHighlightVisualization):
         # nb_sentences * (1, nb_words, 1) with the first dimension beeing the number
         # of generated outputs (here set to 1 because no generation)
         # and the last the number of classes (here set to 1 because only one class)
-        inputs_attributions = [output.attributions.unsqueeze(0) for output in attribution_output_list]
+        inputs_attributions = [output.attributions.T.unsqueeze(0) for output in attribution_output_list]
 
         # compute the min and max values for the attributions to be used for normalization
         if normalize:
@@ -138,7 +138,7 @@ class MultiClassAttributionVisualization(WordHighlightVisualization):
         # format of attributions for multi class attribution:
         # nb_sentences * (1, nb_words, nb_classes) with the first dimension beeing the number
         # of generated outputs (here set to 1 because no generation)
-        inputs_attributions = [output.attributions.unsqueeze(0) for output in attribution_output_list]
+        inputs_attributions = [output.attributions.T.unsqueeze(0) for output in attribution_output_list]
         nb_classes = len(class_colors)
         if class_names is None:
             class_names = [f"class #{c}" for c in range(nb_classes)]
@@ -241,7 +241,7 @@ class GenerationAttributionVisualization(WordHighlightVisualization):
             css: (str, optional): A custom css. Defaults to None
         """
         super().__init__()
-        nb_inputs_outputs, nb_outputs = attribution_output.attributions.shape
+        nb_outputs, nb_inputs_outputs = attribution_output.attributions.shape
         nb_inputs = nb_inputs_outputs - nb_outputs
         assert nb_inputs_outputs == len(attribution_output.elements), (
             f"The attribution shape ({nb_inputs_outputs}) does not match the number of elements ({len(attribution_output.elements)})"
@@ -252,14 +252,20 @@ class GenerationAttributionVisualization(WordHighlightVisualization):
         outputs_words = attribution_output.elements[nb_inputs:]
 
         # split the attributions into input_attributions and output_attributions
-        # attribution shape is (nb_inputs + nb_outputs, nb_outputs)
+        # attribution shape is (nb_outputs, nb_inputs + nb_outputs)
         # js expects inputs attributions of shape (nb_outputs, nb_inputs, 1)
         # and outputs attributions of shape (nb_outputs, nb_outputs, 1)
-        inputs_attributions = attribution_output.attributions[:nb_inputs]
-        inputs_attributions = inputs_attributions.transpose(0, 1).unsqueeze(-1)
+        inputs_attributions = attribution_output.attributions[:,:nb_inputs].unsqueeze(-1)
+        assert inputs_attributions.shape == (nb_outputs, nb_inputs, 1), (
+            f"The inputs attributions shape ({inputs_attributions.shape}) \
+            does not match the expected shape ({nb_outputs}, {nb_inputs}, 1)"
+        )
 
-        outputs_attributions = attribution_output.attributions[nb_inputs:]
-        outputs_attributions = outputs_attributions.transpose(0, 1).unsqueeze(-1)
+        outputs_attributions = attribution_output.attributions[:, nb_inputs:].unsqueeze(-1)
+        assert outputs_attributions.shape == (nb_outputs, nb_outputs, 1), (
+            f"The outputs attributions shape ({outputs_attributions.shape}) \
+            does not match the expected shape ({nb_outputs}, {nb_outputs}, 1)"
+        )
 
         # compute the min and max values for the attributions to be used for normalization
         if normalize:

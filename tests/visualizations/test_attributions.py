@@ -22,7 +22,7 @@ def test_attribution_monoclass():
 
     def gen_attributions_outputs(sentences):
         for sentence in sentences:
-            attributions = torch.rand(len(sentence), nb_classes)  # (l, c)
+            attributions = torch.rand(nb_classes, len(sentence))  # (c, l)
             yield AttributionOutput(elements=sentence, attributions=attributions)
 
     single_class_classification_output = list(gen_attributions_outputs(inputs_sentences))
@@ -52,7 +52,7 @@ def test_attribution_multiclass():
 
     def gen_attributions_outputs(sentences):
         for sentence in sentences:
-            attributions = torch.rand(len(sentence), nb_classes)  # (l, c)
+            attributions = torch.rand(nb_classes, len(sentence))  # (c, l)
             yield AttributionOutput(elements=sentence, attributions=attributions)
 
     multi_class_classification_output = list(gen_attributions_outputs(inputs_sentences))
@@ -82,7 +82,7 @@ def test_attribution_generation():
     outputs_sentence = ["do", "re", "mi"]
 
     def make_attributions_outputs(inputs, outputs):
-        attributions = torch.rand(len(inputs) + len(outputs), len(outputs))  # (l, l_g)
+        attributions = torch.rand(len(outputs), len(inputs) + len(outputs))  # (l_g, l)
         return AttributionOutput(elements=inputs + outputs, attributions=attributions)
 
     generation_output = make_attributions_outputs(inputs_sentence, outputs_sentence)
