@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import itertools
 from abc import abstractmethod
-from collections.abc import Iterable, MutableMapping
+from collections.abc import Callable, Iterable, MutableMapping
 from copy import deepcopy
 
 import torch
@@ -102,7 +102,9 @@ class AttributionExplainer:
     def __init__(
         self,
         tokenizer: PreTrainedTokenizer,
-        inference_wrapper: InferenceWrapper,
+        model:Callable,
+        batch_size:int,
+        #inference_wrapper: InferenceWrapper,
         perturbator: Perturbator | None = None,
         aggregator: Aggregator | None = None,
         usegradient: bool = False,
@@ -113,7 +115,7 @@ class AttributionExplainer:
         Initializes the AttributionExplainer.
 
         Args:
-            inference_wrapper (InferenceWrapper): An instance wrapping the model for inference.
+            TODO : update docstring
             perturbator (Perturbator, optional): An instance for generating input perturbations.
                 Defaults to a Perturbator if not provided.
             aggregator (Aggregator, optional): An instance used to aggregate computed attribution scores.
@@ -121,12 +123,8 @@ class AttributionExplainer:
             device (torch.device, optional): The device on which computations will be performed.
             granularity_level (GranularityLevel): The level of granularity for the explanation (e.g., token, word, sentence).
         """
-        if not isinstance(inference_wrapper, self._associated_inference_wrapper):
-            raise ValueError(
-                f"Expected inference_wrapper to be of type {self._associated_inference_wrapper.__name__}, got {type(inference_wrapper)}"
-            )
         self.tokenizer = tokenizer
-        self.inference_wrapper = inference_wrapper
+        self.inference_wrapper = self._associated_inference_wrapper(model, batch_size=batch_size, device=device)
         self.perturbator = perturbator or Perturbator()
         self.aggregator = aggregator or Aggregator()
         self.usegradient = usegradient
@@ -168,7 +166,7 @@ class AttributionExplainer:
         )
 
     @abstractmethod
-    def explain(self, model_inputs: ModelInputs, targets: ModelInputs | torch.Tensor | None = None) -> Iterable[AttributionOutput]:
+    def explain(self, model_inputs: ModelInputs, targets=None) -> Iterable[AttributionOutput]:
         """
         Abstract method to compute attributions for given model inputs.
         """
@@ -216,7 +214,7 @@ class ClassificationAttributionExplainer(AttributionExplainer):
         logits = logits.gather(-1, targets)
 
 
-        pert_generator, mask_generator = split_iterator(self.perturbator.perturb(m)[0] for m in model_inputs)
+        pert_generator, mask_generator = split_iterator(self.perturbator.perturb(m) for m in model_inputs)
 
         if self.usegradient:
             # Compute gradients for each perturbed input.
@@ -344,7 +342,7 @@ class GenerationAttributionExplainer(AttributionExplainer):
             GranularityLevel.get_decomposition(t, self.granularity_level) for t in model_inputs_to_explain
         ]
 
-        pert_generator, mask_generator = split_iterator(self.perturbator.perturb(m)[0] for m in model_inputs)
+        pert_generator, mask_generator = split_iterator(self.perturbator.perturb(m) for m in model_inputs)
 
         if self.usegradient:
             # Compute gradients for each perturbed input.
