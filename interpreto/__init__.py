@@ -29,7 +29,7 @@
 
 
 def get_version() -> str:
-    """Returns the current version of the Inseq library."""
+    """Returns the current version of the Intepreto library."""
     import pkg_resources
 
     try:

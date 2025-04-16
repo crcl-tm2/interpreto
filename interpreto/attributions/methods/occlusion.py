@@ -23,37 +23,46 @@
 # SOFTWARE.
 
 """
-Integrated Gradients method
+Occlusion attribution method
 """
 
 from __future__ import annotations
 
+from typing import Any
+
 import torch
-from transformers import PreTrainedModel, PreTrainedTokenizer
+from transformers import PreTrainedTokenizer
 
-from interpreto.attributions.aggregations import MeanAggregator
-from interpreto.attributions.base import AttributionExplainer, MultitaskExplainerMixin
-from interpreto.attributions.perturbations import LinearInterpolationPerturbator
+from interpreto.attributions.aggregations.base import OcclusionAggregator
+from interpreto.attributions.base import (
+    AttributionExplainer,
+    MultitaskExplainerMixin,
+)
+from interpreto.attributions.perturbations.base import OcclusionPerturbator
+from interpreto.commons.granularity import GranularityLevel
 
 
-class IntegratedGradients(MultitaskExplainerMixin, AttributionExplainer):
-    """
-    Integrated Gradients method
-    """
+class OcclusionExplainer(MultitaskExplainerMixin, AttributionExplainer):
     def __init__(
         self,
-        tokenizer: PreTrainedTokenizer,
-        model: PreTrainedModel,
+        model: Any,
         batch_size: int,
+        tokenizer: PreTrainedTokenizer,
+        granularity_level: GranularityLevel = GranularityLevel.WORD,
         device: torch.device | None = None,
-        n_interpolations: int = 10,
-        baseline: torch.Tensor | float | None = None,
     ):
+        # TODO : move this in upper class (MaskingExplainer or something)
+        replace_token = "[REPLACE]"
+        if replace_token not in tokenizer.get_vocab():
+            tokenizer.add_tokens([replace_token])
+            model.resize_token_embeddings(len(tokenizer))
+        replace_token_id = tokenizer.convert_tokens_to_ids(replace_token)
+
         super().__init__(
             tokenizer=tokenizer,
-            perturbator=LinearInterpolationPerturbator(inputs_embedder=model.get_input_embeddings(), baseline=baseline, n_perturbations=n_interpolations),
             inference_wrapper=self._associated_inference_wrapper(model, batch_size=batch_size, device=device),
-            aggregator=MeanAggregator(), # TODO: check if we need a trapezoidal mean
-            usegradient=True,
-            device=device,
+            perturbator=OcclusionPerturbator(granularity_level=granularity_level, replace_token_id=replace_token_id),  # type: ignore
+            aggregator=OcclusionAggregator(),
+            usegradient=False,
+            granularity_level=granularity_level,
         )

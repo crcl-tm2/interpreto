@@ -13,10 +13,16 @@ nav:
   - API Reference:
     - Attribution Explainers:
       - Overview: api/attributions/overview.md
-      - Raw Gradients: api/attributions/raw_gradients.md
+      - Inference Based: api/attributions/methods/inference_based.md
+      - Gradient Based: api/attributions/methods/gradient_based.md
     - Concept Explainers:
       - Overview: api/concepts/overview.md
-      - NMF: api/concepts/nmf.md
+      - NMF: api/concepts/concepts_extraction/nmf.md
+      - ICA: api/concepts/concepts_extraction/ica.md
+      - SVD: api/concepts/concepts_extraction/svd.md
+      - Concepts Interpretation: api/concepts/concepts_interpretation/overview.md
+    - Evaluation Metrics:
+      - Overview: api/evaluation_metrics/overview.md
   - Roadmap: roadmap.md
   - Contributing: contributing.md
   - About: about.md
@@ -59,8 +65,7 @@ plugins:
               - "!^get_content_width$"
               - "!^get_content_height$"
               - "!^compose_add_child$"
-      watch:
-        - interpreto/
+
 
 # hooks: TODO create files to automate the generation of method tables
 #   - docs/generate_attribution_explainers_overview_table.py

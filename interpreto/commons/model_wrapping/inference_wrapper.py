@@ -21,124 +21,498 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+"""
+Basic inference wrapper for explaining models.
+
+This module provides a base class for inference wrappers that can be used to
+perform inference on various models. The InferenceWrapper class is designed to
+handle device management, embedding inputs, and batching of inputs for efficient
+processing. The class is designed to be subclassed for specific model types and tasks.
+"""
 
 from __future__ import annotations
 
-import functools
-from collections.abc import Callable
-from typing import Any
+import warnings
+from collections.abc import Generator, Iterable, MutableMapping
+from functools import singledispatchmethod
+from typing import Any, overload
 
 import torch
-from nnsight import NNsight
-from transformers.utils.generic import ModelOutput
+from transformers import PreTrainedModel
+from transformers.modeling_outputs import BaseModelOutput
 
 
-class ClassificationInferenceWrapper:
-    def __init__(self, model: NNsight | torch.nn.Module, batch_size: int, device: torch.device | None = None):
-        if isinstance(model, torch.nn.Module):
-            model = NNsight(model)
+# TODO : move that somewhere else
+def concat_and_pad(
+    *tensors: torch.Tensor | None,
+    pad_left: bool,
+    dim: int = 0,
+    pad_value: int = 0,
+    pad_dims: Iterable[int] | None = None,
+) -> torch.Tensor:
+    """
+    Concatenate and (pad tensors to the maximum length of each dimension.
+
+    Args:
+        *tensors (torch.Tensor | None): tensors to concatenate (can be of different shapes but must have the same number of dimensions). Can be None.
+        pad_left (bool): if True, padding is done on the left side of the tensor, otherwise on the right side.
+        dim (int, optional): Dimension along which the tensors will be concatenated. Defaults to 0.
+        pad_value (int, optional): Value used to pad the tensors. Defaults to 0.
+        pad_dims (Iterable[int] | None, optional): Dimensions to pad. Defaults to None.
+
+    Returns:
+        torch.Tensor: result of the concatenation
+
+    Raises:
+        ValueError: if the tensors have different number of dimensions.
+        TypeError: If the `tensors` argument is not a valid sequence of tensors or if
+            `pad_dims` contains invalid dimensions.
+
+    Example:
+        >>> t1 = torch.randn(2, 3, 4)
+        >>> t2 = torch.randn(3, 2, 5)
+        >>> t3 = torch.randn(1, 6, 1)
+        >>> result = concat_and_pad(t1, t2, t3, pad_left=True, dim=0, pad_value=-1, pad_dims=[1, 2])
+        >>> print(result.shape)
+        torch.Size([6, 6, 5])  # After padding and concatenation along the first dimension
+    """
+    _tensors = [a for a in tensors if a is not None and a.numel()]
+    if not _tensors:
+        raise ValueError("No tensors provided for concatenation.")
+    if any(t.dim() != _tensors[0].dim() for t in _tensors[1:]):
+        raise ValueError("All tensors must have the same number of dimensions.")
+    tensors_dim = _tensors[0].dim()
+    pad_dims = pad_dims or []
+    max_length_per_dim = [max(t.shape[d] for t in _tensors) for d in pad_dims]
+    res = []
+    for t in _tensors:
+        pad = [0, 0] * tensors_dim
+        for pad_dim, pad_length in zip(pad_dims, max_length_per_dim, strict=True):
+            # update padding indication to pad the right dimension
+            pad_index = -2 * (pad_dim % tensors_dim) - 1 - pad_left
+            pad[pad_index] = pad_length - t.shape[pad_dim]
+        # pad the tensor
+        res += [torch.nn.functional.pad(t, pad, value=pad_value)]
+    # return the concatenation of all tensors
+    return torch.cat(res, dim=dim)
+
+
+class InferenceWrapper:
+    """
+    Base class for inference wrapper objects.
+    This class is designed to wrap a model and provide a consistent interface for
+    performing inference on the model's inputs. It handles device management,
+    embedding inputs, and batching of inputs for efficient processing.
+    The class is designed to be subclassed for specific model types and tasks.
+
+    Attributes:
+        model (PreTrainedModel): The model to be wrapped.
+        batch_size (int): The maximum batch size for processing inputs.
+        device (torch.device | None): The device on which the model is loaded.
+    """
+
+    # static attribute to indicate whether to pad on the left or right side
+    # this is a class attribute and should be set in subclasses
+    PAD_LEFT = True
+
+    def __init__(
+        self,
+        model: PreTrainedModel,
+        batch_size: int,
+        device: torch.device | None = None,
+    ):
         self.model = model
-        self.model.to(device)
-        assert batch_size > 0, "Batch size must be a positive integer."
+        self.model.to(device or torch.device("cpu"))
         self.batch_size = batch_size
-        self.device = device if device is not None else torch.device("cpu")
 
-    def to(self, device: torch.device):
-        self.model.to(device)
+        # Pad token id should be set by the explainer
+        self.pad_token_id = None
 
-    def cpu(self):
-        self.model.cpu()
-
-    def cuda(self):
-        self.model.cuda()
-
-    @staticmethod
-    def flatten_unflatten(func: Callable) -> Callable:
+    @property
+    def device(self) -> torch.device:
         """
-        A decorator that flattens multiple batch dimensions before calling the function
-        and unflattens the output back to the original shape.
+        Returns:
+            torch.device: The device on which the model is loaded.
+        """
+        return self.model.device
 
-        It introduces a 'flatten' argument to control this behavior.
+    @device.setter
+    def device(self, device: torch.device):
+        """
+        Sets the device on which the model is loaded.
 
         Args:
-            func (Callable): The function to wrap.
+            device (torch.device): wanted device (e.g., "cpu" or "cuda").
+        """
+        self.model.to(device)
+
+    def to(self, device: torch.device):
+        """
+        Move the model to the specified device.
+
+        Args:
+            device (torch.device): The device to which the model should be moved.
+        """
+        self.device = device
+
+    def cpu(self):
+        """
+        Move the model to the CPU.
+        """
+        self.device = torch.device("cpu")
+
+    def cuda(self):
+        """
+        Move the model to the GPU.
+        """
+        self.device = torch.device("cuda")
+
+    def embed(self, model_inputs: MutableMapping[str, torch.Tensor]) -> MutableMapping[str, torch.Tensor]:
+        """
+        Embed the inputs using the model's input embeddings.
+
+        Args:
+            model_inputs (MutableMapping[str, torch.Tensor]): input mapping containing either "input_ids" or "inputs_embeds".
+
+        Raises:
+            ValueError: If neither "input_ids" nor "inputs_embeds" are present in the input mapping.
 
         Returns:
-            Callable: The wrapped function.
+            MutableMapping[str, torch.Tensor]: The input mapping with "inputs_embeds" added.
         """
+        # If input embeds are already present, return the unmodified model inputs
+        if "inputs_embeds" in model_inputs:
+            return model_inputs
+        # If input ids are present, get the embeddings and add them to the model inputs
+        if "input_ids" in model_inputs:
+            base_shape = model_inputs["input_ids"].shape
+            flatten_embeds = self.model.get_input_embeddings()(model_inputs.pop("input_ids").flatten(0, -2))
+            model_inputs["inputs_embeds"] = flatten_embeds.view(*base_shape, flatten_embeds.shape[-1])
+            return model_inputs
+        # If neither input ids nor input embeds are present, raise an error
+        raise ValueError("model_inputs should contain either 'input_ids' or 'inputs_embeds'")
 
-        @functools.wraps(func)
-        def wrapper(
-            self, inputs: torch.Tensor, target: torch.Tensor, *args: Any, flatten: bool = False, **kwargs: Any
-        ) -> torch.Tensor:
-            """
-            Wrapper that flattens and unflattens the inputs tensor based on the 'flatten' flag.
+    def call_model(self, input_embeds: torch.Tensor, attention_mask: torch.Tensor) -> BaseModelOutput:
+        """
+        Perform a call to the wrapped model with the given input embeddings and attention mask.
 
-            Args:
-                inputs (torch.Tensor): Inputs tensor of shape (n, p, ...).
-                flatten (bool): Whether to flatten before and unflatten after.
+        Args:
+            input_embeds (torch.Tensor): embedded inputs
+            attention_mask (torch.Tensor): attention mask
 
-            Returns:
-                torch.Tensor: Processed tensor with restored shape if flatten=True.
-            """
-            if not isinstance(inputs, torch.Tensor) or not isinstance(target, torch.Tensor):
-                raise TypeError("Expected 'inputs' and 'targets' to be a PyTorch tensor.")
+        Returns:
+            ModelOutput: The output of the model.
 
-            dims_to_flatten = inputs.shape[:2]  # Store original shape
+        Note:
+            If the batch size of the input embeddings exceeds the wrapper's batch size, a warning is issued.
+        """
+        # Check that batch size of input_embeds is not greater than the wrapper's batch size
+        if input_embeds.shape[0] > self.batch_size:
+            warnings.warn(
+                f"Batch size of {input_embeds.shape[0]} is greater than the wrapper's batch size of {self.batch_size}. "
+                f"Consider adjust the batch size or the wrapper of split your data.",
+                stacklevel=1,
+            )
+        # send input to device
+        input_embeds.to(self.device)
+        attention_mask.to(self.device)
+        # Call wrapped model
+        return self.model(inputs_embeds=input_embeds, attention_mask=attention_mask)
 
-            # Flatten if requested
-            if flatten:
-                inputs = inputs.flatten(start_dim=0, end_dim=1)  # Shape: (n*p, ...)
-                target = target.flatten(start_dim=0, end_dim=1)  # Shape: (n*p, ...)
+    @overload
+    def get_logits(self, model_inputs: MutableMapping[str, torch.Tensor]) -> torch.Tensor: ...
 
-            # Call the original function
-            outputs = func(self, inputs, target, *args, **kwargs)
+    @overload
+    def get_logits(self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]]) -> Generator[torch.Tensor, None, str]: ...
 
-            # Unflatten if needed
-            if flatten and isinstance(outputs, torch.Tensor):
-                outputs = outputs.unflatten(dim=0, sizes=dims_to_flatten)  # Restore shape: (n, p, output_dim)
-            return outputs
+    @singledispatchmethod
+    def get_logits(self, model_inputs: Any) -> torch.Tensor | Generator[torch.Tensor, None, str]:
+        """
+        Get the logits from the model for the given inputs.
 
-        return wrapper
+        This method propose two different treatments of the inputs:
+        If the input is a mapping, it will be processed as a single input and given directly to the model.
+        The method will return the logits of the model as a torch.Tensor.
 
-    # Temporary
-    # TODO : eventually deal with that in a better way (automatic model wrapping or decorating ?)
-    def call_model(self, inputs: torch.Tensor) -> torch.Tensor:
-        return self.model(inputs.to(self.device))
+        If the input is an iterable of mappings, it will be processed as a batch of inputs.
+        The method will yield the logits of the model for each input as a torch.Tensor.
 
-    def inference(self, inputs: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        logits = self.call_model(inputs)
+        Args:
+            model_inputs (Any): input mappings to be passed to the model or iterable of input mappings.
 
-        return torch.sum(logits * target, dim=-1)
+        Raises:
+            NotImplementedError: If the input type is not supported.
 
-    def gradients(self, inputs: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        inputs = inputs.clone().detach().requires_grad_(True)  # TODO: verify the clone, not sure useful
-        scores = self.inference(inputs, target)
-        scores.backward(torch.ones_like(scores))  # Allow multiple sample dimensions (n, p)
-        return inputs.grad
+        Returns:
+            torch.Tensor | Generator[torch.Tensor, None, None]: logits associated to the input mappings.
 
-    @flatten_unflatten
-    def batch_inference(self, inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        scores = []
-        for i in range(0, inputs.shape[0], self.batch_size):
-            batch = inputs[i : i + self.batch_size].to(self.device)
-            target = targets[i : i + self.batch_size].to(self.device)
-            batch_scores = self.inference(batch, target).cpu()
-            scores.append(batch_scores)
-        return torch.cat(scores, dim=0)
+        Example:
+            Single input given as a mapping
+                >>> model_inputs = {"input_ids": torch.tensor([[1, 2, 3], [4, 5, 6]])}
+                >>> logits = wrapper.get_logits(model_inputs)
+                >>> print(logits.shape)
 
-    @flatten_unflatten
-    def batch_gradients(self, inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        gradients = []
-        for i in range(0, inputs.shape[0], self.batch_size):
-            batch = inputs[i : i + self.batch_size].to(self.device)
-            target = targets[i : i + self.batch_size].to(self.device)
-            batch_gradients = self.gradients(batch, target).detach().cpu()
-            gradients.append(batch_gradients)
-        return torch.cat(gradients, dim=0)
+            Sequence of inputs given as an iterable of mappings (generator, list, etc.)
+                >>> model_inputs = [{"input_ids": torch.tensor([[1, 2, 3], [4, 5, 6]])},
+                ...                 {"input_ids": torch.tensor([[7, 8, 9], [10, 11, 12]])}]
+                >>> logits = wrapper.get_logits(model_inputs)
+                >>> for logit in logits:
+                ...     print(logit.shape)
 
+        """
+        raise NotImplementedError(
+            f"type {type(model_inputs)} not supported for method get_logits in class {self.__class__.__name__}"
+        )
 
-class HuggingFaceClassifierWrapper(ClassificationInferenceWrapper):
-    def call_model(self, inputs: torch.Tensor) -> ModelOutput:
-        # TODO : deal with cases where logits is in "start_logits" or "end_logit" attributes
-        return self.model(inputs_embeds=inputs).logits
+    @get_logits.register(MutableMapping)
+    def _get_logits_from_mapping(self, model_inputs: MutableMapping[str, torch.Tensor]) -> torch.Tensor:
+        """
+        Get the logits from the model for the given inputs.
+        registered for MutableMapping type.
+
+        Args:
+            model_inputs (MutableMapping[str, torch.Tensor]): input mapping containing either "input_ids" or "inputs_embeds".
+
+        Returns:
+            torch.Tensor: logits associated to the input mapping.
+        """
+        # if emebeddings has not been calculated yet, embed the inputs
+        model_inputs = self.embed(model_inputs)
+        # depending on the number of dimensions of the input
+        match model_inputs["inputs_embeds"].dim():
+            case 2:  # (sequence_length, embedding_size)
+                return self.call_model(**model_inputs).logits
+            case 3:  # (batch_size, sequence_length, embedding_size)
+                # If a batch dimension is given, split the inputs into chunks of batch_size
+                embeds_chunks = model_inputs["inputs_embeds"].split(self.batch_size)
+                mask_chunks = model_inputs["attention_mask"].split(self.batch_size)
+
+                # call the model on each chunk and concatenate the results
+                return torch.cat(
+                    [
+                        self.call_model(embeds_chunk, mask_chunk).logits
+                        for embeds_chunk, mask_chunk in zip(embeds_chunks, mask_chunks, strict=False)
+                    ],
+                )
+            case _:  # (..., sequence_length, embedding_size) e.g. (batch_size, n_perturbations, sequence_length, embedding_size)
+                # flatten the first dimension to a single batch dimension
+                # then call the model on the flattened inputs and reshape the result to the original batch structure
+                flat_model_inputs = {"inputs_embeds": model_inputs["inputs_embeds"].flatten(0, -3),
+                                     "attention_mask": model_inputs["attention_mask"].flatten(0, -2)}
+                prediction = self._get_logits_from_mapping(flat_model_inputs)
+                return prediction.view(*model_inputs["inputs_embeds"].shape[:-2], -1)
+
+    @get_logits.register(Iterable)
+    def _get_logits_from_iterable(
+        self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]]
+    ) -> Generator[torch.Tensor, None, str]:
+        """
+        Get the logits from the model for the given inputs.
+        registered for Iterable type.
+
+        Args:
+            model_inputs (Iterable[MutableMapping[str, torch.Tensor]]): Iterable of input mappings containing either "input_ids" or "inputs_embeds".
+
+        Yields:
+            torch.Tensor: logits associated to the input mappings.
+        """
+        # create an iterator from the input iterable
+        model_inputs = iter(model_inputs)
+
+        # If no pad token id has been given
+        if self.pad_token_id is None:
+            # raise ValueError(
+            #     "Asking to pad but the tokenizer does not have a padding token. Please select a token to use as pad_token (tokenizer.pad_token = tokenizer.eos_token e.g.) or add a new pad token via tokenizer.add_special_tokens({'pad_token': '[PAD]'})"
+            # )
+            raise ValueError(
+                "Padding token is not set in the inference wrapper. Please assign it explicitly by setting: inference_wrapper.pad_token_id = tokenizer.pad_token_id"
+            )
+
+        result_buffer: torch.Tensor | None = None
+        result_indexes: list[int] = []
+
+        batch: torch.Tensor | None = None
+        batch_mask: torch.Tensor | None = None
+
+        input_buffer = torch.zeros(0)
+        mask_buffer = torch.zeros(0)
+
+        last_item = False
+
+        # Generation loop
+        while True:
+            # check if the ouput buffer contains enough data to correspond to the next element
+            if result_buffer is not None and result_indexes and len(result_buffer) >= result_indexes[0]:
+                # pop the first index from the result indexes
+                index = result_indexes.pop(0)
+                # yield the associated logits
+                yield result_buffer[:index]
+                # remove the yielded logits from the result buffer
+                result_buffer = result_buffer[index:]
+                # if there is no element left in the input stream and the result buffer is empty, break the loop
+                if last_item and not result_indexes:
+                    break
+                continue
+            # check if the batch of inputs is large enough to be processed (or if the last item is reached)
+            if batch is not None and (last_item or len(batch) == self.batch_size):
+                # Call the model
+                logits = self.call_model(batch, batch_mask).logits
+                # Concatenate the results to the output buffer
+                result_buffer = concat_and_pad(result_buffer, logits, pad_left=self.PAD_LEFT)
+                # update batch and mask
+                batch = batch_mask = None
+                continue
+            # check if the input buffer contains enough data to fill the batch
+            if input_buffer.numel():
+                # calculate the missing length of the batch
+                missing_length = self.batch_size - len(batch if batch is not None else ())
+                # fill the batch with the missing data
+                batch = concat_and_pad(
+                    batch,
+                    input_buffer[:missing_length],
+                    pad_left=self.PAD_LEFT,
+                    dim=0,
+                    pad_value=self.pad_token_id,
+                    pad_dims=(1,),
+                )
+                batch_mask = concat_and_pad(
+                    batch_mask,
+                    mask_buffer[:missing_length],
+                    pad_left=self.PAD_LEFT,
+                    dim=0,
+                    pad_value=0,
+                    pad_dims=(-1,),
+                )
+                # remove the used data from the input buffer
+                input_buffer = input_buffer[missing_length:]
+                mask_buffer = mask_buffer[missing_length:]
+                continue
+            # If there is not enough data in the input buffer, get the next item from the input stream
+            try:
+                # Get next item and ensure embeddings are calculated
+                next_item = self.embed(next(model_inputs))
+                input_buffer = self._reshape_inputs(next_item["inputs_embeds"], non_batch_dims=2)
+                mask_buffer = self._reshape_inputs(next_item["attention_mask"], non_batch_dims=1)
+                # update results index list
+                result_indexes += [len(input_buffer)]
+            # If the input stream is empty
+            except StopIteration:
+                if last_item:
+                    # This should never happen
+                    break
+                last_item = True
+        # Chack that all the buffers are empty
+        if any(len(a) for a in [result_indexes, result_buffer, input_buffer, mask_buffer]):
+            warnings.warn(
+                "Some data were not well fetched in inference wrapper, please check your code if you made custom method or notify it to the developers",
+                stacklevel=2,
+            )
+            return "Some data were not well fetched in inference wrapper"
+        return "All data were well fetched in inference wrapper"
+
+    def _reshape_inputs(self, tensor: torch.Tensor, non_batch_dims: int = 2) -> torch.Tensor:
+        """
+        reshape inputs to have a single batch dimension.
+        """
+        # TODO : see if there is a better way to do this
+        assert tensor.dim() >= non_batch_dims, "The given tensor have less dimensions than non_batch_dims parameter"
+        if tensor.dim() == non_batch_dims:
+            return tensor.unsqueeze(0)
+        if tensor.dim() == non_batch_dims + 1:
+            return tensor
+        assert tensor.shape[0] == 1, (
+            "When passing a sequence or a generator of inputs to the inference wrapper, please consider giving sequence of perturbations of single elements instead of batches (shape should be (1, n_perturbations, ...))"
+        )
+        return self._reshape_inputs(tensor[0], non_batch_dims=non_batch_dims)
+
+    @singledispatchmethod
+    def get_targeted_logits(
+        self, model_inputs: Any, targets: torch.Tensor
+    ) -> torch.Tensor | Generator[torch.Tensor, None, None]:
+        raise NotImplementedError(
+            f"get_targeted_logits not implemented for {self.__class__.__name__}. Implement this method is necessary to use gradient-based methods."
+        )
+
+    @singledispatchmethod
+    def get_gradients(self, model_inputs, targets):
+        """
+        Get the gradients of the logits associated to a given target with respect to the inputs.
+
+        Args:
+            model_inputs (Any): input mappings to be passed to the model or iterable of input mappings.
+            targets (torch.Tensor): target tensor to be used to get the logits.
+            targets shape should be either (t) or (n, t) where n is the batch size and t is the number of targets for which we want the logits.
+
+        Raises:
+            NotImplementedError: If the input type is not supported.
+
+        Returns:
+            torch.Tensor|Generator[torch.Tensor, None, None]: gradients of the logits.
+
+        Example:
+            Single input given as a mapping
+                >>> model_inputs = {"input_ids": torch.tensor([[1, 2, 3], [4, 5, 6]])}
+                >>> targets = torch.tensor([1, 2])
+                >>> gradients = wrapper.get_gradients(model_inputs, targets)
+                >>> print(gradients)
+            Sequence of inputs given as an iterable of mappings (generator, list, etc.)
+                >>> model_inputs = [{"input_ids": torch.tensor([[1, 2, 3], [4, 5, 6]])},
+                ...                 {"input_ids": torch.tensor([[7, 8, 9], [10, 11, 12]])}]
+                >>> targets = torch.tensor([[1, 2], [3, 4]])
+                >>> gradients = wrapper.get_gradients(model_inputs, targets)
+                >>> for grad in gradients:
+                ...     print(grad)
+        """
+        raise NotImplementedError(
+            f"type {type(model_inputs)} not supported for method get_gradients in class {self.__class__.__name__}"
+        )
+
+    @get_gradients.register(MutableMapping)
+    def _get_gradient_from_mapping(self, model_inputs: MutableMapping[str, torch.Tensor], targets: torch.Tensor):
+        """
+        Get the gradients of the logits associated to a given target with respect to the inputs.
+        registered for MutableMapping type.
+        This method uses torch.autograd.functional.jacobian to compute the gradients.
+
+        Args:
+            model_inputs (Iterable[MutableMapping[str, torch.Tensor]]): input mapping to be passed to the model
+            targets (torch.Tensor): target tensor to be used to get the logits.
+
+        Returns:
+            torch.Tensor: gradient of the output of the model with respect to the given inputs
+        """
+        model_inputs = self.embed(model_inputs)
+        inputs_embeds = model_inputs["inputs_embeds"]
+        def get_score(inputs_embeds: torch.Tensor):
+            return self.get_targeted_logits(
+                {"inputs_embeds": inputs_embeds, "attention_mask": model_inputs["attention_mask"]}, targets
+            )
+        # Compute gradient of the selected logits:
+        grad_matrix = torch.autograd.functional.jacobian(get_score, inputs_embeds)  # (n, lt, n, l, d)
+        grad_matrix = grad_matrix.abs().mean(dim=-1)  # (n, lt, n, l)  # average over the embedding dimension
+        n = grad_matrix.shape[0]  # number of examples in the batch
+        diag_grad_matrix = grad_matrix[
+            torch.arange(n), :, torch.arange(n), :
+        ]  # (n, lt, l) # remove the gradients of the other examples
+        print(diag_grad_matrix.shape)
+        return diag_grad_matrix
+
+    @get_gradients.register(Iterable)
+    def _get_gradient_from_iterable(
+        self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]], targets: Iterable[torch.Tensor]
+    ) -> Iterable[torch.Tensor]:
+        """
+        Get the gradients of the logits associated to a given target with respect to the inputs.
+        registered for Iterable type.
+
+        Args:
+            model_inputs (Iterable[MutableMapping[str, torch.Tensor]]): iterable input mappings to be passed to the model
+            targets (torch.Tensor): target tensor to be used to get the logits.
+
+        Yields:
+            torch.Tensor: gradients of the logits associated to the given target with respect to the inputs.
+        """
+        # TODO : see if we can do that in a more efficient way
+        yield from (
+            self._get_gradient_from_mapping(model_input, target) for model_input, target in zip(model_inputs, targets, strict=True)
+        )

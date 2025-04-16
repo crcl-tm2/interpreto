@@ -23,19 +23,20 @@
 # SOFTWARE.
 
 from __future__ import annotations
+from typing import MutableMapping
 
 import torch
 
-from interpreto.attributions.perturbations.base import BasePerturbator
+from interpreto.attributions.perturbations.base import Perturbator
 from interpreto.typing import TensorBaseline
 
 
-class LinearInterpolationPerturbator(BasePerturbator):
+class LinearInterpolationPerturbator(Perturbator):
     """
     Perturbation using linear interpolation between a reference point (baseline) and the input.
     """
 
-    def __init__(self, baseline: TensorBaseline = None, n_perturbations: int = 10):
+    def __init__(self, inputs_embedder: torch.nn.Module | None = None, baseline: TensorBaseline = None, n_perturbations: int = 10):
         """
         Initializes the LinearInterpolationPerturbation instance.
 
@@ -47,6 +48,7 @@ class LinearInterpolationPerturbator(BasePerturbator):
             AssertionError: If the baseline is not a torch.Tensor, int, float, or None.
         """
         assert isinstance(baseline, (torch.Tensor, int, float, type(None)))  # noqa: UP038
+        super().__init__(inputs_embedder=inputs_embedder)
         self.n_perturbations = n_perturbations
         self.baseline = baseline
 
@@ -84,37 +86,19 @@ class LinearInterpolationPerturbator(BasePerturbator):
                 raise ValueError(f"Baseline dtype {baseline.dtype} does not match expected dtype {inputs.dtype}.")
         else:
             raise TypeError("Baseline must be None, a float, or a PyTorch tensor.")
-
         return baseline
 
-    def perturb(self, inputs: torch.Tensor) -> tuple[torch.Tensor, None]:
-        """
-        Generates perturbed samples by performing linear interpolation between the input tensor and the baseline tensor.
+    def perturb_embeds(self, model_inputs: MutableMapping) -> tuple[MutableMapping[str, torch.Tensor], torch.Tensor | None]:
+        embeddings = model_inputs["inputs_embeds"]
 
-        Args:
-            inputs (torch.Tensor): The input tensor to be perturbed.
-            n_samples (int, optional): The number of interpolation samples to generate. Defaults to 10.
-
-        Returns:
-            As no mask is required to understand perturbation, the second returned element is None.
-            tuple[torch.Tensor, None]: A tuple containing the interpolated tensor and None.
-        """
-        baseline = self.adjust_baseline(self.baseline, inputs)
-        assert inputs.shape[1:] == baseline.shape
-        # Shape: (1, steps, ...)
-        alphas = torch.linspace(0, 1, self.n_perturbations, device=inputs.device).view(
-            1, self.n_perturbations, *([1] * (inputs.dim() - 1))
+        baseline = self.adjust_baseline(self.baseline, embeddings)
+        alphas = torch.linspace(0, 1, self.n_perturbations, device=embeddings.device).view(
+            self.n_perturbations, *([1] * (embeddings.dim() - 1))
         )
 
-        # Shape: (batch_size, steps:1, *input_shape)
-        inputs = inputs.unsqueeze(1)
+        baseline = baseline.to(embeddings.device).unsqueeze(0)
 
-        # Shape: (batch_size:1, steps:1, *input_shape)
-        baseline = baseline.to(inputs.device).view(1, 1, *baseline.shape)
-
-        # Perform interpolation
-        interpolated = (1 - alphas) * inputs + alphas * baseline
-
-        baseline = baseline.cpu()
-
-        return interpolated, None
+        model_inputs["inputs_embeds"] = (1 - alphas) * embeddings + alphas * baseline
+        print("am", model_inputs["attention_mask"].shape)
+        model_inputs["attention_mask"] = model_inputs["attention_mask"].repeat(model_inputs["inputs_embeds"].shape[0], 1)
+        return model_inputs, None

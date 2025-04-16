@@ -40,7 +40,7 @@ from interpreto.attributions.perturbations.sobol_perturbation import (
     SobolIndicesOrders,
     SobolTokenPerturbator,
 )
-from interpreto.commons.model_wrapping.inference_wrapper import ClassificationInferenceWrapper
+from interpreto.commons.model_wrapping.classification_inference_wrapper import ClassificationInferenceWrapper
 
 
 class SobolAttribution(InferenceExplainer):
