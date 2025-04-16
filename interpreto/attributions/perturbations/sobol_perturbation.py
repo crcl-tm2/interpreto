@@ -32,9 +32,9 @@ from enum import Enum
 
 import torch
 from scipy.stats import qmc
-from transformers import PreTrainedTokenizer
 
 from interpreto.attributions.perturbations.base import TokenMaskBasedPerturbator
+from interpreto.commons.granularity import GranularityLevel
 
 
 class SobolIndicesOrders(Enum):
@@ -59,11 +59,10 @@ class SequenceSamplers(Enum):
 class SobolTokenPerturbator(TokenMaskBasedPerturbator):
     def __init__(
         self,
-        tokenizer: PreTrainedTokenizer,
         inputs_embedder: torch.nn.Module | None = None,
+        granularity_level: GranularityLevel = GranularityLevel.TOKEN,
+        replace_token_id: int = 0,
         n_token_perturbations: int = 30,
-        granularity_level: str = "token",
-        baseline: str = "[MASK]",
         sobol_indices_order: SobolIndicesOrders = SobolIndicesOrders.FIRST_ORDER,
         sampler: SequenceSamplers = SequenceSamplers.SOBOL,
         device: torch.device | None = None,
@@ -72,41 +71,37 @@ class SobolTokenPerturbator(TokenMaskBasedPerturbator):
         Initialize the perturbator.
 
         Args:
-            tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
             inputs_embedder (torch.nn.Module | None): optional inputs embedder
             nb_token_perturbations (int): number of Monte Carlo samples perturbations for each token.
             granularity_level (str): granularity level of the perturbations (token, word, sentence, etc.)
-            baseline (str): replacement token (e.g. “[MASK]”)
             sobol_indices (SobolIndicesOrders): Sobol indices order, either `FIRST_ORDER` or `TOTAL_ORDER`.
             sampler (SequenceSamplers): Sobol sequence sampler, either `SOBOL`, `HALTON` or `LatinHypercube`.
             device (torch.device): device on which the perturbator will be run
         """
         super().__init__(
-            tokenizer=tokenizer,
             inputs_embedder=inputs_embedder,
-            n_perturbations=None,
-            mask_token=baseline,
             granularity_level=granularity_level,
-            device=device,
+            n_perturbations=-1,  # TODO: find a better way to handle this, I guess, it should not be an attribute of the parent class
+            replace_token_id=replace_token_id,
         )
-        self.tokenizer = tokenizer
         self.n_token_perturbations = n_token_perturbations
         self.sobol_indices_order = sobol_indices_order
-        self.sampler = sampler
+        self.sampler_class = sampler.value
+        self.device = device
 
-    def get_single_input_mask(self, l: int):
+    def get_mask(self, mask_dim: int) -> torch.Tensor:
         """
         Generates a binary mask for each token in the sequence.
 
         Args:
-            l (int): The length of the sequence.
+            mask_dim (int): The length of the sequence. Called 'l' in shapes.
 
         Returns:
             masks (torch.Tensor): A tensor of shape ((l + 1) * k, l).
         """
-        k = self.n_token_perturbations
+        l, k = mask_dim, self.n_token_perturbations
         # Initial random mask. Shape:(k, l)
-        initial_mask = torch.Tensor(self.sampler(l).random(k), device=self.device)
+        initial_mask = torch.Tensor(self.sampler_class(l).random(k), device=self.device)
 
         # Expand mask across all perturbation steps. Shape ((l + 1) * k, l)
         mask = initial_mask.repeat((l + 1, 1))
@@ -115,7 +110,7 @@ class SobolTokenPerturbator(TokenMaskBasedPerturbator):
         col_indices = torch.arange(l, device=self.device).repeat_interleave(k)
 
         # Compute the start and end indices. Shape: (l * k)
-        row_indices = torch.arange(k * l, device=self.device) + k
+        row_indices = torch.arange(l * k, device=self.device) + k
 
         # Flip the selected mask values without a loop
         mask[row_indices, col_indices] = 1 - mask[row_indices, col_indices]
@@ -124,22 +119,3 @@ class SobolTokenPerturbator(TokenMaskBasedPerturbator):
             mask[k:] = 1 - mask[k:]
 
         return mask
-
-    def get_mask(self, sizes: tuple | list[int]) -> list[torch.Tensor]:
-        """
-        Generates a binary mask for each token in the sequence.
-
-        Args:
-            sizes (list[int]): A list of sequence lengths (l).
-
-        Returns:
-            masks_list (list[torch.Tensor]): List of tensors of shape ((l + 1) * k, l).
-        """
-        if isinstance(sizes, int):
-            return [self.get_single_input_mask(sizes)]
-
-        if isinstance(sizes, list):
-            return [self.get_single_input_mask(size) for size in sizes]
-
-        if isinstance(sizes, tuple):
-            return torch.repeat(self.get_single_input_mask(sizes[0]).unsqueeze(0), sizes[1], dim=0)

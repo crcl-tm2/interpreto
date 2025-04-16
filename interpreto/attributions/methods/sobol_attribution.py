@@ -28,22 +28,26 @@ Sobol attribution method
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import torch
 from transformers import PreTrainedTokenizer
 
 from interpreto.attributions.aggregations.sobol_aggregation import SobolAggregator
-from interpreto.attributions.base import InferenceExplainer
+from interpreto.attributions.base import (
+    AttributionExplainer,
+    MultitaskExplainerMixin,
+)
 from interpreto.attributions.perturbations.sobol_perturbation import (
     SequenceSamplers,
     SobolIndicesOrders,
     SobolTokenPerturbator,
 )
-from interpreto.commons.model_wrapping.classification_inference_wrapper import ClassificationInferenceWrapper
+from interpreto.commons.granularity import GranularityLevel
 
 
-class SobolAttribution(InferenceExplainer):
+class SobolAttribution(MultitaskExplainerMixin, AttributionExplainer):
     """
     Sobol Attribution method
     """
@@ -51,13 +55,12 @@ class SobolAttribution(InferenceExplainer):
     def __init__(
         self,
         model: Any,
-        tokenizer: PreTrainedTokenizer | None = None,
+        tokenizer: PreTrainedTokenizer,
+        batch_size: int,
+        granularity_level: GranularityLevel = GranularityLevel.WORD,
         n_token_perturbations: int = 30,
-        granularity_level: str = "token",
-        baseline: str = "[MASK]",
         sobol_indices_order: SobolIndicesOrders = SobolIndicesOrders.FIRST_ORDER,
         sampler: SequenceSamplers = SequenceSamplers.SOBOL,
-        batch_size: int = 1,
         device: torch.device | None = None,
     ):
         """
@@ -74,25 +77,32 @@ class SobolAttribution(InferenceExplainer):
             batch_size (int): batch size for the attribution method
             device (torch.device): device on which the attribution method will be run
         """
-        if tokenizer is None:
-            raise ValueError(
-                "Tokenizer must be provided for Sobol token attribution, tensor attributions are not supported yet."
-            )
+        # TODO : move this in upper class (MaskingExplainer or something)
+        replace_token = "[REPLACE]"
+        if replace_token not in tokenizer.get_vocab():
+            tokenizer.add_tokens([replace_token])
+            model.resize_token_embeddings(len(tokenizer))
+        replace_token_id = tokenizer.convert_tokens_to_ids(replace_token)
+        if isinstance(replace_token_id, list):
+            replace_token_id = replace_token_id[0]
 
         perturbator = SobolTokenPerturbator(
-            tokenizer=tokenizer,
             inputs_embedder=model.get_input_embeddings(),
-            n_token_perturbations=n_token_perturbations,
             granularity_level=granularity_level,
-            baseline=baseline,
+            replace_token_id=replace_token_id,
+            n_token_perturbations=n_token_perturbations,
             sobol_indices_order=sobol_indices_order,
             sampler=sampler,
             device=device,
         )
 
         super().__init__(
-            perturbation=perturbator,
-            inference_wrapper=ClassificationInferenceWrapper(model=model, batch_size=batch_size, device=device),
-            aggregation=SobolAggregator(n_token_perturbations=n_token_perturbations),
+            model=model,
+            tokenizer=tokenizer,
+            perturbator=perturbator,
+            aggregator=SobolAggregator(n_token_perturbations=n_token_perturbations),
+            batch_size=batch_size,
+            use_gradient=False,
+            granularity_level=granularity_level,
             device=device,
         )
