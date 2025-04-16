@@ -137,8 +137,6 @@ class Perturbator:
             MutableMapping[str, torch.Tensor]: Perturbed mapping
         """
         # add perturbation dimension
-        model_inputs["input_ids"] = model_inputs["input_ids"].unsqueeze(1)
-        model_inputs["attention_mask"] = model_inputs["attention_mask"].unsqueeze(1)
         return model_inputs, torch.zeros_like(model_inputs["input_ids"])
 
     def perturb_embeds(
@@ -174,8 +172,8 @@ class MaskBasedPerturbator(Perturbator):
             torch.Tensor: masked inputs
         """
         # TODO generalize to upper dimensions for other types of input data
-        base = torch.einsum("nld,npl->npld", inputs, 1 - mask)
-        masked = torch.einsum("npl,d->npld", mask, mask_value)
+        base = torch.einsum("ld,pl->pld", inputs, 1 - mask)
+        masked = torch.einsum("pl,d->pld", mask, mask_value)
         return (base + masked).squeeze(-1)
 
 
@@ -205,23 +203,22 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
         # in most commons cases, this should be set to GranularityLevel.TOKEN
         self.granularity_level = granularity_level
 
-    def get_mask(self, num_sequences: int, mask_dim: int) -> torch.Tensor:
+    def get_mask(self, mask_dim: int) -> torch.Tensor:
         """
         Method returning a perturbation mask for a given set of inputs
         This method should be implemented in subclasses
 
-        The created mask should be of size (batch_size, n_perturbations, mask_dim)
+        The created mask should be of size (n_perturbations, mask_dim)
         where mask_dim is the length of the sequence according to the granularity level (number of tokens, number of words, number of sentences...)
 
         Args:
-            num_sequences (int): number of sequences
             mask_dim (int): length of the sequence according to the granularity level
 
         Returns:
-            torch.Tensor: mask to apply on the inputs, of shape (num_sequences, n_perturbations, mask_dim)
+            torch.Tensor: mask to apply on the inputs, of shape (n_perturbations, mask_dim)
         """
         # Exemple implementation that returns a no-perturbation mask
-        return torch.zeros(num_sequences, self.n_perturbations, mask_dim)
+        return torch.zeros(self.n_perturbations, mask_dim)
 
     @staticmethod
     def get_gran_mask_from_real_mask(
@@ -240,8 +237,8 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
             torch.Tensor: granularity level mask
         """
         # TODO : eventually store gran matrix in tokens to avoid recomputing it ?
-        t_gran_matrix = GranularityLevel.get_association_matrix(model_inputs, granularity_level).transpose(-1, -2)
-        return torch.einsum("npr,ntr->npt", real_mask, t_gran_matrix) / t_gran_matrix.sum(dim=-1)
+        t_gran_matrix = GranularityLevel.get_association_matrix(model_inputs, granularity_level)[0].transpose(-1, -2)
+        return torch.einsum("pr,tr->pt", real_mask, t_gran_matrix) / t_gran_matrix.sum(dim=-1)
 
     @staticmethod
     def get_real_mask_from_gran_mask(gran_mask: torch.Tensor, gran_assoc_matrix: torch.Tensor) -> torch.Tensor:
@@ -256,7 +253,7 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
             torch.Tensor: real general mask
         """
         # TODO : eventually store gran matrix in tokens to avoid recomputing it ?
-        return torch.einsum("npt,ntr->npr", gran_mask, gran_assoc_matrix)
+        return torch.einsum("pt,tr->pr", gran_mask, gran_assoc_matrix)
 
     def get_model_inputs_mask(self, model_inputs: MutableMapping) -> torch.Tensor:
         """
@@ -271,10 +268,8 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
             torch.Tensor, torch.Tensor: real general mask and specific granularity mask (theoretical mask)
         """
         perturbation_dimension = int(GranularityLevel.get_length(model_inputs, self.granularity_level).max().item())
-        batch_size = model_inputs["input_ids"].shape[0]
-        gran_mask = self.get_mask(batch_size, perturbation_dimension)
-        model_inputs["mask"] = gran_mask
-        gran_assoc_matrix = GranularityLevel.get_association_matrix(model_inputs, self.granularity_level)
+        gran_mask = self.get_mask(perturbation_dimension)
+        gran_assoc_matrix = GranularityLevel.get_association_matrix(model_inputs, self.granularity_level)[0]
         return self.get_real_mask_from_gran_mask(gran_mask, gran_assoc_matrix)
 
     def perturb_ids(
@@ -289,18 +284,17 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
         Returns:
             tuple: model_inputs with perturbations and the specific granularity mask
         """
-        batch_size = model_inputs["input_ids"].shape[0]
         mask_dim = int(GranularityLevel.get_length(model_inputs, self.granularity_level).max().item())
-        gran_mask = self.get_mask(batch_size, mask_dim)
+        gran_mask = self.get_mask(mask_dim)
         real_mask = self.get_real_mask_from_gran_mask(
-            gran_mask, GranularityLevel.get_association_matrix(model_inputs, self.granularity_level)
+            gran_mask, GranularityLevel.get_association_matrix(model_inputs, self.granularity_level)[0]
         )
 
         # real_mask, gran_mask = self.get_model_inputs_mask(model_inputs)
 
         model_inputs["input_ids"] = (
             self.apply_mask(
-                inputs=model_inputs["input_ids"].unsqueeze(-1),
+                inputs=model_inputs["input_ids"].T,
                 mask=real_mask,
                 mask_value=torch.Tensor([self.replace_token_id]),
             )
@@ -311,10 +305,9 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
         # Repeat other keys in encoding for each perturbation
         for k in model_inputs.keys():
             if k != "input_ids":
-                repeats = [1] * (model_inputs[k].dim() + 1)
-                repeats[1] = model_inputs["input_ids"].shape[1]
-                model_inputs[k] = model_inputs[k].unsqueeze(1).repeat(*repeats)
-
+                repeats = [1] * (model_inputs[k].dim())
+                repeats[0] = model_inputs["input_ids"].shape[0]
+                model_inputs[k] = model_inputs[k].repeat(*repeats)
         return model_inputs, gran_mask
 
 
@@ -379,9 +372,8 @@ class OcclusionPerturbator(TokenMaskBasedPerturbator):
         super().__init__(replace_token_id, inputs_embedder=inputs_embedder, n_perturbations=-1)
         self.granularity_level = granularity_level
 
-    def get_mask(self, num_sequences: int, mask_dim: int) -> torch.Tensor:
-        # TODO : use torch diag embed of attention mask instead of torch eye
-        return torch.eye(mask_dim).unsqueeze(0).repeat(num_sequences, 1, 1)
+    def get_mask(self, mask_dim: int) -> torch.Tensor:
+        return torch.cat([torch.zeros(1, mask_dim), torch.eye(mask_dim)], dim=0)
 
 
 class GaussianNoisePerturbator(Perturbator):

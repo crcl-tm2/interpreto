@@ -28,8 +28,7 @@ Aggregations used at the end of an attribution method
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
-from typing import Any
+from collections.abc import Callable
 
 import torch
 
@@ -39,13 +38,13 @@ class Aggregator:
     Abstract class for aggregation made at the end of attribution methods
     """
 
-    def aggregate(self, results: Iterable[Any], mask) -> Any:
+    def aggregate(self, results: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         """
         Get results from multiple "Inference wrappers", aggregate results and gives an explanation
         """
         return results
 
-    def __call__(self, results: Iterable[Any], mask: Any):
+    def __call__(self, results: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         return self.aggregate(results, mask)
 
 
@@ -56,35 +55,31 @@ class TorchAggregator(Aggregator):
 
     _method: Callable
 
-    def aggregate(self, results: torch.Tensor, _) -> torch.Tensor:
+    def aggregate(self, results: torch.Tensor, mask:torch.Tensor) -> torch.Tensor:
         # TODO: check dimension with explicit jax typing for results parameter
-        return self._method(results, dim=1)
+        return self._method(results, dim=0)
 
 
 class MeanAggregator(TorchAggregator):
     """
     Mean of attributions
     """
-
     _method = torch.mean
 
 
 class SquaredMeanAggregator(Aggregator):
     """
-    Square of mean of attributions
+    Mean of squares of attributions
     """
-
-    # TODO : remake this class with __method as a function chain of torch.mean and torch.square
-    # _method=torch.mean
-    def aggregate(self, results: torch.Tensor, _) -> Any:
-        return torch.mean(torch.square(results), _)
+    @staticmethod
+    def _method(results: torch.Tensor, dim:int=0) -> torch.Tensor:
+        return torch.mean(torch.square(results), dim=dim)
 
 
 class SumAggregator(TorchAggregator):
     """
     Sum of attributions
     """
-
     _method = torch.sum
 
 
@@ -92,7 +87,6 @@ class VarianceAggregator(TorchAggregator):
     """
     Variance of attributions
     """
-
     _method = torch.var
 
 
@@ -100,9 +94,15 @@ class MaskwiseMeanAggregator(Aggregator):
     """
     TODO : add docstring
     """
-
     def aggregate(self, results: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        # TODO : this cast should not be there, check to solve the incompatible types error
-        mask = mask.to(results.dtype)
-        # TODO : transform the output tensor to interpretable explaination
-        return torch.einsum("npt,npl->ntl", results, mask) / mask.sum(dim=1)
+        return torch.einsum("pt,pl->tl", results, mask) / mask.sum(dim=1)
+
+class OcclusionAggregator(Aggregator):
+    """
+    TODO : add docstring
+    """
+    def aggregate(self, results: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        # first prediction is reference, unmodified input
+        scores = results[..., 0, :] - results[..., 1:, :]
+        mask = mask[..., 1:, :]
+        return torch.einsum("pt,pl->tl", scores, mask) / mask.sum(dim=1)

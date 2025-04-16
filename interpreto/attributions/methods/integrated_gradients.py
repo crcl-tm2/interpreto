@@ -28,33 +28,32 @@ Integrated Gradients method
 
 from __future__ import annotations
 
-from typing import Any
-
 import torch
+from transformers import PreTrainedModel, PreTrainedTokenizer
 
 from interpreto.attributions.aggregations import MeanAggregator
-from interpreto.attributions.base import ClassificationAttributionExplainer
+from interpreto.attributions.base import AttributionExplainer, MultitaskExplainerMixin
 from interpreto.attributions.perturbations import LinearInterpolationPerturbator
-from interpreto.commons.model_wrapping.classification_inference_wrapper import ClassificationInferenceWrapper
 
 
-class IntegratedGradients(ClassificationAttributionExplainer):
+class IntegratedGradients(MultitaskExplainerMixin, AttributionExplainer):
     """
     Integrated Gradients method
     """
-
     def __init__(
         self,
-        model: Any,
+        tokenizer: PreTrainedTokenizer,
+        model: PreTrainedModel,
         batch_size: int,
         device: torch.device | None = None,
         n_interpolations: int = 10,
         baseline: torch.Tensor | float | None = None,
     ):
         super().__init__(
-            perturbator=LinearInterpolationPerturbator(baseline=baseline, n_perturbations=n_interpolations),
-            inference_wrapper=ClassificationInferenceWrapper(model, batch_size=batch_size, device=device),
-            aggregator=MeanAggregator(),  # TODO: check if we need a trapezoidal mean
+            tokenizer=tokenizer,
+            perturbator=LinearInterpolationPerturbator(inputs_embedder=model.get_input_embeddings(), baseline=baseline, n_perturbations=n_interpolations),
+            inference_wrapper=self._associated_inference_wrapper(model, batch_size=batch_size, device=device),
+            aggregator=MeanAggregator(), # TODO: check if we need a trapezoidal mean
             usegradient=True,
             device=device,
         )

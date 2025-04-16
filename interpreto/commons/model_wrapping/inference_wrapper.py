@@ -35,7 +35,7 @@ from __future__ import annotations
 import warnings
 from collections.abc import Generator, Iterable, MutableMapping
 from functools import singledispatchmethod
-from typing import Any
+from typing import Any, overload
 
 import torch
 from transformers import PreTrainedModel
@@ -219,6 +219,12 @@ class InferenceWrapper:
         # Call wrapped model
         return self.model(inputs_embeds=input_embeds, attention_mask=attention_mask)
 
+    @overload
+    def get_logits(self, model_inputs: MutableMapping[str, torch.Tensor]) -> torch.Tensor: ...
+
+    @overload
+    def get_logits(self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]]) -> Generator[torch.Tensor, None, str]: ...
+
     @singledispatchmethod
     def get_logits(self, model_inputs: Any) -> torch.Tensor | Generator[torch.Tensor, None, str]:
         """
@@ -280,6 +286,7 @@ class InferenceWrapper:
                 # If a batch dimension is given, split the inputs into chunks of batch_size
                 embeds_chunks = model_inputs["inputs_embeds"].split(self.batch_size)
                 mask_chunks = model_inputs["attention_mask"].split(self.batch_size)
+
                 # call the model on each chunk and concatenate the results
                 return torch.cat(
                     [
@@ -290,9 +297,10 @@ class InferenceWrapper:
             case _:  # (..., sequence_length, embedding_size) e.g. (batch_size, n_perturbations, sequence_length, embedding_size)
                 # flatten the first dimension to a single batch dimension
                 # then call the model on the flattened inputs and reshape the result to the original batch structure
-                return self._get_logits_from_mapping({k: v.flatten(0, -3) for k, v in model_inputs.items()}).view(
-                    *model_inputs["inputs_embeds"].shape[:-1], -1
-                )
+                flat_model_inputs = {"inputs_embeds": model_inputs["inputs_embeds"].flatten(0, -3),
+                                     "attention_mask": model_inputs["attention_mask"].flatten(0, -2)}
+                prediction = self._get_logits_from_mapping(flat_model_inputs)
+                return prediction.view(*model_inputs["inputs_embeds"].shape[:-2], -1)
 
     @get_logits.register(Iterable)
     def _get_logits_from_iterable(
@@ -475,12 +483,10 @@ class InferenceWrapper:
         """
         model_inputs = self.embed(model_inputs)
         inputs_embeds = model_inputs["inputs_embeds"]
-
         def get_score(inputs_embeds: torch.Tensor):
             return self.get_targeted_logits(
                 {"inputs_embeds": inputs_embeds, "attention_mask": model_inputs["attention_mask"]}, targets
             )
-
         # Compute gradient of the selected logits:
         grad_matrix = torch.autograd.functional.jacobian(get_score, inputs_embeds)  # (n, lt, n, l, d)
         grad_matrix = grad_matrix.abs().mean(dim=-1)  # (n, lt, n, l)  # average over the embedding dimension
@@ -488,7 +494,7 @@ class InferenceWrapper:
         diag_grad_matrix = grad_matrix[
             torch.arange(n), :, torch.arange(n), :
         ]  # (n, lt, l) # remove the gradients of the other examples
-
+        print(diag_grad_matrix.shape)
         return diag_grad_matrix
 
     @get_gradients.register(Iterable)
@@ -508,5 +514,5 @@ class InferenceWrapper:
         """
         # TODO : see if we can do that in a more efficient way
         yield from (
-            self.get_gradients(model_input, target) for model_input, target in zip(model_inputs, targets, strict=True)
+            self._get_gradient_from_mapping(model_input, target) for model_input, target in zip(model_inputs, targets, strict=True)
         )

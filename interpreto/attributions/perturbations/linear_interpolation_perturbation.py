@@ -23,6 +23,7 @@
 # SOFTWARE.
 
 from __future__ import annotations
+from typing import MutableMapping
 
 import torch
 
@@ -35,7 +36,7 @@ class LinearInterpolationPerturbator(Perturbator):
     Perturbation using linear interpolation between a reference point (baseline) and the input.
     """
 
-    def __init__(self, baseline: TensorBaseline = None, n_perturbations: int = 10):
+    def __init__(self, inputs_embedder: torch.nn.Module | None = None, baseline: TensorBaseline = None, n_perturbations: int = 10):
         """
         Initializes the LinearInterpolationPerturbation instance.
 
@@ -47,6 +48,7 @@ class LinearInterpolationPerturbator(Perturbator):
             AssertionError: If the baseline is not a torch.Tensor, int, float, or None.
         """
         assert isinstance(baseline, (torch.Tensor, int, float, type(None)))  # noqa: UP038
+        super().__init__(inputs_embedder=inputs_embedder)
         self.n_perturbations = n_perturbations
         self.baseline = baseline
 
@@ -86,23 +88,17 @@ class LinearInterpolationPerturbator(Perturbator):
             raise TypeError("Baseline must be None, a float, or a PyTorch tensor.")
         return baseline
 
-    def perturb_tensors(self, tensors: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor | None]:
-        baseline = self.adjust_baseline(self.baseline, tensors)
-        assert tensors.shape[1:] == baseline.shape
-        # Shape: (1, steps, ...)
-        alphas = torch.linspace(0, 1, self.n_perturbations, device=tensors.device).view(
-            1, self.n_perturbations, *([1] * (tensors.dim() - 1))
+    def perturb_embeds(self, model_inputs: MutableMapping) -> tuple[MutableMapping[str, torch.Tensor], torch.Tensor | None]:
+        embeddings = model_inputs["inputs_embeds"]
+
+        baseline = self.adjust_baseline(self.baseline, embeddings)
+        alphas = torch.linspace(0, 1, self.n_perturbations, device=embeddings.device).view(
+            self.n_perturbations, *([1] * (embeddings.dim() - 1))
         )
 
-        # Shape: (batch_size, steps:1, *input_shape)
-        tensors = tensors.unsqueeze(1)
+        baseline = baseline.to(embeddings.device).unsqueeze(0)
 
-        # Shape: (batch_size:1, steps:1, *input_shape)
-        baseline = baseline.to(tensors.device).view(1, 1, *baseline.shape)
-
-        # Perform interpolation
-        interpolated = (1 - alphas) * tensors + alphas * baseline
-
-        baseline = baseline.cpu()
-
-        return interpolated, None
+        model_inputs["inputs_embeds"] = (1 - alphas) * embeddings + alphas * baseline
+        print("am", model_inputs["attention_mask"].shape)
+        model_inputs["attention_mask"] = model_inputs["attention_mask"].repeat(model_inputs["inputs_embeds"].shape[0], 1)
+        return model_inputs, None
