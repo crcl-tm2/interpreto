@@ -28,7 +28,6 @@ Sobol attribution method
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 import torch
@@ -69,12 +68,11 @@ class SobolAttribution(MultitaskExplainerMixin, AttributionExplainer):
         Args:
             model (Any): model to explain
             tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
-            n_token_perturbations (int): number of Monte Carlo samples perturbations for each token.
-            granularity_level (str): granularity level of the perturbations (token, word, sentence, etc.)
-            baseline (str): replacement token (e.g. “[MASK]”)
+            batch_size (int): batch size for the attribution method
+            granularity_level (GranularityLevel): The level of granularity for the explanation (e.g., token, word, sentence).
+            n_token_perturbations (int): the number of perturbations to generate
             sobol_indices (SobolIndicesOrders): Sobol indices order, either `FIRST_ORDER` or `TOTAL_ORDER`.
             sampler (SequenceSamplers): Sobol sequence sampler, either `SOBOL`, `HALTON` or `LatinHypercube`.
-            batch_size (int): batch size for the attribution method
             device (torch.device): device on which the attribution method will be run
         """
         # TODO : move this in upper class (MaskingExplainer or something)

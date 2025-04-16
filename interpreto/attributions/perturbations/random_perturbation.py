@@ -28,10 +28,8 @@ Random perturbation for token-wise masking, used in LIME
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-
 import torch
-from transformers import PreTrainedTokenizer
+from jaxtyping import Float
 
 from interpreto.attributions.perturbations.base import GranularityLevel, TokenMaskBasedPerturbator
 
@@ -43,41 +41,37 @@ class RandomMaskedTokenPerturbator(TokenMaskBasedPerturbator):
 
     def __init__(
         self,
-        tokenizer: PreTrainedTokenizer | None = None,
         inputs_embedder: torch.nn.Module | None = None,
-        n_perturbations: int = 1,
-        mask_token: str = None,
         granularity_level: GranularityLevel = GranularityLevel.TOKEN,
+        replace_token_id: int = 0,
+        n_perturbations: int = 30,
+        perturb_probability: float = 0.5,
     ):
         super().__init__(
-            tokenizer=tokenizer,
             inputs_embedder=inputs_embedder,
             n_perturbations=n_perturbations,
-            mask_token=mask_token,
+            replace_token_id=replace_token_id,
             granularity_level=granularity_level,
         )
+        self.perturb_probability = perturb_probability
 
-    def get_mask(self, model_inputs: Mapping[str, torch.Tensor]) -> torch.Tensor:
+    def get_mask(self, mask_dim: int) -> Float[torch.Tensor, "p l"]:
         """
-        Method returning a random perturbation mask for a given set of inputs.
-
-        The created mask should be of size (batch_size, n_perturbations, mask_dimension)
-        where mask_dimension is the length of the sequence according to the granularity level (number of tokens, number of words, number of sequences...)
+        Method returning a random perturbation mask for a given input sequence.
 
         Args:
-            model_inputs (Mapping[str, torch.Tensor]): mapping given by the tokenizer
+            mask_dim (int): The length of the sequence. Called 'l' in shapes.
 
         Returns:
-            torch.Tensor: mask to apply
+            masks (torch.Tensor): A tensor of shape (p, l). with p the number of perturbations.
         """
-        # Example implementation that returns a no-perturbation mask
-        # TODO factorize the getting of the mask dimension to outside of `get_mask`
-        mask_dimension = (
-            GranularityLevel.get_association_matrix(model_inputs, self.granularity_level)
-            .sum(dim=(-1, -2))
-            .max()
-            .int()
-            .item()
-        )
-        batch_size = model_inputs["input_ids"].shape[0]
-        return torch.rand((batch_size, self.n_perturbations, mask_dimension))
+        # Simplify typing
+        p, l = self.n_perturbations, mask_dim
+
+        # Generate random numbers between 0 and 1.
+        rands: Float[torch.Tensor, p, l] = torch.rand((p, l))
+
+        # Convert random numbers to binary masks.
+        masks: Float[torch.Tensor, p, l] = (rands < self.perturb_probability).float()
+
+        return masks

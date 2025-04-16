@@ -31,6 +31,7 @@ from __future__ import annotations
 from enum import Enum
 
 import torch
+from jaxtyping import Float, Int
 from scipy.stats import qmc
 
 from interpreto.attributions.perturbations.base import TokenMaskBasedPerturbator
@@ -89,7 +90,7 @@ class SobolTokenPerturbator(TokenMaskBasedPerturbator):
         self.sampler_class = sampler.value
         self.device = device
 
-    def get_mask(self, mask_dim: int) -> torch.Tensor:
+    def get_mask(self, mask_dim: int) -> Float[torch.Tensor, "p l"]:
         """
         Generates a binary mask for each token in the sequence.
 
@@ -99,18 +100,21 @@ class SobolTokenPerturbator(TokenMaskBasedPerturbator):
         Returns:
             masks (torch.Tensor): A tensor of shape ((l + 1) * k, l).
         """
+        # Simplify typing
         l, k = mask_dim, self.n_token_perturbations
-        # Initial random mask. Shape:(k, l)
-        initial_mask = torch.Tensor(self.sampler_class(l).random(k), device=self.device)
+        p = (l + 1) * k
 
-        # Expand mask across all perturbation steps. Shape ((l + 1) * k, l)
-        mask = initial_mask.repeat((l + 1, 1))
+        # Initial random mask.
+        initial_mask: Float[torch.Tensor, k, l] = torch.Tensor(self.sampler_class(l).random(k), device=self.device)
 
-        # Generate index tensor for perturbations. Shape: (l * k)
-        col_indices = torch.arange(l, device=self.device).repeat_interleave(k)
+        # Expand mask across all perturbation steps.
+        mask: Float[torch.Tensor, p, l] = initial_mask.repeat((l + 1, 1))
 
-        # Compute the start and end indices. Shape: (l * k)
-        row_indices = torch.arange(l * k, device=self.device) + k
+        # Generate index tensor for perturbations.
+        col_indices: Int[torch.Tensor, l * k] = torch.arange(l, device=self.device).repeat_interleave(k)
+
+        # Compute the start and end indices.
+        row_indices: Int[torch.Tensor, l * k] = torch.arange(l * k, device=self.device) + k
 
         # Flip the selected mask values without a loop
         mask[row_indices, col_indices] = 1 - mask[row_indices, col_indices]

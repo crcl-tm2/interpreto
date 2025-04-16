@@ -28,6 +28,7 @@ Base classes for perturbations used in attribution methods
 
 from __future__ import annotations
 
+from abc import abstractmethod
 import itertools
 from collections.abc import Iterable, MutableMapping
 from functools import singledispatchmethod
@@ -203,6 +204,7 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
         # in most commons cases, this should be set to GranularityLevel.TOKEN
         self.granularity_level = granularity_level
 
+    @abstractmethod
     def get_mask(self, mask_dim: int) -> torch.Tensor:
         """
         Method returning a perturbation mask for a given set of inputs
@@ -217,10 +219,7 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
         Returns:
             torch.Tensor: mask to apply on the inputs, of shape (n_perturbations, mask_dim)
         """
-        # Example implementation that returns a no-perturbation mask
-        return torch.zeros(
-            self.n_perturbations, mask_dim
-        )  # TODO: I suggest the default mask to be random (used at list for LIME)
+        raise NotImplementedError()
 
     @staticmethod
     def get_gran_mask_from_real_mask(

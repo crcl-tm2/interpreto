@@ -28,15 +28,28 @@ Aggregator for LIME and KernelSHAP
 
 from __future__ import annotations
 
+from abc import abstractmethod
 from collections.abc import Callable
 from enum import Enum
+from typing import Protocol
 
 import torch
-from beartype import beartype
-from jaxtyping import Float, jaxtyped
+from jaxtyping import Float
 from torch.nn import functional as F
 
 from interpreto.attributions.aggregations.base import Aggregator
+
+
+class DistancesFromMaskProtocol(Protocol):
+    """
+    Protocol for distance functions from masks
+    """
+
+    def __call__(self, mask: Float[torch.Tensor, "p l"]) -> Float[torch.Tensor, "l"]:  # noqa: UP037
+        """
+        Compute the distances from a mask
+        """
+        ...
 
 
 def hamming_distance(mask: torch.Tensor) -> torch.Tensor:
@@ -57,17 +70,17 @@ def cosine_distance(mask: torch.Tensor) -> torch.Tensor:
     """
     Compute the cosine distance between a mask and the original input
     """
-    return F.cosine_similarity(torch.ones_like(mask), mask, dim=1)
+    return 1 - F.cosine_similarity(torch.ones_like(mask), mask, dim=1)
 
 
-class DistanceFunctions(Enum):
+class DistancesFromMask(Enum):
     """
     Enumeration of available distance functions.
     """
 
-    HAMMING = hamming_distance
-    EUCLIDEAN = euclidean_distance
-    COSINE = cosine_distance
+    HAMMING = staticmethod(hamming_distance)
+    EUCLIDEAN = staticmethod(euclidean_distance)
+    COSINE = staticmethod(cosine_distance)
 
 
 def exponential_kernel(distances: torch.Tensor, kernel_width: float) -> torch.Tensor:
@@ -89,8 +102,8 @@ class Kernels(Enum):
     Enumeration of available kernels.
     """
 
-    EXPONENTIAL = exponential_kernel
-    ONES = ones_kernel
+    EXPONENTIAL = staticmethod(exponential_kernel)
+    ONES = staticmethod(ones_kernel)
 
 
 def default_kernel_width_fn(mask: torch.Tensor) -> float:
@@ -107,42 +120,42 @@ class LinearRegressionAggregator(Aggregator):
 
     def __init__(
         self,
-        distance_function: Callable | None = None,
+        distance_function: DistancesFromMaskProtocol | None = None,
         similarity_kernel: Callable = exponential_kernel,
-        kernel_width: float | Callable | None = default_kernel_width_fn,
+        kernel_width: float | Callable = default_kernel_width_fn,
     ):
         self.distance_function = distance_function
         self.similarity_kernel = similarity_kernel
         self.kernel_width = kernel_width
 
-    @jaxtyped
-    @beartype
     def aggregate(
-        self, results: Float[torch.Tensor, "p"], mask: Float[torch.Tensor, "p", "l"]
-    ) -> Float[torch.Tensor, "l"]:
+        self,
+        results: Float[torch.Tensor, "p"],  # noqa: UP037
+        mask: Float[torch.Tensor, "p l"],
+    ) -> Float[torch.Tensor, "l"]:  # noqa: UP037
         if self.distance_function is not None:  # LIME
             # Compute distance between perturbations and original input using the mask
-            distances = self.distance_function(mask)  # (p,)
+            distances: Float[torch.Tensor, "p"] = self.distance_function(mask)  # noqa: UP037
 
             # Compute the similarities between perturbations and original input using the distances
             if isinstance(self.kernel_width, Callable):
-                kernel_width = self.kernel_width(mask)
+                kernel_width: float = self.kernel_width(mask)
             else:
                 assert isinstance(self.kernel_width, float)
-                kernel_width = self.kernel_width
-            weights = self.similarity_kernel(distances, kernel_width)  # (p,)
+                kernel_width: float = self.kernel_width
+            weights: Float[torch.Tensor, "p"] = self.similarity_kernel(distances, kernel_width)  # noqa: UP037
         else:  # Kernel SHAP
-            weights = self.similarity_kernel(mask[:, 0], None)  # (p,)
+            weights: Float[torch.Tensor, "p"] = self.similarity_kernel(mask[:, 0], None)  # noqa: UP037
 
         # Compute closed form solution for the linear model
         # Add a constant column for the bias term
-        X = torch.cat([torch.ones(results.shape[0], 1), mask], dim=1)  # shape: (p, l + 1)
+        X: Float[torch.Tensor, "p l+1"] = torch.cat([torch.ones(results.shape[0], 1), mask], dim=1)
 
         # \theta =(X^T W X)^{-1} (X^T W y)
-        XT_W = results.T * weights  # shape: (l + 1, p)
-        theta = torch.inverse(XT_W @ X) @ (XT_W @ results)  # shape: (l + 1,)
+        XT_W: Float[torch.Tensor, "l+1 p"] = results.T * weights
+        theta: Float[torch.Tensor, "l+1"] = torch.inverse(XT_W @ X) @ (XT_W @ results)  # noqa: UP037
 
         # exclude the bias term
-        token_importance = theta[1:]  # shape: (l,)
+        token_importance: Float[torch.Tensor, "l"] = theta[1:]  # noqa: UP037
 
         return token_importance
