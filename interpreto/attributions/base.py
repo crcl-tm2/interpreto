@@ -39,7 +39,7 @@ from transformers import PreTrainedTokenizer
 
 from interpreto.attributions.aggregations.base import Aggregator
 from interpreto.attributions.perturbations.base import Perturbator
-from interpreto.commons.generator_tools import PersistentTupleGeneratorWrapper
+from interpreto.commons.generator_tools import split_iterator
 from interpreto.commons.granularity import GranularityLevel
 from interpreto.commons.model_wrapping.classification_inference_wrapper import ClassificationInferenceWrapper
 from interpreto.commons.model_wrapping.generation_inference_wrapper import GenerationInferenceWrapper
@@ -215,22 +215,21 @@ class ClassificationAttributionExplainer(AttributionExplainer):
 
         logits = logits.gather(-1, targets)
 
-        pert_per_input_generator = PersistentTupleGeneratorWrapper(
-            self.perturbator.perturb(m)[0] for m in model_inputs
-        )
+
+        pert_generator, mask_generator = split_iterator(self.perturbator.perturb(m)[0] for m in model_inputs)
 
         if self.usegradient:
             # Compute gradients for each perturbed input.
-            scores = list(self.inference_wrapper.get_gradients(pert_per_input_generator.get_subgenerator(0), targets))
+            scores = list(self.inference_wrapper.get_gradients(pert_generator, targets))
         else:
             # Compute targeted logits for each perturbed input.
             scores = list(
-                self.inference_wrapper.get_targeted_logits(pert_per_input_generator.get_subgenerator(0), targets)
+                self.inference_wrapper.get_targeted_logits(pert_generator, targets)
         )
 
         #scores = [logits[index] - target_logit for index, target_logit in enumerate_generator(target_logits)]
 
-        masks = list(pert_per_input_generator.get_subgenerator(1))
+        masks = list(mask_generator)
 
         contributions = [
             self.aggregator(score, mask).squeeze(0) for score, mask in zip(scores, masks, strict=True)
@@ -345,22 +344,19 @@ class GenerationAttributionExplainer(AttributionExplainer):
             GranularityLevel.get_decomposition(t, self.granularity_level) for t in model_inputs_to_explain
         ]
 
-        # Generate perturbations for each processed input.
-        pert_per_input_generator = PersistentTupleGeneratorWrapper(
-            self.perturbator.perturb(item)[0] for item in model_inputs_to_explain
-        )
+        pert_generator, mask_generator = split_iterator(self.perturbator.perturb(m)[0] for m in model_inputs)
 
         if self.usegradient:
             # Compute gradients for each perturbed input.
-            scores = list(self.inference_wrapper.get_gradients(pert_per_input_generator.get_subgenerator(0), targets))
+            scores = list(self.inference_wrapper.get_gradients(pert_generator, targets))
         else:
             # Compute targeted logits for each perturbed input.
             scores = list(
-                self.inference_wrapper.get_targeted_logits(pert_per_input_generator.get_subgenerator(0), targets)
+                self.inference_wrapper.get_targeted_logits(pert_generator, targets)
             )
 
         # Retrieve the perturbation masks.
-        masks = list(pert_per_input_generator.get_subgenerator(1))
+        masks = list(mask_generator)
 
         # Aggregate the scores using the aggregator to obtain contribution values.
 
@@ -385,13 +381,13 @@ class MultitaskExplainerMixin(AttributionExplainer):
     """
     def __new__(cls, model, *args, **kwargs):
         if isinstance(cls, FactoryGeneratedMeta):
-            return super().__new__(cls)
+            return super().__new__(cls) # type: ignore
         if model.__class__.__name__.endswith("ForSequenceClassification"):
             t = FactoryGeneratedMeta("Classification" + cls.__name__, (cls, ClassificationAttributionExplainer), {})
-            return t.__new__(t, model, *args, **kwargs)
+            return t.__new__(t, model, *args, **kwargs) # type: ignore
         if model.__class__.__name__.endswith("ForCausalLM") or model.__class__.__name__.endswith("LMHeadModel"):
             t = FactoryGeneratedMeta("Generation" + cls.__name__, (cls, GenerationAttributionExplainer), {})
-            return t.__new__(t, model, *args, **kwargs)
+            return t.__new__(t, model, *args, **kwargs) # type: ignore
         raise NotImplementedError(
-            "Model type not supported for Explainer. Use a ModelForSequenceClassification or ModelForCausalLM model."
+            "Model type not supported for Explainer. Use a ModelForSequenceClassification, a ModelForCausalLM model or a LMHeadModel model."
         )

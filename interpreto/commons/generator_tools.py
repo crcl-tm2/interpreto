@@ -2,105 +2,63 @@
 Tools for working with generators
 """
 
-from collections.abc import Iterable, Iterator, Sequence
-from functools import singledispatchmethod
+from collections.abc import Collection, Iterable, Iterator
 
 
 def enumerate_generator(generator):
     """
     Enumerate a generator without generating all the elements
     """
-    # TODO deal with non generators
     index = 0
-    for elem in generator:
+    for elem in iter(generator):
         yield index, elem
         index += 1
 
-
-class SubGenerator(Iterator):
-    def __init__(self, main_generator, position: int | slice):
-        self.main_generator = main_generator
+class SubIterator(Iterator):
+    def __init__(self, main_iterator, position:int | slice):
+        self.main_iterator = main_iterator
         self.position = position
-        self.index = 0
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator:
         return self
 
     def __next__(self):
-        if self.index >= len(self.main_generator.buffer):
-            self.main_generator.complete_buffer()
-        res = self.main_generator.buffer[self.index][self.position]
-        self.index += 1
-        return res
+        return self.main_iterator.sub_iterator_next(self.position)
 
-
-class PersistentGenerator(Iterator):
-    def __init__(self, generator: Iterator):
-        self.generator = generator
-        self.buffer = []
-
-    def __next__(self):
-        self.buffer += [next(self.generator)]
-        return self.buffer[-1]
-
-    def __getitem__(self, index: int | slice):
+class IteratorSplit(Iterable):
+    # TODO : eventually allow split size != 1, sections or custom indexations (useless for now)
+    def __init__(self, iterator: Iterator[Collection]):
+        self.iterator = iterator
         try:
-            return self.buffer[index]
-        except IndexError as e:
-            raise IndexError(f"Element {index} has not been generated yet and cannot be accessed") from e
+            first_item = next(iterator)
+            item_length = len(first_item)
+        except StopIteration as e:
+            raise ValueError("Iterator is empty. Can't split an empty iterator") from e
+        self.n_splits = item_length
+        self.buffers = [[a] for a in first_item]
+        self.subiterators = [SubIterator(self, i) for i in range(self.n_splits)]
 
+    def __len__(self):
+        return self.n_splits
 
-class PersistentTupleGeneratorWrapper(Iterator):
-    def __init__(self, tuple_generator: Iterator[Sequence]):
-        self.generator = tuple_generator
-        self.index = 0
-        self.buffer = []
+    def __getitem__(self, index: int):
+        return self.subiterators[index]
 
-    def complete_buffer(self):
-        self.buffer.append(next(self.generator))
+    def __generate_next_element(self):
+        try:
+            item = next(self.iterator)
+        except StopIteration as e:
+            raise StopIteration() from e
+        for index, element in enumerate(item):
+            self.buffers[index].append(element)
 
-    def __next__(self):
-        if self.index >= len(self.buffer):
-            self.complete_buffer()
-        result = self.buffer[self.index]
-        self.index += 1
-        return result
+    def sub_iterator_next(self, iterator_index):
+        if self.buffers[iterator_index] == []:
+            self.__generate_next_element()
+        return self.buffers[iterator_index].pop(0)
 
     def __iter__(self):
-        return self
+        return iter(self.subiterators)
 
-    def __getitem__(self, index: int | slice):
-        return self.get_subgenerator(index)
-
-    def get_subgenerator(self, index: int | slice):
-        return SubGenerator(self, index)
-
-
-def allow_sequences_of(*types: type):
-    def decorator(func):
-        def error_impl(self, it):
-            raise TypeError(
-                f"Unsupported type {type(it)} for method {func.__name__} in class {self.__class__.__name__}"
-            )
-
-        def default_impl(self, it):
-            return func(self, it)
-
-        def iterator_func(self, it: Iterator):
-            for i in it:
-                yield func(self, i)
-
-        def iterable_func(self, it: Iterable):
-            return iterator_func(self, iter(it))
-
-        if Any in types or ... in types or len(types) == 0:
-            res = singledispatchmethod(func)
-        else:
-            res = singledispatchmethod(error_impl)
-            for t in types:
-                res.register(t)(default_impl)
-        res.register(Iterator)(iterator_func)
-        res.register(Iterable)(iterable_func)
-        return res
-
-    return decorator
+def split_iterator(iterator: Iterator[Collection]):
+    return IteratorSplit(iterator)
