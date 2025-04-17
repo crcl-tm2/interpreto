@@ -28,10 +28,8 @@ Aggregator for LIME and KernelSHAP
 
 from __future__ import annotations
 
-from abc import abstractmethod
 from collections.abc import Callable
 from enum import Enum
-from typing import Protocol
 
 import torch
 from jaxtyping import Float
