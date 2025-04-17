@@ -28,7 +28,6 @@ Base classes for perturbations used in attribution methods
 
 from __future__ import annotations
 
-import itertools
 from abc import abstractmethod
 from collections.abc import Iterable, MutableMapping
 from typing import overload

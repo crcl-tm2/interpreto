@@ -23,7 +23,8 @@
 # SOFTWARE.
 
 from __future__ import annotations
-from typing import MutableMapping
+
+from collections.abc import MutableMapping
 
 import torch
 
@@ -36,7 +37,12 @@ class LinearInterpolationPerturbator(Perturbator):
     Perturbation using linear interpolation between a reference point (baseline) and the input.
     """
 
-    def __init__(self, inputs_embedder: torch.nn.Module | None = None, baseline: TensorBaseline = None, n_perturbations: int = 10):
+    def __init__(
+        self,
+        inputs_embedder: torch.nn.Module | None = None,
+        baseline: TensorBaseline = None,
+        n_perturbations: int = 10,
+    ):
         """
         Initializes the LinearInterpolationPerturbation instance.
 
@@ -88,7 +94,9 @@ class LinearInterpolationPerturbator(Perturbator):
             raise TypeError("Baseline must be None, a float, or a PyTorch tensor.")
         return baseline
 
-    def perturb_embeds(self, model_inputs: MutableMapping) -> tuple[MutableMapping[str, torch.Tensor], torch.Tensor | None]:
+    def perturb_embeds(
+        self, model_inputs: MutableMapping
+    ) -> tuple[MutableMapping[str, torch.Tensor], torch.Tensor | None]:
         embeddings = model_inputs["inputs_embeds"]
 
         baseline = self.adjust_baseline(self.baseline, embeddings)
@@ -100,5 +108,7 @@ class LinearInterpolationPerturbator(Perturbator):
 
         model_inputs["inputs_embeds"] = (1 - alphas) * embeddings + alphas * baseline
         print("am", model_inputs["attention_mask"].shape)
-        model_inputs["attention_mask"] = model_inputs["attention_mask"].repeat(model_inputs["inputs_embeds"].shape[0], 1)
+        model_inputs["attention_mask"] = model_inputs["attention_mask"].repeat(
+            model_inputs["inputs_embeds"].shape[0], 1
+        )
         return model_inputs, None

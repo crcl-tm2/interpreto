@@ -50,7 +50,7 @@ class OcclusionExplainer(MultitaskExplainerMixin, AttributionExplainer):
         tokenizer: PreTrainedTokenizer,
         granularity_level: GranularityLevel = GranularityLevel.WORD,
         device: torch.device | None = None,
-        replace_token_id:int|None = None,
+        replace_token_id: int | None = None,
     ):
         if replace_token_id is None:
             # TODO : move this in upper class (MaskingExplainer or something)
