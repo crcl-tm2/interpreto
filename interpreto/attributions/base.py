@@ -30,12 +30,13 @@ from __future__ import annotations
 
 import itertools
 from abc import abstractmethod
-from collections.abc import Callable, Iterable, MutableMapping
+from collections.abc import Iterable, MutableMapping
 from copy import deepcopy
+from typing import Any
 
 import torch
 from jaxtyping import Float
-from transformers import PreTrainedTokenizer
+from transformers import PreTrainedModel, PreTrainedTokenizer
 
 from interpreto.attributions.aggregations.base import Aggregator
 from interpreto.attributions.perturbations.base import Perturbator
@@ -44,7 +45,7 @@ from interpreto.commons.granularity import GranularityLevel
 from interpreto.commons.model_wrapping.classification_inference_wrapper import ClassificationInferenceWrapper
 from interpreto.commons.model_wrapping.generation_inference_wrapper import GenerationInferenceWrapper
 from interpreto.commons.model_wrapping.inference_wrapper import InferenceWrapper
-from interpreto.typing import ModelInputs
+from interpreto.typing import ModelInputs, TensorMapping
 
 SingleAttribution = (
     Float[torch.Tensor, "l"] | Float[torch.Tensor, "l c"] | Float[torch.Tensor, "l l_g"] | Float[torch.Tensor, "l l_t"]
@@ -101,16 +102,16 @@ class AttributionExplainer:
 
     def __init__(
         self,
+        model: PreTrainedModel,
         tokenizer: PreTrainedTokenizer,
-        model:Callable,
-        batch_size:int,
-        #inference_wrapper: InferenceWrapper,
+        batch_size: int,
+        # inference_wrapper: InferenceWrapper,
         perturbator: Perturbator | None = None,
         aggregator: Aggregator | None = None,
-        usegradient: bool = False,
+        use_gradient: bool = False,
         device: torch.device | None = None,
         granularity_level: GranularityLevel = GranularityLevel.DEFAULT,
-    ):
+    ) -> None:
         """
         Initializes the AttributionExplainer.
 
@@ -119,7 +120,7 @@ class AttributionExplainer:
             perturbator (Perturbator, optional): An instance for generating input perturbations.
                 Defaults to a Perturbator if not provided.
             aggregator (Aggregator, optional): An instance used to aggregate computed attribution scores.
-            usegradient (bool): If True, use gradient-based methods for computing attributions. Defaults to False (using inference-based methods).
+            use_gradient (bool): If True, use gradient-based methods for computing attributions. Defaults to False (using inference-based methods).
             device (torch.device, optional): The device on which computations will be performed.
             granularity_level (GranularityLevel): The level of granularity for the explanation (e.g., token, word, sentence).
         """
@@ -127,14 +128,14 @@ class AttributionExplainer:
         self.inference_wrapper = self._associated_inference_wrapper(model, batch_size=batch_size, device=device)
         self.perturbator = perturbator or Perturbator()
         self.aggregator = aggregator or Aggregator()
-        self.usegradient = usegradient
+        self.use_gradient = use_gradient
         self.device = device
         self.granularity_level = granularity_level
 
         # TODO : check this line, eventually move it
         self.inference_wrapper.pad_token_id = self.tokenizer.pad_token_id
 
-    def process_model_inputs(self, model_inputs):
+    def process_model_inputs(self, model_inputs: ModelInputs) -> list[TensorMapping]:
         """
         Processes and standardizes model inputs into a list of dictionaries compatible with the model.
 
@@ -153,7 +154,11 @@ class AttributionExplainer:
             ValueError: If the type of model_inputs is not supported.
         """
         if isinstance(model_inputs, str):
-            return [self.tokenizer(model_inputs, return_tensors="pt", return_offsets_mapping=True, return_special_tokens_mask=True)]
+            return [
+                self.tokenizer(
+                    model_inputs, return_tensors="pt", return_offsets_mapping=True, return_special_tokens_mask=True
+                )
+            ]
         if isinstance(model_inputs, MutableMapping):
             n = model_inputs["attention_mask"].shape[0]
             if n > 1:
@@ -166,13 +171,15 @@ class AttributionExplainer:
         )
 
     @abstractmethod
-    def explain(self, model_inputs: ModelInputs, targets=None) -> Iterable[AttributionOutput]:
+    def explain(self, model_inputs: ModelInputs, targets: Any = None) -> Iterable[AttributionOutput]:
         """
         Abstract method to compute attributions for given model inputs.
         """
         raise NotImplementedError
 
-    def __call__(self, model_inputs: ModelInputs, targets: ModelInputs | torch.Tensor | None = None) -> Iterable[AttributionOutput]:
+    def __call__(
+        self, model_inputs: ModelInputs, targets: ModelInputs | torch.Tensor | None = None
+    ) -> Iterable[AttributionOutput]:
         """
         Enables the explainer instance to be called as a function.
 
@@ -184,6 +191,7 @@ class AttributionExplainer:
             Any: The computed attributions.
         """
         return self.explain(model_inputs, targets)
+
 
 class ClassificationAttributionExplainer(AttributionExplainer):
     """
@@ -213,28 +221,31 @@ class ClassificationAttributionExplainer(AttributionExplainer):
 
         logits = logits.gather(-1, targets)
 
-
         pert_generator, mask_generator = split_iterator(self.perturbator.perturb(m) for m in model_inputs)
 
-        if self.usegradient:
+        if self.use_gradient:
             # Compute gradients for each perturbed input.
             scores = list(self.inference_wrapper.get_gradients(pert_generator, targets))
         else:
             # Compute targeted logits for each perturbed input.
-            scores = list(
-                self.inference_wrapper.get_targeted_logits(pert_generator, targets)
-        )
+            scores = list(self.inference_wrapper.get_targeted_logits(pert_generator, targets))
 
-        #scores = [logits[index] - target_logit for index, target_logit in enumerate_generator(target_logits)]
+        # scores = [logits[index] - target_logit for index, target_logit in enumerate_generator(target_logits)]
 
         masks = list(mask_generator)
 
-        contributions = [
-            self.aggregator(score, mask).squeeze(0) for score, mask in zip(scores, masks, strict=True)
-        ]
+        contributions = [self.aggregator(score, mask).squeeze(0) for score, mask in zip(scores, masks, strict=True)]
 
         return [
-            AttributionOutput(c, [self.tokenizer.decode(token_ids, skip_special_tokens=self.granularity_level is not GranularityLevel.ALL_TOKENS) for token_ids in d[0]])
+            AttributionOutput(
+                c,
+                [
+                    self.tokenizer.decode(
+                        token_ids, skip_special_tokens=self.granularity_level is not GranularityLevel.ALL_TOKENS
+                    )
+                    for token_ids in d[0]
+                ],
+            )
             for c, d in zip(contributions, decompositions, strict=True)
         ]
 
@@ -275,7 +286,9 @@ class GenerationAttributionExplainer(AttributionExplainer):
             f"type {type(targets)} not supported for method process_targets in class {self.__class__.__name__}"
         )
 
-    def explain(self, model_inputs: ModelInputs, targets: ModelInputs | None = None, **generation_kwargs) -> Iterable[AttributionOutput]:
+    def explain(
+        self, model_inputs: ModelInputs, targets: ModelInputs | None = None, **generation_kwargs
+    ) -> Iterable[AttributionOutput]:
         """
         Computes attributions for generative models.
 
@@ -287,7 +300,7 @@ class GenerationAttributionExplainer(AttributionExplainer):
                 b. Embed the target and concatenate with the input embeddings.
                 c. Construct a new input mapping that includes both embeddings.
             4. Generate perturbations for the constructed inputs.
-            5. Compute scores using either gradients (if usegradient is True) or targeted logits.
+            5. Compute scores using either gradients (if use_gradient is True) or targeted logits.
             6. Aggregate the scores to obtain contribution values.
             7. Decompose the inputs based on the desired granularity and decode tokens.
 
@@ -344,14 +357,12 @@ class GenerationAttributionExplainer(AttributionExplainer):
 
         pert_generator, mask_generator = split_iterator(self.perturbator.perturb(m) for m in model_inputs)
 
-        if self.usegradient:
+        if self.use_gradient:
             # Compute gradients for each perturbed input.
             scores = list(self.inference_wrapper.get_gradients(pert_generator, targets))
         else:
             # Compute targeted logits for each perturbed input.
-            scores = list(
-                self.inference_wrapper.get_targeted_logits(pert_generator, targets)
-            )
+            scores = list(self.inference_wrapper.get_targeted_logits(pert_generator, targets))
 
         # Retrieve the perturbation masks.
         masks = list(mask_generator)
@@ -364,28 +375,39 @@ class GenerationAttributionExplainer(AttributionExplainer):
 
         # Create and return AttributionOutput objects with the contributions and decoded token sequences:
         return [
-            AttributionOutput(c, [self.tokenizer.decode(token_ids, skip_special_tokens=self.granularity_level is not GranularityLevel.ALL_TOKENS) for token_ids in d[0]])
+            AttributionOutput(
+                c,
+                [
+                    self.tokenizer.decode(
+                        token_ids, skip_special_tokens=self.granularity_level is not GranularityLevel.ALL_TOKENS
+                    )
+                    for token_ids in d[0]
+                ],
+            )
             for c, d in zip(contributions, decompositions, strict=True)
         ]
+
 
 class FactoryGeneratedMeta(type):
     """
     Metaclass to distinguish classes generated by the MultitaskExplainerMixin.
     """
 
+
 class MultitaskExplainerMixin(AttributionExplainer):
     """
-    Mixin class to generate the appropriate Explainer based on the model type. 
+    Mixin class to generate the appropriate Explainer based on the model type.
     """
-    def __new__(cls, model, *args, **kwargs):
+
+    def __new__(cls, model: PreTrainedModel, *args: Any, **kwargs: Any) -> AttributionExplainer:
         if isinstance(cls, FactoryGeneratedMeta):
-            return super().__new__(cls) # type: ignore
+            return super().__new__(cls)  # type: ignore
         if model.__class__.__name__.endswith("ForSequenceClassification"):
             t = FactoryGeneratedMeta("Classification" + cls.__name__, (cls, ClassificationAttributionExplainer), {})
-            return t.__new__(t, model, *args, **kwargs) # type: ignore
+            return t.__new__(t, model, *args, **kwargs)  # type: ignore
         if model.__class__.__name__.endswith("ForCausalLM") or model.__class__.__name__.endswith("LMHeadModel"):
             t = FactoryGeneratedMeta("Generation" + cls.__name__, (cls, GenerationAttributionExplainer), {})
-            return t.__new__(t, model, *args, **kwargs) # type: ignore
+            return t.__new__(t, model, *args, **kwargs)  # type: ignore
         raise NotImplementedError(
             "Model type not supported for Explainer. Use a ModelForSequenceClassification, a ModelForCausalLM model or a LMHeadModel model."
         )

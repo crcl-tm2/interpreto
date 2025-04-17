@@ -31,7 +31,7 @@ name = "interpreto"
 version = "0.1.0"
 description = "Interpretability toolbox for LLMs"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license = {file = "LICENSE"}
 keywords = []
 authors = [
@@ -57,8 +57,6 @@ classifiers = [
   "Operating System :: OS Independent",
   "Programming Language :: Python",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.8",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
@@ -124,7 +122,7 @@ changelog = "https://github.com/FOR-sight-ai/interpreto/blob/main/CHANGELOG.md"
 
 [tool.mypy]
 # https://mypy.readthedocs.io/en/latest/config_file.html#using-a-pyproject-toml-file
-python_version = "3.8"
+python_version = "3.10"
 strict = true
 
 

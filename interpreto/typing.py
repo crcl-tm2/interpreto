@@ -28,12 +28,36 @@ Generic type annotations for Interpreto
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
-from typing import Any, Optional, Union
+from collections.abc import Iterable, MutableMapping
+from typing import Generic, Protocol, TypeVar, runtime_checkable
 
 import torch
+from jaxtyping import Float
 
-TokenEmbedding = Any
-Activation = Any
-ModelInputs = str | Mapping[str, torch.Tensor] | Iterable[str] | Iterable[Mapping[str, torch.Tensor]]
-TensorBaseline = Optional[Union[torch.Tensor, float, int]]  # noqa: UP007
+TokenEmbedding = Float[torch.Tensor, "n ..."]
+LatentActivations = Float[torch.Tensor, "n ..."]
+ConceptsActivations = Float[torch.Tensor, "n cpt"]
+
+T = TypeVar("T")
+O_co = TypeVar("O_co", bound=object, covariant=True)
+
+Nested = T | Iterable["Nested[T]"]
+NestedIterable = Nested[Iterable[T]]
+TensorMapping = MutableMapping[str, torch.Tensor]
+
+
+@runtime_checkable
+class HasWordIds(Protocol, Generic[O_co]):
+    """
+    Protocol for mapping having a word_ids method
+    """
+
+    def word_ids(self, index: int) -> Iterable[int | None]: ...
+
+
+TensorMappingWithWordIds = HasWordIds[TensorMapping]
+
+# Maybe consider NestedIterable rather that just iterable for model inputs ?
+ModelInputs = str | TensorMapping | Iterable[str] | Iterable[TensorMapping]
+
+TensorBaseline = torch.Tensor | float | int | None

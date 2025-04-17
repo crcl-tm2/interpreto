@@ -27,10 +27,25 @@ Definition of different granularity levels for explainers (tokens, words, senten
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from enum import Enum
 
 import torch
+from torch.types import Number
+
+from interpreto.typing import HasWordIds, TensorMapping
+
+
+class NoWordIdsError(AttributeError):
+    """
+    Exception raised when the word_ids method is not available on the tokenizer
+    """
+
+    def __init__(self):
+        super().__init__(
+            "Word-level granularity level requires tokenization with a fast tokenizer (i.e., tokenizer.is_fast=True), "
+            "because it relies on `.word_ids()` to associate tokens with words. "
+            "Please either use a fast tokenizer or switch to token-level granularity."
+        )
 
 
 class GranularityLevel(Enum):
@@ -45,32 +60,28 @@ class GranularityLevel(Enum):
     DEFAULT = TOKEN
 
     @staticmethod
-    def __all_tokens_assoc_matrix(tokens_ids: Mapping[str, torch.Tensor]):
+    def __all_tokens_assoc_matrix(tokens_ids: TensorMapping) -> torch.Tensor:
         n, l_p = tokens_ids["input_ids"].shape
         return torch.eye(l_p).unsqueeze(0).expand(n, -1, -1)
 
     @staticmethod
-    def __token_assoc_matrix(tokens_ids: Mapping[str, torch.Tensor]):
+    def __token_assoc_matrix(tokens_ids: TensorMapping) -> torch.Tensor:
         # TODO : remake this using only tensor operation (if possible ?)
         n, l_p = tokens_ids["input_ids"].shape
         perturbable_matrix = torch.diag_embed(1 - tokens_ids["special_tokens_mask"])
         non_empty_rows_mask = perturbable_matrix.sum(dim=2) != 0
         l_t = non_empty_rows_mask.sum(dim=1)
-        result = torch.zeros(n, l_t.max(), l_p)
+        result = torch.zeros(n, int(l_t.max().item()), l_p)
         for i in range(n):
             result[i, : l_t[i], :] = perturbable_matrix[i, non_empty_rows_mask[i]]
         return result
 
     @staticmethod
-    def __word_assoc_matrix(tokens_ids: Mapping[str, torch.Tensor]):
-        if not hasattr(tokens_ids, "word_ids") or not callable(tokens_ids.word_ids):
-            raise ValueError(
-                "This function requires tokenization with a fast tokenizer (i.e., tokenizer.is_fast=True), "
-                "because it relies on `.word_ids()` to associate tokens with words. "
-                "Please either use a fast tokenizer or switch to token-level granularity instead of word-level granularity."
-            )
-        n, l_p = tokens_ids["input_ids"].shape
-        l_t = GranularityLevel.get_length(tokens_ids, GranularityLevel.WORD).max()
+    def __word_assoc_matrix(tokens_ids: TensorMapping) -> torch.Tensor:
+        if not isinstance(tokens_ids, HasWordIds):
+            raise NoWordIdsError()
+        n = tokens_ids["input_ids"].shape[0]
+        l_t = int(GranularityLevel.get_length(tokens_ids, GranularityLevel.WORD).max().item())
         index_tensor = torch.nn.utils.rnn.pad_sequence(
             [
                 torch.tensor([a if a is not None else l_t for a in elem])
@@ -88,29 +99,29 @@ class GranularityLevel(Enum):
         return res
 
     @staticmethod
-    def get_length(
-        tokens_ids: Mapping[str, torch.Tensor], granularity_level: GranularityLevel = DEFAULT
-    ) -> torch.Tensor:
+    def get_length(tokens_ids: TensorMapping, granularity_level: GranularityLevel | None = None) -> torch.Tensor:
         """
         Returns the length of the sequences according to the granularity level
 
         Args:
-            tokens_ids (Mapping[str, torch.Tensor]): tensors to measure
+            tokens_ids (TensorMapping): tensors to measure
             granularity_level (GranularityLevel, optional): granularity level. Defaults to DEFAULT.
 
         Returns:
             torch.Tensor: length of the sequences
         """
-        match granularity_level:
+        match granularity_level or GranularityLevel.DEFAULT:
             case GranularityLevel.ALL_TOKENS:
                 return tokens_ids["input_ids"].shape[1] * torch.ones(tokens_ids["input_ids"].shape[0])
             case GranularityLevel.TOKEN:
                 return (1 - tokens_ids["special_tokens_mask"]).sum(dim=1)
             case GranularityLevel.WORD:
+                if not isinstance(tokens_ids, HasWordIds):
+                    raise NoWordIdsError()
                 return (
                     torch.tensor(
                         [
-                            max(filter(lambda x: x is not None, tokens_ids.word_ids(i)))
+                            max(a for a in tokens_ids.word_ids(i) if a is not None)
                             for i in range(tokens_ids["input_ids"].shape[0])
                         ]
                     )
@@ -120,13 +131,13 @@ class GranularityLevel(Enum):
                 raise NotImplementedError(f"Granularity level {granularity_level} not implemented")
 
     @staticmethod
-    def get_decomposition(tokens_ids: Mapping[str, torch.Tensor], granularity_level: GranularityLevel = DEFAULT):
-        match granularity_level:
+    def get_decomposition(tokens_ids: TensorMapping, granularity_level: GranularityLevel | None = None):
+        match granularity_level or GranularityLevel.DEFAULT:
             case GranularityLevel.ALL_TOKENS:
                 return [
                     [
                         [
-                            id,
+                            id.item(),
                         ]
                         for id in elem
                     ]
@@ -136,7 +147,7 @@ class GranularityLevel(Enum):
                 return [
                     [
                         [
-                            id,
+                            id.item(),
                         ]
                         for id, mask in zip(elem, spe_tok_mask, strict=True)
                         if mask == 0
@@ -146,17 +157,13 @@ class GranularityLevel(Enum):
                     )
                 ]
             case GranularityLevel.WORD:
-                if not hasattr(tokens_ids, "word_ids") or not callable(tokens_ids.word_ids):
-                    raise ValueError(
-                        "This function requires tokenization with a fast tokenizer (i.e., tokenizer.is_fast=True), "
-                        "because it relies on `.word_ids()` to associate tokens with words. "
-                        "Please either use a fast tokenizer or switch to token-level granularity instead of word-level granularity."
-                    )
+                if not isinstance(tokens_ids, HasWordIds):
+                    raise NoWordIdsError()
                 # TODO : refaire ça
-                res = []
+                res: list[list[list[Number]]] = []
                 for index, token_ids in enumerate(tokens_ids["input_ids"]):
                     word_ids = tokens_ids.word_ids(index)
-                    res.append([[] for _ in range(max(filter(lambda x: x is not None, word_ids)) + 1)])
+                    res.append([[] for _ in range(max(a for a in tokens_ids.word_ids(index) if a is not None) + 1)])
                     for tok, word_id in zip(token_ids, word_ids, strict=True):
                         if word_id is not None:
                             res[-1][word_id] += [tok.item()]
@@ -168,14 +175,14 @@ class GranularityLevel(Enum):
 
     @staticmethod
     def get_association_matrix(
-        tokens_ids: Mapping[str, torch.Tensor], granularity_level: GranularityLevel = DEFAULT
+        tokens_ids: TensorMapping, granularity_level: GranularityLevel | None = None
     ) -> torch.Tensor:
         """
         Creates the matrix to pass from one granularity level to ALL_TOKENS granularity level (finally used by the perturbator)
 
 
         Args:
-            tokens_ids (Mapping[str, torch.Tensor]): inputs of the perturb meth
+            tokens_ids (TensorMapping): inputs of the perturb meth
             granularity_level (GranularityLevel | None, optional): source granularity level. Defaults to GranularityLevel.DEFAULT.
 
         Raises:
@@ -184,7 +191,7 @@ class GranularityLevel(Enum):
         Returns:
             torch.Tensor: the matrix used to transform a specific granularity mask to a general mask that can be used on tokens
         """
-        match granularity_level:
+        match granularity_level or GranularityLevel.DEFAULT:
             case GranularityLevel.ALL_TOKENS:
                 return GranularityLevel.__all_tokens_assoc_matrix(tokens_ids)
             case GranularityLevel.TOKEN:

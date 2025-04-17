@@ -41,8 +41,7 @@ import torch
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import BaseModelOutput
 
-from interpreto.commons.generator_tools import allow_nested_iterables_of
-from interpreto.typing import ModelInputs
+from interpreto.typing import ModelInputs, TensorMapping
 
 
 # TODO : move that somewhere else
@@ -87,7 +86,8 @@ def concat_and_pad(
     tensors_dim = _tensors[0].dim()
     pad_dims = pad_dims or []
     max_length_per_dim = [max(t.shape[d] for t in _tensors) for d in pad_dims]
-    res = []
+
+    padded_tensors: list[torch.Tensor] = []
     for t in _tensors:
         pad = [0, 0] * tensors_dim
         for pad_dim, pad_length in zip(pad_dims, max_length_per_dim, strict=True):
@@ -95,9 +95,9 @@ def concat_and_pad(
             pad_index = -2 * (pad_dim % tensors_dim) - 1 - pad_left
             pad[pad_index] = pad_length - t.shape[pad_dim]
         # pad the tensor
-        res += [torch.nn.functional.pad(t, pad, value=pad_value)]
+        padded_tensors.append(torch.nn.functional.pad(t, pad, value=pad_value))
     # return the concatenation of all tensors
-    return torch.cat(res, dim=dim)
+    return torch.cat(padded_tensors, dim=dim)
 
 
 class InferenceWrapper:
@@ -170,18 +170,18 @@ class InferenceWrapper:
         """
         self.device = torch.device("cuda")
 
-    def embed(self, model_inputs: MutableMapping[str, torch.Tensor]) -> MutableMapping[str, torch.Tensor]:
+    def embed(self, model_inputs: TensorMapping) -> TensorMapping:
         """
         Embed the inputs using the model's input embeddings.
 
         Args:
-            model_inputs (MutableMapping[str, torch.Tensor]): input mapping containing either "input_ids" or "inputs_embeds".
+            model_inputs (TensorMapping): input mapping containing either "input_ids" or "inputs_embeds".
 
         Raises:
             ValueError: If neither "input_ids" nor "inputs_embeds" are present in the input mapping.
 
         Returns:
-            MutableMapping[str, torch.Tensor]: The input mapping with "inputs_embeds" added.
+            TensorMapping: The input mapping with "inputs_embeds" added.
         """
         # If input embeds are already present, return the unmodified model inputs
         if "inputs_embeds" in model_inputs:
@@ -195,7 +195,7 @@ class InferenceWrapper:
         # If neither input ids nor input embeds are present, raise an error
         raise ValueError("model_inputs should contain either 'input_ids' or 'inputs_embeds'")
 
-    def call_model(self, input_embeds: torch.Tensor, attention_mask: torch.Tensor|None) -> BaseModelOutput:
+    def call_model(self, input_embeds: torch.Tensor, attention_mask: torch.Tensor | None) -> BaseModelOutput:
         """
         Perform a call to the wrapped model with the given input embeddings and attention mask.
 
@@ -218,15 +218,16 @@ class InferenceWrapper:
             )
         # send input to device
         input_embeds.to(self.device)
-        attention_mask.to(self.device)
+        if attention_mask is not None:
+            attention_mask.to(self.device)
         # Call wrapped model
         return self.model(inputs_embeds=input_embeds, attention_mask=attention_mask)
 
     @overload
-    def get_logits(self, model_inputs: MutableMapping[str, torch.Tensor]) -> torch.Tensor: ...
+    def get_logits(self, model_inputs: TensorMapping) -> torch.Tensor: ...
 
     @overload
-    def get_logits(self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]]) -> Generator[torch.Tensor, None, str]: ...
+    def get_logits(self, model_inputs: Iterable[TensorMapping]) -> Generator[torch.Tensor, None, str]: ...
 
     @singledispatchmethod
     def get_logits(self, model_inputs: ModelInputs) -> torch.Tensor | Generator[torch.Tensor, None, str]:
@@ -267,14 +268,14 @@ class InferenceWrapper:
             f"type {type(model_inputs)} not supported for method get_logits in class {self.__class__.__name__}"
         )
 
-    @get_logits.register(MutableMapping) # type: ignore
-    def _get_logits_from_mapping(self, model_inputs: MutableMapping[str, torch.Tensor]) -> torch.Tensor:
+    @get_logits.register(MutableMapping)  # type: ignore
+    def _get_logits_from_mapping(self, model_inputs: TensorMapping) -> torch.Tensor:
         """
         Get the logits from the model for the given inputs.
         registered for MutableMapping type.
 
         Args:
-            model_inputs (MutableMapping[str, torch.Tensor]): input mapping containing either "input_ids" or "inputs_embeds".
+            model_inputs (TensorMapping): input mapping containing either "input_ids" or "inputs_embeds".
 
         Returns:
             torch.Tensor: logits associated to the input mapping.
@@ -300,21 +301,21 @@ class InferenceWrapper:
             case _:  # (..., sequence_length, embedding_size) e.g. (batch_size, n_perturbations, sequence_length, embedding_size)
                 # flatten the first dimension to a single batch dimension
                 # then call the model on the flattened inputs and reshape the result to the original batch structure
-                flat_model_inputs = {"inputs_embeds": model_inputs["inputs_embeds"].flatten(0, -3),
-                                     "attention_mask": model_inputs["attention_mask"].flatten(0, -2)}
+                flat_model_inputs = {
+                    "inputs_embeds": model_inputs["inputs_embeds"].flatten(0, -3),
+                    "attention_mask": model_inputs["attention_mask"].flatten(0, -2),
+                }
                 prediction = self._get_logits_from_mapping(flat_model_inputs)
                 return prediction.view(*model_inputs["inputs_embeds"].shape[:-2], -1)
 
-    @get_logits.register(Iterable) # type: ignore
-    def _get_logits_from_iterable(
-        self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]]
-    ) -> Generator[torch.Tensor, None, str]:
+    @get_logits.register(Iterable)  # type: ignore
+    def _get_logits_from_iterable(self, model_inputs: Iterable[TensorMapping]) -> Generator[torch.Tensor, None, str]:
         """
         Get the logits from the model for the given inputs.
         registered for Iterable type.
 
         Args:
-            model_inputs (Iterable[MutableMapping[str, torch.Tensor]]): Iterable of input mappings containing either "input_ids" or "inputs_embeds".
+            model_inputs (Iterable[TensorMapping]): Iterable of input mappings containing either "input_ids" or "inputs_embeds".
 
         Yields:
             torch.Tensor: logits associated to the input mappings.
@@ -331,7 +332,7 @@ class InferenceWrapper:
                 "Padding token is not set in the inference wrapper. Please assign it explicitly by setting: inference_wrapper.pad_token_id = tokenizer.pad_token_id"
             )
 
-        result_buffer: torch.Tensor | None = None
+        result_buffer = torch.zeros(0)
         result_indexes: list[int] = []
 
         batch: torch.Tensor | None = None
@@ -345,7 +346,7 @@ class InferenceWrapper:
         # Generation loop
         while True:
             # check if the ouput buffer contains enough data to correspond to the next element
-            if result_buffer is not None and result_indexes and len(result_buffer) >= result_indexes[0]:
+            if result_buffer.numel() and result_indexes and len(result_buffer) >= result_indexes[0]:
                 # pop the first index from the result indexes
                 index = result_indexes.pop(0)
                 # yield the associated logits
@@ -405,7 +406,7 @@ class InferenceWrapper:
                     break
                 last_item = True
         # Chack that all the buffers are empty
-        if any(len(a) for a in [result_indexes, result_buffer, input_buffer, mask_buffer]):
+        if any(element.numel() for element in [result_buffer, input_buffer, mask_buffer]):
             warnings.warn(
                 "Some data were not well fetched in inference wrapper, please check your code if you made custom method or notify it to the developers",
                 stacklevel=2,
@@ -437,12 +438,18 @@ class InferenceWrapper:
         )
 
     @overload
-    def get_gradients(self, model_inputs: MutableMapping[str, torch.Tensor], targets: torch.Tensor) -> torch.Tensor: ...
-    @overload
-    def get_gradients(self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]], targets: Iterable[torch.Tensor]) -> Iterable[torch.Tensor]: ...
+    def get_gradients(self, model_inputs: TensorMapping, targets: torch.Tensor) -> torch.Tensor: ...
 
-    @allow_nested_iterables_of(MutableMapping)
-    def get_gradients(self, model_inputs: MutableMapping[str, torch.Tensor], targets: torch.Tensor)->torch.Tensor | Iterable:
+    @overload
+    def get_gradients(
+        self, model_inputs: Iterable[TensorMapping], targets: torch.Tensor
+    ) -> Iterable[torch.Tensor]: ...
+
+    # @allow_nested_iterables_of(MutableMapping)
+    @singledispatchmethod
+    def get_gradients(
+        self, model_inputs: ModelInputs, targets: torch.Tensor
+    ) -> torch.Tensor | Generator[torch.Tensor, None, None]:
         """
         Get the gradients of the logits associated to a given target with respect to the inputs.
 
@@ -471,13 +478,29 @@ class InferenceWrapper:
                 >>> for grad in gradients:
                 ...     print(grad)
         """
+        raise NotImplementedError(
+            f"type {type(model_inputs)} not supported for method get_gradients in class {self.__class__.__name__}"
+        )
+
+    @get_gradients.register(MutableMapping)  # type: ignore
+    def _get_gradients_from_mapping(self, model_inputs: TensorMapping, targets: torch.Tensor) -> torch.Tensor:
         model_inputs = self.embed(model_inputs)
         inputs_embeds = model_inputs["inputs_embeds"]
+
         def get_score(inputs_embeds: torch.Tensor):
             return self.get_targeted_logits(
                 {"inputs_embeds": inputs_embeds, "attention_mask": model_inputs["attention_mask"]}, targets
             )
+
         # Compute gradient of the selected logits:
         grad_matrix = torch.autograd.functional.jacobian(get_score, inputs_embeds)  # (n, lt, n, l, d)
         grad_matrix = grad_matrix.abs().mean(dim=-1)  # (n, lt, n, l)  # average over the embedding dimension
         return grad_matrix[torch.arange(grad_matrix.shape[0]), :, torch.arange(grad_matrix.shape[0]), :]
+
+    @get_gradients.register(Iterable)  # type: ignore
+    def _get_gradients_from_iterable(
+        self, model_inputs: Iterable[TensorMapping], targets: torch.Tensor
+    ) -> Iterable[torch.Tensor]:
+        yield from (
+            self.get_gradients(model_input, target) for model_input, target in zip(model_inputs, targets, strict=True)
+        )

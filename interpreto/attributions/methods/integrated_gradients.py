@@ -40,20 +40,24 @@ class IntegratedGradients(MultitaskExplainerMixin, AttributionExplainer):
     """
     Integrated Gradients method
     """
+
     def __init__(
         self,
-        tokenizer: PreTrainedTokenizer,
         model: PreTrainedModel,
+        tokenizer: PreTrainedTokenizer,
         batch_size: int,
         device: torch.device | None = None,
         n_interpolations: int = 10,
         baseline: torch.Tensor | float | None = None,
-    ):
+    ) -> None:
         super().__init__(
-            tokenizer=tokenizer,
-            perturbator=LinearInterpolationPerturbator(inputs_embedder=model.get_input_embeddings(), baseline=baseline, n_perturbations=n_interpolations),
-            inference_wrapper=self._associated_inference_wrapper(model, batch_size=batch_size, device=device),
-            aggregator=MeanAggregator(), # TODO: check if we need a trapezoidal mean
-            usegradient=True,
+            model=model,
+            batch_size=batch_size,
             device=device,
+            use_gradient=True,
+            tokenizer=tokenizer,
+            perturbator=LinearInterpolationPerturbator(
+                inputs_embedder=model.get_input_embeddings(), baseline=baseline, n_perturbations=n_interpolations
+            ),
+            aggregator=MeanAggregator(),  # TODO: check if we need a trapezoidal mean
         )

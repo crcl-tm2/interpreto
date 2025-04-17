@@ -46,7 +46,7 @@ class ClassificationInferenceWrapper(InferenceWrapper):
     PAD_LEFT = False
 
     @staticmethod
-    def process_target(target: torch.Tensor, batch_dims:tuple[int]|torch.Size) -> torch.Tensor:
+    def process_target(target: torch.Tensor, batch_dims: tuple[int] | torch.Size) -> torch.Tensor:
         """
         Process the target tensor to match the shape of the logits tensor.
 
@@ -64,7 +64,9 @@ class ClassificationInferenceWrapper(InferenceWrapper):
         view_index = [1 for _ in batch_dims]
         if target.dim() == 2:
             n = target.shape[0]
-            assert n in (1, batch_dims[0]), f"target batch size {n} should be either 1 or logits batch size ({batch_dims[0]})"
+            assert n in (1, batch_dims[0]), (
+                f"target batch size {n} should be either 1 or logits batch size ({batch_dims[0]})"
+            )
             view_index[0] = n
         target = target.view(n, *[1 for _ in batch_dims[1:]], -1)
         return target.expand(*batch_dims, -1)
