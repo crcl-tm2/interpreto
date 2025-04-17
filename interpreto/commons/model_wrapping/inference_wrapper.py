@@ -41,6 +41,9 @@ import torch
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import BaseModelOutput
 
+from interpreto.commons.generator_tools import allow_nested_iterables_of
+from interpreto.typing import ModelInputs
+
 
 # TODO : move that somewhere else
 def concat_and_pad(
@@ -192,7 +195,7 @@ class InferenceWrapper:
         # If neither input ids nor input embeds are present, raise an error
         raise ValueError("model_inputs should contain either 'input_ids' or 'inputs_embeds'")
 
-    def call_model(self, input_embeds: torch.Tensor, attention_mask: torch.Tensor) -> BaseModelOutput:
+    def call_model(self, input_embeds: torch.Tensor, attention_mask: torch.Tensor|None) -> BaseModelOutput:
         """
         Perform a call to the wrapped model with the given input embeddings and attention mask.
 
@@ -226,7 +229,7 @@ class InferenceWrapper:
     def get_logits(self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]]) -> Generator[torch.Tensor, None, str]: ...
 
     @singledispatchmethod
-    def get_logits(self, model_inputs: Any) -> torch.Tensor | Generator[torch.Tensor, None, str]:
+    def get_logits(self, model_inputs: ModelInputs) -> torch.Tensor | Generator[torch.Tensor, None, str]:
         """
         Get the logits from the model for the given inputs.
 
@@ -264,7 +267,7 @@ class InferenceWrapper:
             f"type {type(model_inputs)} not supported for method get_logits in class {self.__class__.__name__}"
         )
 
-    @get_logits.register(MutableMapping)
+    @get_logits.register(MutableMapping) # type: ignore
     def _get_logits_from_mapping(self, model_inputs: MutableMapping[str, torch.Tensor]) -> torch.Tensor:
         """
         Get the logits from the model for the given inputs.
@@ -302,7 +305,7 @@ class InferenceWrapper:
                 prediction = self._get_logits_from_mapping(flat_model_inputs)
                 return prediction.view(*model_inputs["inputs_embeds"].shape[:-2], -1)
 
-    @get_logits.register(Iterable)
+    @get_logits.register(Iterable) # type: ignore
     def _get_logits_from_iterable(
         self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]]
     ) -> Generator[torch.Tensor, None, str]:
@@ -433,8 +436,13 @@ class InferenceWrapper:
             f"get_targeted_logits not implemented for {self.__class__.__name__}. Implement this method is necessary to use gradient-based methods."
         )
 
-    @singledispatchmethod
-    def get_gradients(self, model_inputs, targets):
+    @overload
+    def get_gradients(self, model_inputs: MutableMapping[str, torch.Tensor], targets: torch.Tensor) -> torch.Tensor: ...
+    @overload
+    def get_gradients(self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]], targets: Iterable[torch.Tensor]) -> Iterable[torch.Tensor]: ...
+
+    @allow_nested_iterables_of(MutableMapping)
+    def get_gradients(self, model_inputs: MutableMapping[str, torch.Tensor], targets: torch.Tensor)->torch.Tensor | Iterable:
         """
         Get the gradients of the logits associated to a given target with respect to the inputs.
 
@@ -463,24 +471,6 @@ class InferenceWrapper:
                 >>> for grad in gradients:
                 ...     print(grad)
         """
-        raise NotImplementedError(
-            f"type {type(model_inputs)} not supported for method get_gradients in class {self.__class__.__name__}"
-        )
-
-    @get_gradients.register(MutableMapping)
-    def _get_gradient_from_mapping(self, model_inputs: MutableMapping[str, torch.Tensor], targets: torch.Tensor):
-        """
-        Get the gradients of the logits associated to a given target with respect to the inputs.
-        registered for MutableMapping type.
-        This method uses torch.autograd.functional.jacobian to compute the gradients.
-
-        Args:
-            model_inputs (Iterable[MutableMapping[str, torch.Tensor]]): input mapping to be passed to the model
-            targets (torch.Tensor): target tensor to be used to get the logits.
-
-        Returns:
-            torch.Tensor: gradient of the output of the model with respect to the given inputs
-        """
         model_inputs = self.embed(model_inputs)
         inputs_embeds = model_inputs["inputs_embeds"]
         def get_score(inputs_embeds: torch.Tensor):
@@ -490,29 +480,4 @@ class InferenceWrapper:
         # Compute gradient of the selected logits:
         grad_matrix = torch.autograd.functional.jacobian(get_score, inputs_embeds)  # (n, lt, n, l, d)
         grad_matrix = grad_matrix.abs().mean(dim=-1)  # (n, lt, n, l)  # average over the embedding dimension
-        n = grad_matrix.shape[0]  # number of examples in the batch
-        diag_grad_matrix = grad_matrix[
-            torch.arange(n), :, torch.arange(n), :
-        ]  # (n, lt, l) # remove the gradients of the other examples
-        print(diag_grad_matrix.shape)
-        return diag_grad_matrix
-
-    @get_gradients.register(Iterable)
-    def _get_gradient_from_iterable(
-        self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]], targets: Iterable[torch.Tensor]
-    ) -> Iterable[torch.Tensor]:
-        """
-        Get the gradients of the logits associated to a given target with respect to the inputs.
-        registered for Iterable type.
-
-        Args:
-            model_inputs (Iterable[MutableMapping[str, torch.Tensor]]): iterable input mappings to be passed to the model
-            targets (torch.Tensor): target tensor to be used to get the logits.
-
-        Yields:
-            torch.Tensor: gradients of the logits associated to the given target with respect to the inputs.
-        """
-        # TODO : see if we can do that in a more efficient way
-        yield from (
-            self._get_gradient_from_mapping(model_input, target) for model_input, target in zip(model_inputs, targets, strict=True)
-        )
+        return grad_matrix[torch.arange(grad_matrix.shape[0]), :, torch.arange(grad_matrix.shape[0]), :]
