@@ -1,3 +1,15 @@
-from .methods import IntegratedGradients  # , SobolAttribution
+from .methods import (
+    IntegratedGradients,
+    KernelShap,
+    Lime,
+    OcclusionExplainer,
+    SobolAttribution,
+)
 
-__all__ = ["IntegratedGradients", "SobolAttribution"]
+__all__ = [
+    "IntegratedGradients",
+    "KernelShap",
+    "Lime",
+    "OcclusionExplainer",
+    "SobolAttribution",
+]

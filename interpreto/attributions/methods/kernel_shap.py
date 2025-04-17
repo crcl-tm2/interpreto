@@ -28,59 +28,60 @@ Kernel SHAP attribution method
 
 from __future__ import annotations
 
-from typing import Any
-
 import torch
-from transformers import PreTrainedTokenizer
+from transformers import PreTrainedModel, PreTrainedTokenizer
 
 from interpreto.attributions.aggregations.linear_regression_aggregation import (
     Kernels,
     LinearRegressionAggregator,
 )
-from interpreto.attributions.base import InferenceExplainer
+from interpreto.attributions.base import AttributionExplainer, MultitaskExplainerMixin
 from interpreto.attributions.perturbations.shap_perturbation import ShapTokenPerturbator
-from interpreto.commons.model_wrapping.inference_wrapper import ClassificationInferenceWrapper
+from interpreto.commons.granularity import GranularityLevel
 
 
-class KernelShap(InferenceExplainer):
+class KernelShap(MultitaskExplainerMixin, AttributionExplainer):
     """
-    Sobol Attribution method
+    Kernel SHAP attribution method.
     """
 
     def __init__(
         self,
-        model: Any,
-        tokenizer: PreTrainedTokenizer | None = None,
-        n_token_perturbations: int = 30,
-        granularity_level: str = "token",
-        baseline: str = "[MASK]",
-        batch_size: int = 1,
+        model: PreTrainedModel,
+        tokenizer: PreTrainedTokenizer,
+        batch_size: int,
+        granularity_level: GranularityLevel = GranularityLevel.WORD,
+        n_perturbations: int = 1000,
         device: torch.device | None = None,
     ):
         """
         Initialize the attribution method.
 
         Args:
-            model (Any): model to explain
+            model (PreTrainedModel): model to explain
             tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
-            n_perturbations (int): the number of perturbations to generate
-            granularity_level (str): granularity level of the perturbations (token, word, sentence, etc.)
-            baseline (str): replacement token (e.g. “[MASK]”)
             batch_size (int): batch size for the attribution method
-            distance_function (DistanceFunctions): distance function to use for the aggregation
+            granularity_level (str): granularity level of the perturbations (token, word, sentence, etc.)
+            n_perturbations (int): the number of perturbations to generate
+            distance_function (DistancesFromMaskProtocol): distance function used to compute weights of perturbed samples in the linear model training.
+            similarity_kernel (SimilarityKernelProtocol): similarity kernel used to compute weights of perturbed samples in the linear model training.
+            kernel_width (float | Callable): kernel width used in the `similarity_kernel`
             device (torch.device): device on which the attribution method will be run
         """
-        if tokenizer is None:
-            raise ValueError(
-                "Tokenizer must be provided for Sobol token attribution, tensor attributions are not supported yet."
-            )
+        # TODO : move this in upper class (MaskingExplainer or something)
+        replace_token = "[REPLACE]"
+        if replace_token not in tokenizer.get_vocab():
+            tokenizer.add_tokens([replace_token])
+            model.resize_token_embeddings(len(tokenizer))
+        replace_token_id = tokenizer.convert_tokens_to_ids(replace_token)
+        if isinstance(replace_token_id, list):
+            replace_token_id = replace_token_id[0]
 
         perturbator = ShapTokenPerturbator(
-            tokenizer=tokenizer,
             inputs_embedder=model.get_input_embeddings(),
-            n_token_perturbations=n_token_perturbations,
             granularity_level=granularity_level,
-            baseline=baseline,
+            replace_token_id=replace_token_id,
+            n_perturbations=n_perturbations,
             device=device,
         )
 
@@ -89,8 +90,12 @@ class KernelShap(InferenceExplainer):
         )
 
         super().__init__(
-            perturbation=perturbator,
-            inference_wrapper=ClassificationInferenceWrapper(model=model, batch_size=batch_size, device=device),
-            aggregation=aggregator,
+            model=model,
+            tokenizer=tokenizer,
+            perturbator=perturbator,
+            aggregator=aggregator,
+            batch_size=batch_size,
+            usegradient=False,
+            granularity_level=granularity_level,
             device=device,
         )

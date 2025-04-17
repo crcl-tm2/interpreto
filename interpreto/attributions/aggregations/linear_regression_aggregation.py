@@ -32,13 +32,14 @@ from collections.abc import Callable
 from enum import Enum
 
 import torch
-from jaxtyping import Float
+from jaxtyping import Float, jaxtyped
+from torch import Tensor
 from torch.nn import functional as F
 
 from interpreto.attributions.aggregations.base import Aggregator
 
-DistancesFromMaskProtocol = Callable[[Float[torch.Tensor, "p l"]], Float[torch.Tensor, "p"]]
-SimilarityKernelProtocol = Callable[[Float[torch.Tensor, "p"], float], Float[torch.Tensor, "p"]]
+DistancesFromMaskProtocol = Callable[[Float[Tensor, "p l"]], Float[Tensor, "p"]]
+SimilarityKernelProtocol = Callable[[Float[Tensor, "p"], float], Float[Tensor, "p"]]
 
 
 def hamming_distance(mask: torch.Tensor) -> torch.Tensor:
@@ -111,7 +112,7 @@ class LinearRegressionAggregator(Aggregator):
         self,
         distance_function: DistancesFromMaskProtocol | None = None,  # noqa: UP036
         similarity_kernel: SimilarityKernelProtocol = exponential_kernel,
-        kernel_width: float | Callable = default_kernel_width_fn,
+        kernel_width: float | Callable | None = None,
     ):
         """
         Initialize the aggregator.
@@ -123,16 +124,30 @@ class LinearRegressionAggregator(Aggregator):
         """
         self.distance_function = distance_function
         self.similarity_kernel = similarity_kernel
-        self.kernel_width = kernel_width
+        self.kernel_width = kernel_width if kernel_width is not None else default_kernel_width_fn
 
+    @jaxtyped
     def aggregate(
         self,
-        results: Float[torch.Tensor, "p"],  # noqa: UP037
-        mask: Float[torch.Tensor, "p l"],
-    ) -> Float[torch.Tensor, "l"]:  # noqa: UP037
+        results: Float[Tensor, "p"],
+        mask: Float[Tensor, "p l"],
+    ) -> Float[Tensor, "l"]:
+        """
+        Aggregate the results of the perturbations using a linear model.
+
+        Args:
+            results (torch.Tensor): The results of the perturbations. Shape: (p,).
+            mask (torch.Tensor): The mask used for the perturbations. Shape: (p, l).
+        Returns:
+            torch.Tensor: The aggregated results. Shape: (l,).
+        """
+        # Simplify typing
+        p, l = mask.shape
+
+        # Define the weights for the linear model
         if self.distance_function is not None:  # LIME
             # Compute distance between perturbations and original input using the mask
-            distances: Float[torch.Tensor, "p"] = self.distance_function(mask)  # noqa: UP037
+            distances: Float[Tensor, "{p}"] = self.distance_function(mask)
 
             # Compute the similarities between perturbations and original input using the distances
             if isinstance(self.kernel_width, Callable):
@@ -140,19 +155,19 @@ class LinearRegressionAggregator(Aggregator):
             else:
                 assert isinstance(self.kernel_width, float)
                 kernel_width: float = self.kernel_width
-            weights: Float[torch.Tensor, "p"] = self.similarity_kernel(distances, kernel_width)  # noqa: UP037
+            weights: Float[Tensor, "{p}"] = self.similarity_kernel(distances, kernel_width)
         else:  # Kernel SHAP
-            weights: Float[torch.Tensor, "p"] = self.similarity_kernel(mask[:, 0], 1.0)  # noqa: UP037
+            weights: Float[Tensor, "{p}"] = self.similarity_kernel(mask[:, 0], 1.0)
 
         # Compute closed form solution for the linear model
         # Add a constant column for the bias term
-        X: Float[torch.Tensor, "p l+1"] = torch.cat([torch.ones(results.shape[0], 1), mask], dim=1)
+        X: Float[Tensor, "{p} l+1"] = torch.cat([torch.ones(results.shape[0], 1), mask], dim=1)
 
         # \theta =(X^T W X)^{-1} (X^T W y)
-        XT_W: Float[torch.Tensor, "l+1 p"] = results.T * weights
-        theta: Float[torch.Tensor, "l+1"] = torch.inverse(XT_W @ X) @ (XT_W @ results)  # noqa: UP037
+        XT_W: Float[Tensor, "l+1 {p}"] = results.T * weights
+        theta: Float[Tensor, "l+1"] = torch.inverse(XT_W @ X) @ (XT_W @ results)
 
         # exclude the bias term
-        token_importance: Float[torch.Tensor, "l"] = theta[1:]  # noqa: UP037
+        token_importance: Float[Tensor, "{l}"] = theta[1:]
 
         return token_importance

@@ -66,7 +66,6 @@ class SobolTokenPerturbator(TokenMaskBasedPerturbator):
         n_token_perturbations: int = 30,
         sobol_indices_order: SobolIndicesOrders = SobolIndicesOrders.FIRST_ORDER,
         sampler: SequenceSamplers = SequenceSamplers.SOBOL,
-        device: torch.device | None = None,
     ):
         """
         Initialize the perturbator.
@@ -77,7 +76,6 @@ class SobolTokenPerturbator(TokenMaskBasedPerturbator):
             granularity_level (str): granularity level of the perturbations (token, word, sentence, etc.)
             sobol_indices (SobolIndicesOrders): Sobol indices order, either `FIRST_ORDER` or `TOTAL_ORDER`.
             sampler (SequenceSamplers): Sobol sequence sampler, either `SOBOL`, `HALTON` or `LatinHypercube`.
-            device (torch.device): device on which the perturbator will be run
         """
         super().__init__(
             inputs_embedder=inputs_embedder,
@@ -86,9 +84,8 @@ class SobolTokenPerturbator(TokenMaskBasedPerturbator):
             replace_token_id=replace_token_id,
         )
         self.n_token_perturbations = n_token_perturbations
-        self.sobol_indices_order = sobol_indices_order
+        self.sobol_indices_order = sobol_indices_order.value
         self.sampler_class = sampler.value
-        self.device = device
 
     def get_mask(self, mask_dim: int) -> Float[torch.Tensor, "p l"]:
         """
@@ -105,21 +102,21 @@ class SobolTokenPerturbator(TokenMaskBasedPerturbator):
         p = (l + 1) * k
 
         # Initial random mask.
-        initial_mask: Float[torch.Tensor, k, l] = torch.Tensor(self.sampler_class(l).random(k), device=self.device)
+        initial_mask: Float[torch.Tensor, k, l] = torch.Tensor(self.sampler_class(l).random(k))
 
         # Expand mask across all perturbation steps.
         mask: Float[torch.Tensor, p, l] = initial_mask.repeat((l + 1, 1))
 
         # Generate index tensor for perturbations.
-        col_indices: Int[torch.Tensor, l * k] = torch.arange(l, device=self.device).repeat_interleave(k)
+        col_indices: Int[torch.Tensor, l * k] = torch.arange(l).repeat_interleave(k)
 
         # Compute the start and end indices.
-        row_indices: Int[torch.Tensor, l * k] = torch.arange(l * k, device=self.device) + k
+        row_indices: Int[torch.Tensor, l * k] = torch.arange(l * k) + k
 
         # Flip the selected mask values without a loop
         mask[row_indices, col_indices] = 1 - mask[row_indices, col_indices]
 
-        if self.sobol_indices_order == SobolIndicesOrders.TOTAL_ORDER:
+        if self.sobol_indices_order == SobolIndicesOrders.TOTAL_ORDER.value:
             mask[k:] = 1 - mask[k:]
 
         return mask

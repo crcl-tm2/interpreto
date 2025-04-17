@@ -28,10 +28,8 @@ Sobol attribution method
 
 from __future__ import annotations
 
-from typing import Any
-
 import torch
-from transformers import PreTrainedTokenizer
+from transformers import PreTrainedModel, PreTrainedTokenizer
 
 from interpreto.attributions.aggregations.sobol_aggregation import SobolAggregator
 from interpreto.attributions.base import (
@@ -53,7 +51,7 @@ class SobolAttribution(MultitaskExplainerMixin, AttributionExplainer):
 
     def __init__(
         self,
-        model: Any,
+        model: PreTrainedModel,
         tokenizer: PreTrainedTokenizer,
         batch_size: int,
         granularity_level: GranularityLevel = GranularityLevel.WORD,
@@ -66,7 +64,7 @@ class SobolAttribution(MultitaskExplainerMixin, AttributionExplainer):
         Initialize the attribution method.
 
         Args:
-            model (Any): model to explain
+            model (PreTrainedModel): model to explain
             tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
             batch_size (int): batch size for the attribution method
             granularity_level (GranularityLevel): The level of granularity for the explanation (e.g., token, word, sentence).
@@ -91,7 +89,6 @@ class SobolAttribution(MultitaskExplainerMixin, AttributionExplainer):
             n_token_perturbations=n_token_perturbations,
             sobol_indices_order=sobol_indices_order,
             sampler=sampler,
-            device=device,
         )
 
         super().__init__(
@@ -100,7 +97,7 @@ class SobolAttribution(MultitaskExplainerMixin, AttributionExplainer):
             perturbator=perturbator,
             aggregator=SobolAggregator(n_token_perturbations=n_token_perturbations),
             batch_size=batch_size,
-            use_gradient=False,
+            usegradient=False,
             granularity_level=granularity_level,
             device=device,
         )

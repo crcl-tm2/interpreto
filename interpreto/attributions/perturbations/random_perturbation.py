@@ -29,7 +29,8 @@ Random perturbation for token-wise masking, used in LIME
 from __future__ import annotations
 
 import torch
-from jaxtyping import Float
+from jaxtyping import Float, jaxtyped
+from torch import Tensor
 
 from interpreto.attributions.perturbations.base import GranularityLevel, TokenMaskBasedPerturbator
 
@@ -47,6 +48,16 @@ class RandomMaskedTokenPerturbator(TokenMaskBasedPerturbator):
         n_perturbations: int = 30,
         perturb_probability: float = 0.5,
     ):
+        """
+        Initialize the perturbator.
+
+        Args:
+            tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
+            inputs_embedder (torch.nn.Module | None): optional inputs embedder
+            replace_token_id (int): the token id to use for replacing the masked tokens
+            n_perturbations (int): the number of perturbations to generate
+            perturb_probability (float): probability of perturbation
+        """
         super().__init__(
             inputs_embedder=inputs_embedder,
             n_perturbations=n_perturbations,
@@ -55,7 +66,8 @@ class RandomMaskedTokenPerturbator(TokenMaskBasedPerturbator):
         )
         self.perturb_probability = perturb_probability
 
-    def get_mask(self, mask_dim: int) -> Float[torch.Tensor, "p l"]:
+    @jaxtyped
+    def get_mask(self, mask_dim: int) -> Float[Tensor, "{self.n_perturbations} {mask_dim}"]:
         """
         Method returning a random perturbation mask for a given input sequence.
 
@@ -69,9 +81,9 @@ class RandomMaskedTokenPerturbator(TokenMaskBasedPerturbator):
         p, l = self.n_perturbations, mask_dim
 
         # Generate random numbers between 0 and 1.
-        rands: Float[torch.Tensor, p, l] = torch.rand((p, l))
+        rands: Float[Tensor, "{p} {l}"] = torch.rand((p, l))
 
         # Convert random numbers to binary masks.
-        masks: Float[torch.Tensor, p, l] = (rands < self.perturb_probability).float()
+        masks: Float[Tensor, "{p} {l}"] = (rands < self.perturb_probability).float()
 
         return masks

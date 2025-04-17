@@ -29,19 +29,20 @@ Perturbation for SHAP
 from __future__ import annotations
 
 import torch
-from transformers import PreTrainedTokenizer
+from jaxtyping import Float, jaxtyped
+from torch import Tensor
 
 from interpreto.attributions.perturbations.base import TokenMaskBasedPerturbator
+from interpreto.commons.granularity import GranularityLevel
 
 
 class ShapTokenPerturbator(TokenMaskBasedPerturbator):
     def __init__(
         self,
-        tokenizer: PreTrainedTokenizer,
         inputs_embedder: torch.nn.Module | None = None,
-        n_perturbations: int = 30,
-        granularity_level: str = "token",
-        baseline: str = "[MASK]",
+        granularity_level: GranularityLevel = GranularityLevel.TOKEN,
+        replace_token_id: int = 0,
+        n_perturbations: int = 1000,
         device: torch.device | None = None,
     ):
         """
@@ -50,22 +51,20 @@ class ShapTokenPerturbator(TokenMaskBasedPerturbator):
         Args:
             tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
             inputs_embedder (torch.nn.Module | None): optional inputs embedder
+            replace_token_id (int): the token id to use for replacing the masked tokens
             n_perturbations (int): the number of perturbations to generate
-            granularity_level (str): granularity level of the perturbations (token, word, sentence, etc.)
-            baseline (str): replacement token (e.g. “[MASK]”)
             device (torch.device): device on which the perturbator will be run
         """
         super().__init__(
-            tokenizer=tokenizer,
             inputs_embedder=inputs_embedder,
             n_perturbations=n_perturbations,
-            mask_token=baseline,
+            replace_token_id=replace_token_id,
             granularity_level=granularity_level,
-            device=device,
         )
-        self.tokenizer = tokenizer
+        self.device = device
 
-    def get_single_input_mask(self, l: int):
+    @jaxtyped
+    def get_mask(self, mask_dim: int) -> Float[Tensor, "{self.n_perturbations} {mask_dim}"]:
         """
         Generates a binary mask for each token in the sequence.
 
@@ -88,35 +87,20 @@ class ShapTokenPerturbator(TokenMaskBasedPerturbator):
         Returns:
             masks (torch.Tensor): A tensor of shape ((l + 1) * k, l).
         """
+        # Simplify typing
+        p, l = self.n_perturbations, mask_dim
+
         # Generate a random number of selected features k for each perturbation
-        p = self.n_perturbations
-        possible_k = torch.arange(1, l + 1, device=self.device)  # (l,)
-        probability_to_select_k_elements = (l - 1) / (possible_k * (l - possible_k))  # (l,)
-        k = torch.multinomial(probability_to_select_k_elements, p, replacement=True)  # (p,)
+        possible_k: Float[Tensor, "{l}"] = torch.arange(1, l + 1, dtype=torch.float, device=self.device)
+        probability_to_select_k_elements: Float[Tensor, l] = (l - 1) / (possible_k * (l - possible_k))
+        k: Float[Tensor, p] = torch.multinomial(probability_to_select_k_elements, p, replacement=True)
 
         # Generate a random binary mask for each perturbation
-        rand_values = torch.rand(p, l, device=self.device)  # (p, l)
-        thresholds = torch.stack([torch.kthvalue(rand_values[i], k[i], dim=0).values for i in range(p)])  # (p,)
+        rand_values: Float[Tensor, "{p} {l}"] = torch.rand(p, l, dtype=torch.float, device=self.device)
+        thresholds: Float[Tensor, "{p}"] = torch.stack(
+            [torch.kthvalue(rand_values[i], int(k[i]), dim=0).values for i in range(p)]
+        )
 
-        mask = (rand_values < thresholds.unsqueeze(1)).float()  # (p, l)
+        mask: Float[Tensor, "{p} {l}"] = (rand_values < thresholds.unsqueeze(1)).float()
 
         return mask
-
-    def get_mask(self, sizes: tuple | list[int]) -> list[torch.Tensor]:
-        """
-        Generates a binary mask for each token in the sequence.
-
-        Args:
-            sizes (list[int]): A list of sequence lengths (l).
-
-        Returns:
-            masks_list (list[torch.Tensor]): List of tensors of shape ((l + 1) * k, l).
-        """
-        if isinstance(sizes, int):
-            return [self.get_single_input_mask(sizes)]
-
-        if isinstance(sizes, list):
-            return [self.get_single_input_mask(size) for size in sizes]
-
-        if isinstance(sizes, tuple):
-            return torch.repeat(self.get_single_input_mask(sizes[0]).unsqueeze(0), sizes[1], dim=0)

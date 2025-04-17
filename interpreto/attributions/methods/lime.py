@@ -29,18 +29,15 @@ LIME attribution method
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
 
 import torch
-from transformers import PreTrainedTokenizer
+from transformers import PreTrainedModel, PreTrainedTokenizer
 
 from interpreto.attributions.aggregations.linear_regression_aggregation import (
     DistancesFromMask,
     DistancesFromMaskProtocol,
     Kernels,
     LinearRegressionAggregator,
-    SimilarityKernelProtocol,
-    default_kernel_width_fn,
 )
 from interpreto.attributions.base import AttributionExplainer, MultitaskExplainerMixin
 from interpreto.attributions.perturbations.random_perturbation import RandomMaskedTokenPerturbator
@@ -49,33 +46,34 @@ from interpreto.commons.granularity import GranularityLevel
 
 class Lime(MultitaskExplainerMixin, AttributionExplainer):
     """
-    Sobol Attribution method
+    Lime Attribution method
     """
 
     def __init__(
         self,
-        model: Any,
+        model: PreTrainedModel,
         tokenizer: PreTrainedTokenizer,
         batch_size: int,
         granularity_level: GranularityLevel = GranularityLevel.WORD,
         n_perturbations: int = 1000,
+        perturb_probability: float = 0.5,
         distance_function: DistancesFromMaskProtocol = DistancesFromMask.COSINE,
-        similarity_kernel: SimilarityKernelProtocol = Kernels.EXPONENTIAL,
-        kernel_width: float | Callable = default_kernel_width_fn,
+        kernel_width: float | Callable | None = None,
         device: torch.device | None = None,
     ):
         """
         Initialize the attribution method.
 
         Args:
-            model (Any): model to explain
+            model (PreTrainedModel): model to explain
             tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
             batch_size (int): batch size for the attribution method
             granularity_level (str): granularity level of the perturbations (token, word, sentence, etc.)
-            n_perturbations (int): the number of perturbations to generate
+            n_perturbations (int): the number of perturbations to generate.
+            perturb_probability (float): probability of perturbation.
             distance_function (DistancesFromMaskProtocol): distance function used to compute weights of perturbed samples in the linear model training.
-            similarity_kernel (SimilarityKernelProtocol): similarity kernel used to compute weights of perturbed samples in the linear model training.
-            kernel_width (float | Callable): kernel width used in the `similarity_kernel`
+            kernel_width (float | Callable | None): kernel width used in the `similarity_kernel`.
+                If None, the kernel width is computed using the `default_kernel_width_fn` function.
             device (torch.device): device on which the attribution method will be run
         """
         # TODO : move this in upper class (MaskingExplainer or something)
@@ -90,12 +88,14 @@ class Lime(MultitaskExplainerMixin, AttributionExplainer):
         perturbator = RandomMaskedTokenPerturbator(
             inputs_embedder=model.get_input_embeddings(),
             n_perturbations=n_perturbations,
+            replace_token_id=replace_token_id,
             granularity_level=granularity_level,
+            perturb_probability=perturb_probability,
         )
 
         aggregator = LinearRegressionAggregator(
             distance_function=distance_function,
-            similarity_kernel=similarity_kernel,
+            similarity_kernel=Kernels.EXPONENTIAL,
             kernel_width=kernel_width,
         )
 
@@ -105,7 +105,7 @@ class Lime(MultitaskExplainerMixin, AttributionExplainer):
             perturbator=perturbator,
             aggregator=aggregator,
             batch_size=batch_size,
-            use_gradient=False,
+            usegradient=False,
             granularity_level=granularity_level,
             device=device,
         )
