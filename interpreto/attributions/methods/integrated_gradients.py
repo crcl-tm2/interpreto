@@ -40,6 +40,7 @@ class IntegratedGradients(MultitaskExplainerMixin, AttributionExplainer):
     """
     Integrated Gradients method
     """
+
     def __init__(
         self,
         tokenizer: PreTrainedTokenizer,
@@ -49,11 +50,26 @@ class IntegratedGradients(MultitaskExplainerMixin, AttributionExplainer):
         n_interpolations: int = 10,
         baseline: torch.Tensor | float | None = None,
     ):
+        """
+        Initialize the attribution method.
+
+        Args:
+            model (PreTrainedModel): model to explain
+            tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
+            batch_size (int): batch size for the attribution method
+            device (torch.device): device on which the attribution method will be run
+            n_interpolations (int): the number of interpolations to generate
+            baseline (torch.Tensor | float | None): the baseline to use for the interpolations
+        """
+        perturbator = LinearInterpolationPerturbator(
+            inputs_embedder=model.get_input_embeddings(), baseline=baseline, n_perturbations=n_interpolations
+        )
         super().__init__(
+            model=model,
             tokenizer=tokenizer,
-            perturbator=LinearInterpolationPerturbator(inputs_embedder=model.get_input_embeddings(), baseline=baseline, n_perturbations=n_interpolations),
-            inference_wrapper=self._associated_inference_wrapper(model, batch_size=batch_size, device=device),
-            aggregator=MeanAggregator(), # TODO: check if we need a trapezoidal mean
+            batch_size=batch_size,
+            perturbator=perturbator,
+            aggregator=MeanAggregator(),  # TODO: check if we need a trapezoidal mean
             usegradient=True,
             device=device,
         )
