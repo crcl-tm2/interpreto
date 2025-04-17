@@ -39,16 +39,21 @@ from transformers import (
 
 from interpreto.attributions import (
     IntegratedGradients,
+    KernelShap,
+    Lime,
+    OcclusionExplainer,
     SobolAttribution,
 )
 from interpreto.attributions.base import AttributionOutput
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-attribution_methods_to_test = [IntegratedGradients, SobolAttribution]
-attribution_method_args = {
-    IntegratedGradients: {"baseline": "zero"},
-    SobolAttribution: {"n_samples": 10},
+attribution_method_kwargs = {
+    IntegratedGradients: {"n_interpolations": 3, "baseline": 0.0},
+    KernelShap: {"n_perturbations": 10},
+    Lime: {"n_perturbations": 10},
+    OcclusionExplainer: {},
+    SobolAttribution: {"n_token_perturbations": 10},
 }
 
 
@@ -72,18 +77,20 @@ model_loader_combinations = [
 #     AutoModelForTokenClassification,
 # ]
 
-all_combinations = list(product(model_loader_combinations, attribution_methods_to_test))
+all_combinations = list(product(model_loader_combinations, attribution_method_kwargs.keys()))
 
 
-@pytest.mark.parametrize("model_name, model_loader, attribution_explainer", all_combinations)
-def test_attribution_methods_with_text(model_name, model_loader, attribution_explainer):
+@pytest.mark.parametrize("model_name_loader, attribution_explainer", all_combinations)
+def test_attribution_methods_with_text(model_name_loader, attribution_explainer):
     """Tests all combinations of models and loaders with an attribution method"""
+    model_name, model_loader = model_name_loader
+
     input_text = [
         "I love this movie!",
         "You are the best",
         "The cat is on the mat.",
         "My preferred film is Titanic",
-        "Sorry, I am late,",
+        "Interpreto is magic",
     ]
 
     try:
@@ -94,9 +101,9 @@ def test_attribution_methods_with_text(model_name, model_loader, attribution_exp
         assert tokenizer is not None, f"Tokenizer failed to load for {model_name}"
 
         # To be changed according to the final form of the explainer:
-        explainer_args = attribution_method_args.get(attribution_explainer, {})
+        explainer_kwargs = attribution_method_kwargs.get(attribution_explainer, {})
         attributions = attribution_explainer(
-            model, tokenizer=tokenizer, batch_size=3, device=DEVICE, **explainer_args
+            model, tokenizer=tokenizer, batch_size=3, device=DEVICE, **explainer_kwargs
         ).explain(input_text)
 
         # Checks:
