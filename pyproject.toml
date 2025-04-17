@@ -67,9 +67,9 @@ classifiers = [
 dependencies = [
   "transformers[sentencepiece,tokenizers]>=4.22.0",
   "torch>=2.0",
+  "overcomplete>=0.2.3",
   "nnsight>=0.4.0",
-  "jaxtyping<=0.2.15; python_version<='3.8'",
-  "jaxtyping<=0.2.36; python_version>'3.9'",
+  "jaxtyping<=0.2.36",
   "nvidia-cublas-cu11>=11.10.3.66; sys_platform=='Linux'",
   "nvidia-cuda-cupti-cu11>=11.7.101; sys_platform=='Linux'",
   "nvidia-cuda-nvrtc-cu11>=11.7.99; sys_platform=='Linux'",
@@ -103,11 +103,8 @@ lint = [
   "pytest-xdist>=3.5.0",
   "ruff>=0.2.0",
   "virtualenv>=20.26.6",
-  "networkx<=2.8.8; python_version<'3.10'",
-  "networkx>=3.0.0; python_version>='3.10'",
-  "numpy<=2.1.0; python_version<'3.10' and python_version>='3.9'",
-  "numpy<=1.24.4; python_version<'3.9'",
-  "numpy>=2.2.0; python_version>='3.10'"
+  "networkx>=3.0.0",
+  "numpy>=2.2.0"
 ]
 notebook = [
   "ipykernel>=6.29.2",

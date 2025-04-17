@@ -61,3 +61,21 @@ TensorMappingWithWordIds = HasWordIds[TensorMapping]
 ModelInputs = str | TensorMapping | Iterable[str] | Iterable[TensorMapping]
 
 TensorBaseline = torch.Tensor | float | int | None
+
+
+class ConceptModelProtocol(Protocol):
+    """Protocol for concept models."""
+
+    @property
+    def nb_concepts(self) -> int:
+        """Number of concepts."""
+        ...
+
+    @property
+    def fitted(self) -> bool:
+        """Wether the concept model has been fitted."""
+        ...
+
+    def encode(self, x):
+        """Encode the given activations using the concept model."""
+        ...

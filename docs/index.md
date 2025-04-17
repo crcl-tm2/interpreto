@@ -26,7 +26,7 @@ TODO: A list or table of methods available
 
 ## 👍 Contributing
 
-Feel free to propose your ideas or come and contribute with us on the Libname toolbox! We have a specific document where we describe in a simple way how to make your [first pull request](docs/contributing.md).
+Feel free to propose your ideas or come and contribute with us on the Libname toolbox! We have a specific document where we describe in a simple way how to make your [first pull request](./contributing.md).
 
 ## 👀 See Also
 
