@@ -58,15 +58,15 @@ class OcclusionExplainer(MultitaskExplainerMixin, AttributionExplainer):
             if replace_token not in tokenizer.get_vocab():
                 tokenizer.add_tokens([replace_token])
                 model.resize_token_embeddings(len(tokenizer))
-            replace_token_id = tokenizer.convert_tokens_to_ids(replace_token)
+            replace_token_id = tokenizer.convert_tokens_to_ids(replace_token)  # type: ignore
 
         super().__init__(
-            tokenizer=tokenizer,
             model=model,
+            tokenizer=tokenizer,
             batch_size=batch_size,
             device=device,
             perturbator=OcclusionPerturbator(granularity_level=granularity_level, replace_token_id=replace_token_id),  # type: ignore
             aggregator=OcclusionAggregator(),
-            usegradient=False,
+            use_gradient=False,
             granularity_level=granularity_level,
         )

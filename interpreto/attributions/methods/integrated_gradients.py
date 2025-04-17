@@ -43,8 +43,8 @@ class IntegratedGradients(MultitaskExplainerMixin, AttributionExplainer):
 
     def __init__(
         self,
-        tokenizer: PreTrainedTokenizer,
         model: PreTrainedModel,
+        tokenizer: PreTrainedTokenizer,
         batch_size: int,
         device: torch.device | None = None,
         n_interpolations: int = 10,
@@ -68,8 +68,8 @@ class IntegratedGradients(MultitaskExplainerMixin, AttributionExplainer):
             model=model,
             tokenizer=tokenizer,
             batch_size=batch_size,
+            device=device,
+            use_gradient=True,
             perturbator=perturbator,
             aggregator=MeanAggregator(),  # TODO: check if we need a trapezoidal mean
-            usegradient=True,
-            device=device,
         )

@@ -24,12 +24,10 @@
 
 from __future__ import annotations
 
-from collections.abc import MutableMapping
-
 import torch
 
 from interpreto.attributions.perturbations.base import Perturbator
-from interpreto.typing import TensorBaseline
+from interpreto.typing import TensorBaseline, TensorMapping
 
 
 class LinearInterpolationPerturbator(Perturbator):
@@ -74,9 +72,6 @@ class LinearInterpolationPerturbator(Perturbator):
         Returns:
             The adjusted baseline.
         """
-        if not isinstance(inputs, torch.Tensor):
-            raise TypeError("Expected 'inputs' to be a PyTorch tensor.")
-
         # Shape: (batch_size, *input_shape)
         input_shape = inputs.shape[1:]
 
@@ -84,19 +79,16 @@ class LinearInterpolationPerturbator(Perturbator):
             baseline = 0
 
         if isinstance(baseline, (int, float)):  # noqa: UP038
-            baseline = torch.full(input_shape, baseline, dtype=inputs.dtype, device=inputs.device)
-        elif isinstance(baseline, torch.Tensor):
-            if baseline.shape != input_shape:
-                raise ValueError(f"Baseline shape {baseline.shape} does not match expected shape {input_shape}.")
-            if baseline.dtype != inputs.dtype:
-                raise ValueError(f"Baseline dtype {baseline.dtype} does not match expected dtype {inputs.dtype}.")
-        else:
-            raise TypeError("Baseline must be None, a float, or a PyTorch tensor.")
+            return torch.full(input_shape, baseline, dtype=inputs.dtype, device=inputs.device)
+        if not isinstance(baseline, torch.Tensor):
+            raise TypeError(f"Expected baseline to be a torch.Tensor, int, or float, but got {type(baseline)}.")
+        if baseline.shape != input_shape:
+            raise ValueError(f"Baseline shape {baseline.shape} does not match expected shape {input_shape}.")
+        if baseline.dtype != inputs.dtype:
+            raise ValueError(f"Baseline dtype {baseline.dtype} does not match expected dtype {inputs.dtype}.")
         return baseline
 
-    def perturb_embeds(
-        self, model_inputs: MutableMapping
-    ) -> tuple[MutableMapping[str, torch.Tensor], torch.Tensor | None]:
+    def perturb_embeds(self, model_inputs: TensorMapping) -> tuple[TensorMapping, torch.Tensor | None]:
         embeddings = model_inputs["inputs_embeds"]
 
         baseline = self.adjust_baseline(self.baseline, embeddings)
@@ -107,7 +99,6 @@ class LinearInterpolationPerturbator(Perturbator):
         baseline = baseline.to(embeddings.device).unsqueeze(0)
 
         model_inputs["inputs_embeds"] = (1 - alphas) * embeddings + alphas * baseline
-        print("am", model_inputs["attention_mask"].shape)
         model_inputs["attention_mask"] = model_inputs["attention_mask"].repeat(
             model_inputs["inputs_embeds"].shape[0], 1
         )

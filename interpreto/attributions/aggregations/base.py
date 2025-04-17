@@ -53,7 +53,7 @@ class TorchAggregator(Aggregator):
     Basic aggregator using built-in torch methods to perform aggregation
     """
 
-    _method: Callable
+    _method: Callable[[torch.Tensor, int], torch.Tensor]
 
     def aggregate(self, results: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         # TODO: check dimension with explicit jax typing for results parameter

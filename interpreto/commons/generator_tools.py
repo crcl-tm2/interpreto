@@ -72,19 +72,21 @@ def split_iterator(iterator: Iterator[Collection[Any]]):
     return IteratorSplit(iterator)
 
 
-def allow_nested_iterables_of(*types: type | EllipsisType) -> Callable[[Callable[[Any], Any]], Callable[[Any], Any]]:
-    def decorator(func: Callable[[Any], Any]) -> Callable[[Any], Any]:
-        def error_implementation(self: object, item: Any, *args, **kwargs) -> Any:
+def allow_nested_iterables_of(*types: type | EllipsisType) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    # TODO : check if Iterable or Generator in types
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        def error_implementation(self: object, item: Any, *args: Any, **kwargs: Any) -> Any:
             raise TypeError(
                 f"Unsupported type {type(item)} for method {func.__name__} in class {self.__class__.__name__}"
             )
 
-        if Any in types or ... in types or len(types) == 0:
+        # Any, are you ok ? So, Any are you ok ? Are you ok, Any ?
+        if Any in types or Ellipsis in types or len(types) == 0:
             res = singledispatchmethod(func)
         else:
             res = singledispatchmethod(error_implementation)
             for t in types:
-                res.register(t, func)
+                res.register(t, func)  # type: ignore : t can't be an EllipsisType here
 
         def generator_func(self: object, item: Iterator[Any], *args: Any, **kwargs: Any) -> Generator[Any, None, None]:
             yield from (res.dispatcher.dispatch(type(element))(self, element, *args, **kwargs) for element in item)
