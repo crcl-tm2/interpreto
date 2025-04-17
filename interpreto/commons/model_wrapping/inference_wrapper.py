@@ -195,7 +195,7 @@ class InferenceWrapper:
         # If neither input ids nor input embeds are present, raise an error
         raise ValueError("model_inputs should contain either 'input_ids' or 'inputs_embeds'")
 
-    def call_model(self, input_embeds: torch.Tensor, attention_mask: torch.Tensor|None) -> BaseModelOutput:
+    def call_model(self, input_embeds: torch.Tensor, attention_mask: torch.Tensor | None) -> BaseModelOutput:
         """
         Perform a call to the wrapped model with the given input embeddings and attention mask.
 
@@ -226,7 +226,9 @@ class InferenceWrapper:
     def get_logits(self, model_inputs: MutableMapping[str, torch.Tensor]) -> torch.Tensor: ...
 
     @overload
-    def get_logits(self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]]) -> Generator[torch.Tensor, None, str]: ...
+    def get_logits(
+        self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]]
+    ) -> Generator[torch.Tensor, None, str]: ...
 
     @singledispatchmethod
     def get_logits(self, model_inputs: ModelInputs) -> torch.Tensor | Generator[torch.Tensor, None, str]:
@@ -267,7 +269,7 @@ class InferenceWrapper:
             f"type {type(model_inputs)} not supported for method get_logits in class {self.__class__.__name__}"
         )
 
-    @get_logits.register(MutableMapping) # type: ignore
+    @get_logits.register(MutableMapping)  # type: ignore
     def _get_logits_from_mapping(self, model_inputs: MutableMapping[str, torch.Tensor]) -> torch.Tensor:
         """
         Get the logits from the model for the given inputs.
@@ -300,12 +302,14 @@ class InferenceWrapper:
             case _:  # (..., sequence_length, embedding_size) e.g. (batch_size, n_perturbations, sequence_length, embedding_size)
                 # flatten the first dimension to a single batch dimension
                 # then call the model on the flattened inputs and reshape the result to the original batch structure
-                flat_model_inputs = {"inputs_embeds": model_inputs["inputs_embeds"].flatten(0, -3),
-                                     "attention_mask": model_inputs["attention_mask"].flatten(0, -2)}
+                flat_model_inputs = {
+                    "inputs_embeds": model_inputs["inputs_embeds"].flatten(0, -3),
+                    "attention_mask": model_inputs["attention_mask"].flatten(0, -2),
+                }
                 prediction = self._get_logits_from_mapping(flat_model_inputs)
                 return prediction.view(*model_inputs["inputs_embeds"].shape[:-2], -1)
 
-    @get_logits.register(Iterable) # type: ignore
+    @get_logits.register(Iterable)  # type: ignore
     def _get_logits_from_iterable(
         self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]]
     ) -> Generator[torch.Tensor, None, str]:
@@ -437,12 +441,18 @@ class InferenceWrapper:
         )
 
     @overload
-    def get_gradients(self, model_inputs: MutableMapping[str, torch.Tensor], targets: torch.Tensor) -> torch.Tensor: ...
+    def get_gradients(
+        self, model_inputs: MutableMapping[str, torch.Tensor], targets: torch.Tensor
+    ) -> torch.Tensor: ...
     @overload
-    def get_gradients(self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]], targets: Iterable[torch.Tensor]) -> Iterable[torch.Tensor]: ...
+    def get_gradients(
+        self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]], targets: Iterable[torch.Tensor]
+    ) -> Iterable[torch.Tensor]: ...
 
     @allow_nested_iterables_of(MutableMapping)
-    def get_gradients(self, model_inputs: MutableMapping[str, torch.Tensor], targets: torch.Tensor)->torch.Tensor | Iterable:
+    def get_gradients(
+        self, model_inputs: MutableMapping[str, torch.Tensor], targets: torch.Tensor
+    ) -> torch.Tensor | Iterable:
         """
         Get the gradients of the logits associated to a given target with respect to the inputs.
 
@@ -473,10 +483,12 @@ class InferenceWrapper:
         """
         model_inputs = self.embed(model_inputs)
         inputs_embeds = model_inputs["inputs_embeds"]
+
         def get_score(inputs_embeds: torch.Tensor):
             return self.get_targeted_logits(
                 {"inputs_embeds": inputs_embeds, "attention_mask": model_inputs["attention_mask"]}, targets
             )
+
         # Compute gradient of the selected logits:
         grad_matrix = torch.autograd.functional.jacobian(get_score, inputs_embeds)  # (n, lt, n, l, d)
         grad_matrix = grad_matrix.abs().mean(dim=-1)  # (n, lt, n, l)  # average over the embedding dimension

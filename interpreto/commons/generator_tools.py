@@ -1,14 +1,16 @@
 """
 Tools for working with generators
 """
+
 from __future__ import annotations
+
 from collections.abc import Callable, Collection, Generator, Iterable, Iterator
 from functools import singledispatchmethod
 from types import EllipsisType
 from typing import Any
 
 
-def enumerate_generator(generator:Iterable[Any]):
+def enumerate_generator(generator: Iterable[Any]):
     """
     Enumerate a generator without generating all the elements
     """
@@ -16,7 +18,6 @@ def enumerate_generator(generator:Iterable[Any]):
     for elem in iter(generator):
         yield index, elem
         index += 1
-
 
 
 class IteratorSplit(Iterable["SubIterator"]):
@@ -46,7 +47,7 @@ class IteratorSplit(Iterable["SubIterator"]):
         for index, element in enumerate(item):
             self.buffers[index].append(element)
 
-    def sub_iterator_next(self, iterator_index:int):
+    def sub_iterator_next(self, iterator_index: int):
         if self.buffers[iterator_index] == []:
             self.__generate_next_element()
         return self.buffers[iterator_index].pop(0)
@@ -54,8 +55,9 @@ class IteratorSplit(Iterable["SubIterator"]):
     def __iter__(self):
         return iter(self.subiterators)
 
+
 class SubIterator(Iterator[Any]):
-    def __init__(self, main_iterator:IteratorSplit, position:int):
+    def __init__(self, main_iterator: IteratorSplit, position: int):
         self.main_iterator = main_iterator
         self.position = position
 
@@ -65,30 +67,38 @@ class SubIterator(Iterator[Any]):
     def __next__(self):
         return self.main_iterator.sub_iterator_next(self.position)
 
+
 def split_iterator(iterator: Iterator[Collection[Any]]):
     return IteratorSplit(iterator)
 
-def allow_nested_iterables_of(*types:type|EllipsisType)->Callable[[Callable[[Any], Any]], Callable[[Any], Any]]:
-    def decorator(func:Callable[[Any], Any])->Callable[[Any], Any]:
-        def error_implementation(self:object, item:Any, *args, **kwargs)->Any:
+
+def allow_nested_iterables_of(*types: type | EllipsisType) -> Callable[[Callable[[Any], Any]], Callable[[Any], Any]]:
+    def decorator(func: Callable[[Any], Any]) -> Callable[[Any], Any]:
+        def error_implementation(self: object, item: Any, *args, **kwargs) -> Any:
             raise TypeError(
                 f"Unsupported type {type(item)} for method {func.__name__} in class {self.__class__.__name__}"
             )
+
         if Any in types or ... in types or len(types) == 0:
             res = singledispatchmethod(func)
         else:
             res = singledispatchmethod(error_implementation)
             for t in types:
                 res.register(t, func)
-        def generator_func(self:object, item:Iterator[Any], *args:Any, **kwargs:Any)->Generator[Any, None, None]:
+
+        def generator_func(self: object, item: Iterator[Any], *args: Any, **kwargs: Any) -> Generator[Any, None, None]:
             yield from (res.dispatcher.dispatch(type(element))(self, element, *args, **kwargs) for element in item)
+
         res.register(Generator, generator_func)
-        def iterable_func(self:object, item:Iterable[Any], *args:Any, **kwargs:Any)->Iterable[Any]:
+
+        def iterable_func(self: object, item: Iterable[Any], *args: Any, **kwargs: Any) -> Iterable[Any]:
             result_generator = generator_func(self, iter(item), *args, **kwargs)
             try:
-                return type(item)(result_generator) # type: ignore
+                return type(item)(result_generator)  # type: ignore
             except TypeError:
                 return list(result_generator)
+
         res.register(Iterable, iterable_func)
         return res
+
     return decorator
