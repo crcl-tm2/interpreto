@@ -59,6 +59,9 @@ TensorMappingWithWordIds = HasWordIds[TensorMapping]
 
 # Maybe consider NestedIterable rather that just iterable for model inputs ?
 ModelInputs = str | TensorMapping | Iterable[str] | Iterable[TensorMapping]
+Generated_Target = (
+    str | TensorMapping | Iterable[str] | Iterable[TensorMapping] | torch.Tensor | Iterable[torch.Tensor] | None
+)
 
 TensorBaseline = torch.Tensor | float | int | None
 
