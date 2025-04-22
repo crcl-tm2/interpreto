@@ -29,7 +29,7 @@ Basic standard classes for attribution methods
 from __future__ import annotations
 
 import itertools
-from collections.abc import Iterable, MutableMapping
+from collections.abc import Iterable, MutableMapping, Sequence
 from copy import deepcopy
 from typing import Any
 
@@ -98,6 +98,7 @@ class AttributionExplainer:
     """
 
     _associated_inference_wrapper = InferenceWrapper
+    use_gradient : bool
 
     def __init__(
         self,
@@ -107,7 +108,6 @@ class AttributionExplainer:
         # inference_wrapper: InferenceWrapper,
         perturbator: Perturbator | None = None,
         aggregator: Aggregator | None = None,
-        use_gradient: bool = False,
         device: torch.device | None = None,
         granularity_level: GranularityLevel = GranularityLevel.DEFAULT,
     ) -> None:
@@ -119,7 +119,6 @@ class AttributionExplainer:
             perturbator (Perturbator, optional): An instance for generating input perturbations.
                 Defaults to a Perturbator if not provided.
             aggregator (Aggregator, optional): An instance used to aggregate computed attribution scores.
-            use_gradient (bool): If True, use gradient-based methods for computing attributions. Defaults to False (using inference-based methods).
             device (torch.device, optional): The device on which computations will be performed.
             granularity_level (GranularityLevel): The level of granularity for the explanation (e.g., token, word, sentence).
         """
@@ -127,17 +126,39 @@ class AttributionExplainer:
         self.inference_wrapper = self._associated_inference_wrapper(model, batch_size=batch_size, device=device)
         self.perturbator = perturbator or Perturbator()
         self.aggregator = aggregator or Aggregator()
-        self.use_gradient = use_gradient
-        self.device = device
         self.granularity_level = granularity_level
 
-        if self.use_gradient:
+        if self.__class__.use_gradient:
             self.get_scores = self.inference_wrapper.get_gradients
         else:
             self.get_scores = self.inference_wrapper.get_targeted_logits
 
         # TODO : check this line, eventually move it
         self.inference_wrapper.pad_token_id = self.tokenizer.pad_token_id
+
+    @property
+    def device(self) -> torch.device:
+        """
+        Returns the device on which the model is located.
+        """
+        return self.inference_wrapper.device
+
+    @device.setter
+    def device(self, device: torch.device) -> None:
+        """
+        Sets the device on which the model is located.
+        """
+        self.inference_wrapper.device = device
+
+    def to(self, device: torch.device) -> None:
+        """
+        Moves the model to the specified device.
+
+        Args:
+            device (torch.device): The device to which the model should be moved.
+        """
+        self.inference_wrapper.to(device)
+
 
     def process_model_inputs(self, model_inputs: ModelInputs) -> list[TensorMapping]:
         """
@@ -164,18 +185,21 @@ class AttributionExplainer:
                 )
             ]
         if isinstance(model_inputs, MutableMapping):
-            n = model_inputs["attention_mask"].shape[0]
-            if n > 1:
-                return [{key: value[i].unsqueeze(0) for key, value in model_inputs.items()} for i in range(n)]
-            return [model_inputs]
+            return [{key: value[i].unsqueeze(0) for key, value in model_inputs.items()} for i in range(model_inputs["attention_mask"].shape[0])]
         if isinstance(model_inputs, Iterable):
             return list(itertools.chain(*[self.process_model_inputs(item) for item in model_inputs]))
         raise ValueError(
             f"type {type(model_inputs)} not supported for method process_model_inputs in class {self.__class__.__name__}"
         )
 
+    def process_inputs_to_explain_and_targets(
+        self, model_inputs: Iterable[TensorMapping], targets: Sequence[torch.Tensor] | None, **model_kwargs:Any
+    ) -> tuple[list[TensorMapping], Sequence[torch.Tensor]]:
+        # TODO : update docstring and add error message
+        raise NotImplementedError()
+
     def explain(
-        self, model_inputs: ModelInputs, targets: Generated_Target = None, **generation_kwargs
+        self, model_inputs: ModelInputs, targets: Generated_Target = None, **model_kwargs:Any
     ) -> Iterable[AttributionOutput]:
         """
         Computes attributions for generative models.
@@ -197,29 +221,21 @@ class AttributionExplainer:
         Returns:
             List[AttributionOutput]: A list of attribution outputs, one per input sample.
         """
-        if self.device is None:
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.inference_wrapper.to(self.device)
-
         model_inputs = self.process_model_inputs(model_inputs)
 
+        # give pad token id to the inference wrapper
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         self.inference_wrapper.pad_token_id = self.tokenizer.pad_token_id
 
         model_inputs_to_explain, targets = self.process_inputs_to_explain_and_targets(
-            model_inputs, targets, **generation_kwargs
+            model_inputs, targets, **model_kwargs
         )
 
-        pert_generator, mask_generator = split_iterator(self.perturbator.perturb(m) for m in model_inputs_to_explain)
+        # TODO : change this line to avoid copying the model inputs
+        pert_generator, mask_generator = split_iterator(self.perturbator.perturb(m) for m in deepcopy(model_inputs_to_explain))
 
-        # scores = list(self.get_scores(pert_generator, targets))
-        if self.use_gradient:
-            # Compute gradients for each perturbed input.
-            scores = list(self.inference_wrapper.get_gradients(pert_generator, targets))
-        else:
-            # Compute targeted logits for each perturbed input.
-            scores = list(self.inference_wrapper.get_targeted_logits(pert_generator, targets))
+        scores = list(self.get_scores(pert_generator, targets))
 
         # Retrieve the perturbation masks.
         masks = list(mask_generator)
@@ -235,7 +251,8 @@ class AttributionExplainer:
             self.aggregator(score, mask).squeeze(0) for score, mask in zip(scores, masks, strict=True)
         ]  # classification version
 
-        # Decompose each input for the desired granularity level.
+
+        # Decompose each input for the desired granularity level
         decompositions = [
             GranularityLevel.get_decomposition(t, self.granularity_level) for t in model_inputs_to_explain
         ]
@@ -274,12 +291,11 @@ class ClassificationAttributionExplainer(AttributionExplainer):
     """
     Attribution explainer for classification models
     """
-
     _associated_inference_wrapper = ClassificationInferenceWrapper
 
     def process_inputs_to_explain_and_targets(
-        self, model_inputs: ModelInputs, targets: torch.tensor | None
-    ) -> tuple[list[TensorMapping], list[torch.Tensor]]:
+        self, model_inputs: Iterable[TensorMapping], targets: torch.Tensor | None
+    ) -> tuple[Iterable[TensorMapping], torch.Tensor]:
         logits = torch.stack(list(self.inference_wrapper.get_logits(deepcopy(model_inputs))))
         if targets is None:
             targets = logits.argmax(dim=-1)
@@ -328,8 +344,8 @@ class GenerationAttributionExplainer(AttributionExplainer):
         )
 
     def process_inputs_to_explain_and_targets(
-        self, model_inputs: ModelInputs, targets: Generated_Target, generation_kwargs: dict[str, Any]
-    ) -> tuple[list[TensorMapping], list[torch.Tensor]]:
+        self, model_inputs: ModelInputs, targets: Generated_Target, **model_kwargs: dict[str, Any]
+    ) -> tuple[list[TensorMapping], Sequence[torch.Tensor]]:
         """
         Processes the inputs and targets for the generative model.
         If targets are not provided, create them with model_inputs_to_explain. Otherwise, for each input-target pair:
@@ -340,14 +356,14 @@ class GenerationAttributionExplainer(AttributionExplainer):
         Args:
             model_inputs (ModelInputs): The raw inputs for the generative model.
             targets (Generated_Target): The target texts or tokens for which explanations are desired.
-            generation_kwargs (dict): Additional arguments for the generation process.
+            model_kwargs (dict): Additional arguments for the generation process.
 
         Returns:
             tuple: A tuple containing a list of processed model inputs and a list of processed targets.
         """
         if targets is None:
             model_inputs_to_explain, targets = self.inference_wrapper.get_inputs_to_explain_and_targets(
-                model_inputs, **generation_kwargs
+                model_inputs, **model_kwargs
             )
         else:
             targets = self.process_targets(targets)

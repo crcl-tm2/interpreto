@@ -40,6 +40,7 @@ class IntegratedGradients(MultitaskExplainerMixin, AttributionExplainer):
     """
     Integrated Gradients method
     """
+    use_gradient = True
 
     def __init__(
         self,
@@ -69,7 +70,6 @@ class IntegratedGradients(MultitaskExplainerMixin, AttributionExplainer):
             tokenizer=tokenizer,
             batch_size=batch_size,
             device=device,
-            use_gradient=True,
             perturbator=perturbator,
             aggregator=MeanAggregator(),  # TODO: check if we need a trapezoidal mean
         )

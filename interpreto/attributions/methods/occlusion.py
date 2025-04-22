@@ -43,6 +43,8 @@ from interpreto.commons.granularity import GranularityLevel
 
 
 class OcclusionExplainer(MultitaskExplainerMixin, AttributionExplainer):
+    use_gradient = False
+
     def __init__(
         self,
         model: Any,
@@ -67,6 +69,5 @@ class OcclusionExplainer(MultitaskExplainerMixin, AttributionExplainer):
             device=device,
             perturbator=OcclusionPerturbator(granularity_level=granularity_level, replace_token_id=replace_token_id),  # type: ignore
             aggregator=OcclusionAggregator(),
-            use_gradient=False,
             granularity_level=granularity_level,
         )
