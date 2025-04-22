@@ -175,7 +175,7 @@ class AttributionExplainer:
         )
 
     def explain(
-        self, model_inputs: ModelInputs, targets: Generated_Target, **generation_kwargs
+        self, model_inputs: ModelInputs, targets: Generated_Target = None, **generation_kwargs
     ) -> Iterable[AttributionOutput]:
         """
         Computes attributions for generative models.
@@ -227,11 +227,13 @@ class AttributionExplainer:
         # Aggregate the scores using the aggregator to obtain contribution values.
 
         # TODO : check if we need to add a squeeze(0) here (in generation version we have but not in classification)
+        # contributions = [
+        #     self.aggregator(score.unsqueeze(0), mask).squeeze(0)
+        #     for score, mask in zip(scores, masks, strict=True)  # generation version
+        # ]
         contributions = [
-            self.aggregator(score.unsqueeze(0), mask).squeeze(0)
-            for score, mask in zip(scores, masks, strict=True)  # generation version
-        ]
-        # contributions = [self.aggregator(score, mask).squeeze(0) for score, mask in zip(scores, masks, strict=True)] #classification version
+            self.aggregator(score, mask).squeeze(0) for score, mask in zip(scores, masks, strict=True)
+        ]  # classification version
 
         # Decompose each input for the desired granularity level.
         decompositions = [
