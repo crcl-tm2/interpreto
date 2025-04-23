@@ -236,7 +236,7 @@ class AttributionExplainer:
         pert_generator, mask_generator = split_iterator(self.perturbator.perturb(m) for m in deepcopy(model_inputs_to_explain))
 
 
-        scores = self.get_scores(pert_generator, targets)
+        scores = self.get_scores(pert_generator, targets.to(self.device))
 
 
         # Aggregate the scores using the aggregator to obtain contribution values.
