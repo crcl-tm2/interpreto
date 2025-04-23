@@ -221,11 +221,10 @@ class InferenceWrapper:
                 stacklevel=1,
             )
         # send input to device
-        input_embeds.to(self.device)
         if attention_mask is not None:
-            attention_mask.to(self.device)
+            attention_mask = attention_mask.to(self.device)
         # Call wrapped model
-        return self.model(inputs_embeds=input_embeds, attention_mask=attention_mask)
+        return self.model(inputs_embeds=input_embeds.to(self.device), attention_mask=attention_mask)
 
     @overload
     def get_logits(self, model_inputs: TensorMapping) -> torch.Tensor: ...

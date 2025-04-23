@@ -10,16 +10,6 @@ from types import EllipsisType
 from typing import Any
 
 
-def enumerate_generator(generator: Iterable[Any]):
-    """
-    Enumerate a generator without generating all the elements
-    """
-    index = 0
-    for elem in iter(generator):
-        yield index, elem
-        index += 1
-
-
 class IteratorSplit(Iterable["SubIterator"]):
     # TODO : eventually allow split size != 1, sections or custom indexations (useless for now)
     def __init__(self, iterator: Iterator[Collection[Any]]):

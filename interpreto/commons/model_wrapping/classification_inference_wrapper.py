@@ -33,7 +33,6 @@ from typing import Any
 
 import torch
 
-from interpreto.commons.generator_tools import enumerate_generator
 from interpreto.commons.model_wrapping.inference_wrapper import InferenceWrapper
 from interpreto.typing import TensorMapping
 
@@ -219,5 +218,5 @@ class ClassificationInferenceWrapper(InferenceWrapper):
         if targets.dim() in (0, 1):
             targets = targets.view(1, -1)
         multiple_index = int(targets.shape[0] > 1)
-        for index, logits in enumerate_generator(predictions):
+        for index, logits in enumerate(predictions):
             yield logits.gather(-1, self.process_target(targets[multiple_index and index], logits.shape[:-1]))
