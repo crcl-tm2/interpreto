@@ -235,10 +235,9 @@ class AttributionExplainer:
         # TODO : change this line to avoid copying the model inputs
         pert_generator, mask_generator = split_iterator(self.perturbator.perturb(m) for m in deepcopy(model_inputs_to_explain))
 
-        scores = list(self.get_scores(pert_generator, targets))
 
-        # Retrieve the perturbation masks.
-        masks = list(mask_generator)
+        scores = self.get_scores(pert_generator, targets)
+
 
         # Aggregate the scores using the aggregator to obtain contribution values.
 
@@ -248,7 +247,7 @@ class AttributionExplainer:
         #     for score, mask in zip(scores, masks, strict=True)  # generation version
         # ]
         contributions = [
-            self.aggregator(score, mask).squeeze(0) for score, mask in zip(scores, masks, strict=True)
+            self.aggregator(score, mask.to(self.device)).squeeze(0) for score, mask in zip(scores, mask_generator, strict=True)
         ]  # classification version
 
 

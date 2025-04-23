@@ -35,6 +35,7 @@ import torch
 
 from interpreto.commons.generator_tools import enumerate_generator
 from interpreto.commons.model_wrapping.inference_wrapper import InferenceWrapper
+from interpreto.typing import TensorMapping
 
 
 class ClassificationInferenceWrapper(InferenceWrapper):
@@ -68,7 +69,7 @@ class ClassificationInferenceWrapper(InferenceWrapper):
                 f"target batch size {n} should be either 1 or logits batch size ({batch_dims[0]})"
             )
             view_index[0] = n
-        target = target.view(n, *[1 for _ in batch_dims[1:]], -1)
+        target = target.view(*view_index, -1)
         return target.expand(*batch_dims, -1)
 
     @singledispatchmethod
@@ -111,13 +112,13 @@ class ClassificationInferenceWrapper(InferenceWrapper):
         )
 
     @get_targets.register(MutableMapping)
-    def _get_targets_from_mapping(self, model_inputs: MutableMapping[str, torch.Tensor]) -> torch.Tensor:
+    def _get_targets_from_mapping(self, model_inputs: TensorMapping) -> torch.Tensor:
         """
         Get the target from the model for the given inputs.
         registered for MutableMapping type.
 
         Args:
-            model_inputs (MutableMapping[str, torch.Tensor]): input mapping containing either "input_ids" or "inputs_embeds".
+            model_inputs (TensorMapping): input mapping containing either "input_ids" or "inputs_embeds".
 
         Returns:
             torch.Tensor: target predicted by the model for the given input mapping.
@@ -126,19 +127,19 @@ class ClassificationInferenceWrapper(InferenceWrapper):
 
     @get_targets.register(Iterable)
     def _get_targets_from_iterable(
-        self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]]
+        self, model_inputs: Iterable[TensorMapping]
     ) -> Generator[torch.Tensor, None, None]:
         """
         Get the targets from the model for the given inputs.
         registered for Iterable type.
 
         Args:
-            model_inputs (Iterable[MutableMapping[str, torch.Tensor]]): _description_
+            model_inputs (Iterable[TensorMapping]): _description_
 
         Yields:
             torch.Tensor: target predicted by the model for the given input mapping.
         """
-        yield from (prediction.argmax(dim=-1) for prediction in self._get_logits_from_iterable(iter(model_inputs)))
+        yield from (prediction.argmax(dim=-1) for prediction in self._get_logits_from_iterable(model_inputs))
 
     @singledispatchmethod
     def get_targeted_logits(
@@ -179,14 +180,14 @@ class ClassificationInferenceWrapper(InferenceWrapper):
 
     @get_targeted_logits.register(MutableMapping)
     def _get_targeted_logits_from_mapping(
-        self, model_inputs: MutableMapping[str, torch.Tensor], targets: torch.Tensor
+        self, model_inputs: TensorMapping, targets: torch.Tensor
     ):
         """
         Get the logits associated to a collection of targets.
         registered for MutableMapping type.
 
         Args:
-            model_inputs (MutableMapping[str, torch.Tensor]): input mappings to be passed to the model
+            model_inputs (TensorMapping): input mappings to be passed to the model
             targets (torch.Tensor): target tensor to be used to get the logits.
             targets shape should be either (t) or (n, t) where n is the batch size and t is the number of targets for which we want the logits.
 
@@ -199,21 +200,21 @@ class ClassificationInferenceWrapper(InferenceWrapper):
 
     @get_targeted_logits.register(Iterable)
     def _get_targeted_logits_from_iterable(
-        self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]], targets: torch.Tensor
+        self, model_inputs: Iterable[TensorMapping], targets: torch.Tensor
     ) -> Generator[torch.Tensor, None, None]:
         """
         Get the logits associated to a collection of targets.
         registered for Iterable type.
 
         Args:
-            model_inputs (Iterable[MutableMapping[str, torch.Tensor]]): iterable of input mappings to be passed to the model
+            model_inputs (Iterable[TensorMapping]): iterable of input mappings to be passed to the model
             targets (torch.Tensor): target tensor to be used to get the logits.
             targets shape should be either (t) or (n, t) where n is the batch size and t is the number of targets for which we want the logits.
 
         Yields:
             torch.Tensor: logits given by the model for the given targets.
         """
-        predictions = self._get_logits_from_iterable(iter(model_inputs))
+        predictions = self._get_logits_from_iterable(model_inputs)
         # TODO : refaire ça proprement
         if targets.dim() in (0, 1):
             targets = targets.view(1, -1)

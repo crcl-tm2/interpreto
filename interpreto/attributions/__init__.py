@@ -1,15 +1,15 @@
 from .methods import (
     IntegratedGradients,
-    KernelShap,
-    Lime,
+    #KernelShap,
+    #Lime,
     OcclusionExplainer,
     SobolAttribution,
 )
 
 __all__ = [
     "IntegratedGradients",
-    "KernelShap",
-    "Lime",
+    #"KernelShap",
+    #"Lime",
     "OcclusionExplainer",
     "SobolAttribution",
 ]

@@ -125,7 +125,10 @@ class InferenceWrapper:
         device: torch.device | None = None,
     ):
         self.model = model
-        self.model.to(device or torch.device("cpu"))
+        if device is None:
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        self.model.to(device)
         self.batch_size = batch_size
 
         # Pad token id should be set by the explainer
@@ -189,7 +192,8 @@ class InferenceWrapper:
         # If input ids are present, get the embeddings and add them to the model inputs
         if "input_ids" in model_inputs:
             base_shape = model_inputs["input_ids"].shape
-            flatten_embeds = self.model.get_input_embeddings()(model_inputs.pop("input_ids").flatten(0, -2))
+            input_ids = model_inputs.pop("input_ids").flatten(0, -2).to(self.device)
+            flatten_embeds = self.model.get_input_embeddings()(input_ids)
             model_inputs["inputs_embeds"] = flatten_embeds.view(*base_shape, flatten_embeds.shape[-1])
             return model_inputs
         # If neither input ids nor input embeds are present, raise an error

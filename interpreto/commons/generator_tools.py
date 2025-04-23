@@ -74,6 +74,7 @@ def split_iterator(iterator: Iterator[Collection[Any]]):
 
 def allow_nested_iterables_of(*types: type | EllipsisType) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     # TODO : check if Iterable or Generator in types
+    # TODO : check Unions in types
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         def error_implementation(self: object, item: Any, *args: Any, **kwargs: Any) -> Any:
             raise TypeError(
@@ -102,5 +103,4 @@ def allow_nested_iterables_of(*types: type | EllipsisType) -> Callable[[Callable
 
         res.register(Iterable, iterable_func)
         return res
-
     return decorator
