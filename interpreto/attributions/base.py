@@ -128,14 +128,24 @@ class AttributionExplainer:
         self.aggregator = aggregator or Aggregator()
         self.granularity_level = granularity_level
 
-        if self.__class__.use_gradient:
-            self.get_scores = self.inference_wrapper.get_gradients
-        else:
-            self.get_scores = self.inference_wrapper.get_targeted_logits
-
         # TODO : check this line, eventually move it
         self.inference_wrapper.pad_token_id = self.tokenizer.pad_token_id
 
+    def get_scores(self, model_inputs: Iterable[TensorMapping], targets: torch.Tensor) -> Iterable[torch.Tensor]:
+        """
+        Computes scores for the given perturbations and targets.
+
+        Args:
+            pert_generator (Iterable[TensorMapping]): An iterable of perturbed model inputs.
+            targets (torch.Tensor): The target classes or tokens.
+
+        Returns:
+            Iterable[torch.Tensor]: The computed scores.
+        """
+        if self.use_gradient:
+            return self.inference_wrapper.get_gradients(model_inputs, targets)
+        with torch.no_grad():
+            return self.inference_wrapper.get_targeted_logits(model_inputs, targets)
     @property
     def device(self) -> torch.device:
         """
