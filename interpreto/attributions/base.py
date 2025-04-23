@@ -98,7 +98,7 @@ class AttributionExplainer:
     """
 
     _associated_inference_wrapper = InferenceWrapper
-    use_gradient : bool
+    use_gradient: bool
 
     def __init__(
         self,
@@ -159,7 +159,6 @@ class AttributionExplainer:
         """
         self.inference_wrapper.to(device)
 
-
     def process_model_inputs(self, model_inputs: ModelInputs) -> list[TensorMapping]:
         """
         Processes and standardizes model inputs into a list of dictionaries compatible with the model.
@@ -185,7 +184,10 @@ class AttributionExplainer:
                 )
             ]
         if isinstance(model_inputs, MutableMapping):
-            return [{key: value[i].unsqueeze(0) for key, value in model_inputs.items()} for i in range(model_inputs["attention_mask"].shape[0])]
+            return [
+                {key: value[i].unsqueeze(0) for key, value in model_inputs.items()}
+                for i in range(model_inputs["attention_mask"].shape[0])
+            ]
         if isinstance(model_inputs, Iterable):
             return list(itertools.chain(*[self.process_model_inputs(item) for item in model_inputs]))
         raise ValueError(
@@ -193,13 +195,13 @@ class AttributionExplainer:
         )
 
     def process_inputs_to_explain_and_targets(
-        self, model_inputs: Iterable[TensorMapping], targets: Sequence[torch.Tensor] | None, **model_kwargs:Any
+        self, model_inputs: Iterable[TensorMapping], targets: Sequence[torch.Tensor] | None, **model_kwargs: Any
     ) -> tuple[list[TensorMapping], Sequence[torch.Tensor]]:
         # TODO : update docstring and add error message
         raise NotImplementedError()
 
     def explain(
-        self, model_inputs: ModelInputs, targets: Generated_Target = None, **model_kwargs:Any
+        self, model_inputs: ModelInputs, targets: Generated_Target = None, **model_kwargs: Any
     ) -> Iterable[AttributionOutput]:
         """
         Computes attributions for generative models.
@@ -233,11 +235,11 @@ class AttributionExplainer:
         )
 
         # TODO : change this line to avoid copying the model inputs
-        pert_generator, mask_generator = split_iterator(self.perturbator.perturb(m) for m in deepcopy(model_inputs_to_explain))
-
+        pert_generator, mask_generator = split_iterator(
+            self.perturbator.perturb(m) for m in deepcopy(model_inputs_to_explain)
+        )
 
         scores = self.get_scores(pert_generator, targets.to(self.device))
-
 
         # Aggregate the scores using the aggregator to obtain contribution values.
 
@@ -247,9 +249,9 @@ class AttributionExplainer:
         #     for score, mask in zip(scores, masks, strict=True)  # generation version
         # ]
         contributions = [
-            self.aggregator(score, mask.to(self.device)).squeeze(0) for score, mask in zip(scores, mask_generator, strict=True)
+            self.aggregator(score, mask.to(self.device)).squeeze(0)
+            for score, mask in zip(scores, mask_generator, strict=True)
         ]  # classification version
-
 
         # Decompose each input for the desired granularity level
         decompositions = [
@@ -290,6 +292,7 @@ class ClassificationAttributionExplainer(AttributionExplainer):
     """
     Attribution explainer for classification models
     """
+
     _associated_inference_wrapper = ClassificationInferenceWrapper
 
     def process_inputs_to_explain_and_targets(
@@ -361,32 +364,40 @@ class GenerationAttributionExplainer(AttributionExplainer):
             tuple: A tuple containing a list of processed model inputs and a list of processed targets.
         """
         if targets is None:
-            model_inputs_to_explain, targets = self.inference_wrapper.get_inputs_to_explain_and_targets(
+            model_inputs_to_explain_basic, targets = self.inference_wrapper.get_inputs_to_explain_and_targets(
                 model_inputs, **model_kwargs
             )
+            print(model_inputs_to_explain_basic)
         else:
             targets = self.process_targets(targets)
-            model_inputs_to_explain = []
+            model_inputs_to_explain_basic = []
             for model_input, target in zip(model_inputs, targets, strict=True):
-                embed_model_input = self.inference_wrapper.embed(model_input)
-                with torch.no_grad():
-                    target_embed = self.inference_wrapper.model.get_input_embeddings()(target)
-                model_inputs_to_explain.append(
+                # embed_model_input = self.inference_wrapper.embed(model_input)
+                # with torch.no_grad():
+                #    target_embed = self.inference_wrapper.model.get_input_embeddings()(target)
+                model_inputs_to_explain_basic.append(
                     {
-                        "inputs_embeds": torch.cat([embed_model_input["inputs_embeds"], target_embed], dim=1),
-                        "attention_mask": torch.cat(
-                            [embed_model_input["attention_mask"], torch.ones_like(target)], dim=1
-                        ),
+                        # "inputs_embeds": torch.cat([embed_model_input["inputs_embeds"], target_embed], dim=1),
+                        "input_ids": torch.cat([model_input["input_ids"], target], dim=1),
+                        "attention_mask": torch.cat([model_input["attention_mask"], torch.ones_like(target)], dim=1),
                     }
                 )
-        # Add offsets mapping:
+        # Add offsets mapping and special tokens mask:
         model_inputs_to_explain_text = [
-            self.tokenizer.decode(model_input_to_explain["input_ids"][0])
-            for model_input_to_explain in model_inputs_to_explain
+            self.tokenizer.decode(elem["input_ids"][0]) for elem in model_inputs_to_explain_basic
         ]
-        model_inputs_to_explain = [
-            self.tokenizer([model_inputs_to_explain_text], return_tensors="pt", return_offsets_mapping=True)
+        model_inputs_to_explain_without_embed = [
+            self.tokenizer(
+                [model_inputs_to_explain_text],
+                return_tensors="pt",
+                return_offsets_mapping=True,
+                return_special_tokens_mask=True,
+            )
             for model_inputs_to_explain_text in model_inputs_to_explain_text
+        ]
+        # Add inputs_embeds:
+        model_inputs_to_explain = [
+            self.inference_wrapper.embed(elem) for elem in model_inputs_to_explain_without_embed
         ]
 
         # Decompose each input for the desired granularity level.

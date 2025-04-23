@@ -95,11 +95,15 @@ class GenerationInferenceWrapper(InferenceWrapper):
                   now include both input and generated tokens.
                 - targets_ids: a tensor containing only the generated token IDs.
         """
-        filtered_model_inputs = {key: value for key, value in model_inputs.items() if key != "offset_mapping"}
+        # filtered_model_inputs = {key: value for key, value in model_inputs.items() if key != "offset_mapping"}
+        filtered_model_inputs = {key: model_inputs[key].to(self.device) for key in ("input_ids", "attention_mask")}
+
         full_ids = self.model.generate(**filtered_model_inputs, **generation_kwargs)
         original_length = model_inputs["attention_mask"].shape[-1]
         targets_ids = full_ids[..., original_length:]
-        full_attention_mask = torch.cat([model_inputs["attention_mask"], torch.ones_like(targets_ids)], dim=-1)
+        full_attention_mask = torch.cat(
+            [model_inputs["attention_mask"].to(self.device), torch.ones_like(targets_ids)], dim=-1
+        )
         full_mapping = {"input_ids": full_ids, "attention_mask": full_attention_mask}
         return full_mapping, targets_ids
 
