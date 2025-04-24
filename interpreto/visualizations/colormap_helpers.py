@@ -9,24 +9,35 @@ import numpy as np
 from matplotlib.colors import hsv_to_rgb
 
 
-def make_random_colors(nb_concepts: int) -> list[list[float]]:
+def make_fixed_colors(nb_colors: int) -> list[list[float]]:
     """
-    Generate random colors for the concepts.
+    Generate a fixed set of colors evenly distributed across the specified number of colors.
 
     Args:
-        nb_concepts (int): Number of concepts
+        nb_colors (int): Number of colors
 
     Returns:
         List[List[float]]: List of colors in RGB format
     """
     colors = []
-    for i in range(nb_concepts):
-        hue = i / nb_concepts
+    for i in range(nb_colors):
+        hue = i / nb_colors
         rgb = hsv_to_rgb([hue, 1, 1]).tolist()
         colors.append(rgb)
-    # randomize the order
-    np.random.shuffle(colors)
     return colors
+
+
+def make_random_colors(nb_colors: int) -> list[list[float]]:
+    """
+    Generate random colors.
+
+    Args:
+        nb_colors (int): Number of colors
+
+    Returns:
+        List[List[float]]: List of colors in RGB format
+    """
+    return hsv_to_rgb([[hue, 1, 1] for hue in np.random.rand(nb_colors)]).tolist()
 
 
 def display_color_gradients(colors_list: list[dict]):

@@ -17,7 +17,7 @@ class SingleClassAttributionVisualization(WordHighlightVisualization):
 
     def __init__(
         self,
-        attribution_output_list: list[AttributionOutput],
+        attribution_output: AttributionOutput,
         color: tuple = (1, 0.64, 0),
         normalize: bool = True,
         highlight_border: bool = False,
@@ -27,25 +27,24 @@ class SingleClassAttributionVisualization(WordHighlightVisualization):
         Create a mono class attribution visualization
 
         Args:
-            attribution_output: list[AttributionOutput]: A list of attribution outputs
+            attribution_output: AttributionOutput: The attribution method outputs
             normalize (bool, optional): Whether to normalize the attributions. If False, then the attributions values range will be assumed to be [0, 1]. Defaults to True
             color (Tuple, optional): A color to use for the visualization. Defaults to orange
             highlight_border (bool, optional): Whether to highlight the border of the words. Defaults to False
             css: (str, optional): A custom css. Defaults to None
         """
         super().__init__()
-
-        inputs_sentences = [output.elements for output in attribution_output_list]
+        inputs_sentence = attribution_output.elements
         # format of attributions for 1 class attribution:
         # nb_sentences * (1, nb_words, 1) with the first dimension beeing the number
         # of generated outputs (here set to 1 because no generation)
         # and the last the number of classes (here set to 1 because only one class)
-        inputs_attributions = [output.attributions.T.unsqueeze(0) for output in attribution_output_list]
+        inputs_attribution = attribution_output.attributions.unsqueeze(0).unsqueeze(-1)
 
         # compute the min and max values for the attributions to be used for normalization
         if normalize:
-            min_value = min(output.attributions.min() for output in attribution_output_list)
-            max_value = max(output.attributions.max() for output in attribution_output_list)
+            min_value = inputs_attribution.min()
+            max_value = inputs_attribution.max()
         else:
             min_value = 0.0
             max_value = 1.0
@@ -54,8 +53,8 @@ class SingleClassAttributionVisualization(WordHighlightVisualization):
         self.highlight_border = highlight_border
         self.custom_css = css
         self.data = self.adapt_data(
-            inputs_sentences=inputs_sentences,
-            inputs_attributions=inputs_attributions,
+            inputs_sentences=[inputs_sentence],
+            inputs_attributions=[inputs_attribution],
             outputs_words=None,
             outputs_attributions=None,
             concepts_descriptions=self.make_classes_descriptions(color, min_value=min_value, max_value=max_value),
@@ -114,7 +113,7 @@ class MultiClassAttributionVisualization(WordHighlightVisualization):
 
     def __init__(
         self,
-        attribution_output_list: list[AttributionOutput],
+        attribution_output: AttributionOutput,
         class_colors: list[tuple],
         class_names: list[str] = None,
         normalize: bool = True,
@@ -125,7 +124,7 @@ class MultiClassAttributionVisualization(WordHighlightVisualization):
         Create a multi class attribution visualization
 
         Args:
-            attribution_output: list[AttributionOutput]: A list of attribution outputs
+            attribution_output: AttributionOutput: The attribution method output
             class_colors (List[Tuple]): A list of colors for each class
             class_names (List[str], optional): A list of names for each class. Defaults to None
             normalize (bool, optional): Whether to normalize the attributions. If False, then the attributions values range will be assumed to be [0, 1]. Defaults to True
@@ -134,23 +133,21 @@ class MultiClassAttributionVisualization(WordHighlightVisualization):
         """
         super().__init__()
 
-        inputs_sentences = [output.elements for output in attribution_output_list]
+        inputs_sentence = attribution_output.elements
+
         # format of attributions for multi class attribution:
         # nb_sentences * (1, nb_words, nb_classes) with the first dimension beeing the number
         # of generated outputs (here set to 1 because no generation)
-        inputs_attributions = [output.attributions.T.unsqueeze(0) for output in attribution_output_list]
+        # inputs_attributions = [output.attributions.T.unsqueeze(0) for output in attribution_output_list]
+        inputs_attributions = attribution_output.attributions.T.unsqueeze(0)
         nb_classes = len(class_colors)
         if class_names is None:
             class_names = [f"class #{c}" for c in range(nb_classes)]
 
         # compute the min and max values for the attributions to be used for normalization
         if normalize:
-            min_values = [
-                min(output.attributions[:, c].min() for output in attribution_output_list) for c in range(nb_classes)
-            ]
-            max_values = [
-                max(output.attributions[:, c].max() for output in attribution_output_list) for c in range(nb_classes)
-            ]
+            min_values = attribution_output.attributions.min(axis=1).values
+            max_values = attribution_output.attributions.max(axis=1).values
         else:
             min_values = [0.0] * nb_classes
             max_values = [1.0] * nb_classes
@@ -158,8 +155,8 @@ class MultiClassAttributionVisualization(WordHighlightVisualization):
         self.highlight_border = highlight_border
         self.custom_css = css
         self.data = self.adapt_data(
-            inputs_sentences=inputs_sentences,
-            inputs_attributions=inputs_attributions,
+            inputs_sentences=[inputs_sentence],
+            inputs_attributions=[inputs_attributions],
             outputs_words=None,
             outputs_attributions=None,
             concepts_descriptions=self.make_classes_descriptions(class_colors, class_names, min_values, max_values),
@@ -255,7 +252,7 @@ class GenerationAttributionVisualization(WordHighlightVisualization):
         # attribution shape is (nb_outputs, nb_inputs + nb_outputs)
         # js expects inputs attributions of shape (nb_outputs, nb_inputs, 1)
         # and outputs attributions of shape (nb_outputs, nb_outputs, 1)
-        inputs_attributions = attribution_output.attributions[:,:nb_inputs].unsqueeze(-1)
+        inputs_attributions = attribution_output.attributions[:, :nb_inputs].unsqueeze(-1)
         assert inputs_attributions.shape == (nb_outputs, nb_inputs, 1), (
             f"The inputs attributions shape ({inputs_attributions.shape}) \
             does not match the expected shape ({nb_outputs}, {nb_inputs}, 1)"

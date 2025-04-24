@@ -17,18 +17,11 @@ from interpreto.visualizations.concepts.concepts_highlight import (
 
 def test_attribution_monoclass():
     # attributions (1 classe)
-    inputs_sentences = [["A", "B", "C", "one", "two", "three"], ["do", "re", "mi"]]
-    nb_classes = 1
+    sentence = ["A", "B", "C", "one", "two", "three"]
 
-    def gen_attributions_outputs(sentences):
-        for sentence in sentences:
-            attributions = torch.rand(nb_classes, len(sentence))  # (c, l)
-            yield AttributionOutput(elements=sentence, attributions=attributions)
-
-    single_class_classification_output = list(gen_attributions_outputs(inputs_sentences))
-    viz = SingleClassAttributionVisualization(
-        attribution_output_list=single_class_classification_output,
-    )
+    attributions = torch.rand(len(sentence))  # (c, l)
+    single_class_classification_output = AttributionOutput(elements=sentence, attributions=attributions)
+    viz = SingleClassAttributionVisualization(attribution_output=single_class_classification_output)
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     output_file_path = os.path.join(current_dir, "test_attribution_monoclass.html")
@@ -46,19 +39,14 @@ def test_attribution_monoclass():
 
 def test_attribution_multiclass():
     # attributions (2 classes)
-    inputs_sentences = [["A", "B", "C", "one", "two", "three"], ["do", "re", "mi"]]
+    sentence = ["A", "B", "C", "one", "two", "three"]
     nb_classes = 2
-    inputs_sentences = [["A", "B", "C", "one", "two", "three"], ["do", "re", "mi"]]
 
-    def gen_attributions_outputs(sentences):
-        for sentence in sentences:
-            attributions = torch.rand(nb_classes, len(sentence))  # (c, l)
-            yield AttributionOutput(elements=sentence, attributions=attributions)
-
-    multi_class_classification_output = list(gen_attributions_outputs(inputs_sentences))
+    attributions = torch.rand(nb_classes, len(sentence))  # (c, l)
+    multi_class_classification_output = AttributionOutput(elements=sentence, attributions=attributions)
 
     viz = MultiClassAttributionVisualization(
-        attribution_output_list=multi_class_classification_output,
+        attribution_output=multi_class_classification_output,
         class_colors=[mcolors.to_rgb("green"), mcolors.to_rgb("blue")],
         class_names=["class1", "class2"],
     )
