@@ -35,7 +35,9 @@ import torch
 
 from interpreto.commons.model_wrapping.inference_wrapper import InferenceWrapper
 from interpreto.typing import TensorMapping
+from interpreto.commons.debug import timer, gpu_stats
 
+import gc
 
 class ClassificationInferenceWrapper(InferenceWrapper):
     """
@@ -217,6 +219,13 @@ class ClassificationInferenceWrapper(InferenceWrapper):
         for index, (logits, target) in enumerate(zip(predictions, targets, strict=True)):
             # TODO : refaire ça proprement
             multiple_index = int(target.shape[0] > 1)
+            # del logits
+            # del target
+            # ld = logits.detach()
+            # td = target.detach()
+            # for referer in gc.get_referrers(logits):
+            #     print(type(referer), referer)
+            # exit()
             yield logits.gather(-1, self.process_target(target[multiple_index and index], logits.shape[:-1]))
         #for index, logits in enumerate(predictions):
         #    yield logits.gather(-1, self.process_target(targets[multiple_index and index], logits.shape[:-1]))

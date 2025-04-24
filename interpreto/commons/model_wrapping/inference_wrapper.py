@@ -365,7 +365,14 @@ class InferenceWrapper:
                 # Call the model
                 logits = self.call_model(batch, batch_mask).logits
                 # Concatenate the results to the output buffer
-                result_buffer = concat_and_pad(result_buffer, logits, pad_left=self.PAD_LEFT)
+
+                ##################### FIXME #####################
+                # The .detach().clone() if used to avoid memory issues provoked by the bad usage of the result_buffer
+                # This will block the gradient calculation on the yielded logits
+                # Gradient calculation currently only call _get_logits_from_mapping register for the jacobian calculation
+                # This code works but should be improved in the future
+                ###############################################
+                result_buffer = concat_and_pad(result_buffer, logits, pad_left=self.PAD_LEFT).detach().clone()
                 # update batch and mask
                 batch = batch_mask = None
                 continue
@@ -504,6 +511,11 @@ class InferenceWrapper:
     def _get_gradients_from_iterable(
         self, model_inputs: Iterable[TensorMapping], targets: Iterable[torch.Tensor]
     ) -> Iterable[torch.Tensor]:
-        yield from (
-            self.get_gradients(model_input, target) for model_input, target in zip(model_inputs, targets, strict=True)
-        )
+        for model_input, target in zip(model_inputs, targets, strict=True):
+            # check that the model input and target have the same batch size
+            result = self._get_gradients_from_mapping(model_input, target)
+            yield result
+
+        # yield from (
+        #     self.get_gradients(model_input, target) for model_input, target in zip(model_inputs, targets, strict=True)
+        # )

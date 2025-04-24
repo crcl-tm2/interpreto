@@ -38,13 +38,13 @@ class Aggregator:
     Abstract class for aggregation made at the end of attribution methods
     """
 
-    def aggregate(self, results: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    def aggregate(self, results: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
         """
         Get results from multiple "Inference wrappers", aggregate results and gives an explanation
         """
         return results
 
-    def __call__(self, results: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    def __call__(self, results: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
         return self.aggregate(results, mask)
 
 
@@ -55,7 +55,7 @@ class TorchAggregator(Aggregator):
 
     _method: Callable[[torch.Tensor, int], torch.Tensor]
 
-    def aggregate(self, results: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    def aggregate(self, results: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
         # TODO: check dimension with explicit jax typing for results parameter
         return self._method(results, dim=0)
 

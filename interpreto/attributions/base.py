@@ -136,6 +136,7 @@ class AttributionExplainer:
         self.tokenizer = tokenizer
         self.inference_wrapper = self._associated_inference_wrapper(model, batch_size=batch_size, device=device)
         self.perturbator = perturbator or Perturbator()
+        self.perturbator.to(self.device)
         self.aggregator = aggregator or Aggregator()
         self.granularity_level = granularity_level
 
@@ -155,8 +156,7 @@ class AttributionExplainer:
         """
         if self.use_gradient:
             return self.inference_wrapper.get_gradients(model_inputs, targets)
-        with torch.no_grad():
-            return self.inference_wrapper.get_targeted_logits(model_inputs, targets)
+        return self.inference_wrapper.get_targeted_logits(model_inputs, targets)
     @property
     def device(self) -> torch.device:
         """
@@ -270,15 +270,10 @@ class AttributionExplainer:
 
         # Aggregate the scores using the aggregator to obtain contribution values.
 
-        # TODO : check if we need to add a squeeze(0) here (in generation version we have but not in classification)
-        # contributions = [
-        #     self.aggregator(score.unsqueeze(0), mask).squeeze(0)
-        #     for score, mask in zip(scores, masks, strict=True)  # generation version
-        # ]
-        contributions = [
-            self.aggregator(score.detach(), mask.to(self.device)).squeeze(0)
+        contributions = (
+            self.aggregator(score.detach(), mask.to(self.device) if mask is not None else None).squeeze(0)
             for score, mask in zip(scores, mask_generator, strict=True)
-        ]  # classification version
+          )  # classification version
 
 
         # Create and return AttributionOutput objects with the contributions and decoded token sequences:
