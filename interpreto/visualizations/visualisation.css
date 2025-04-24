@@ -51,8 +51,9 @@
 /* Common style for all the words displayed (inputs, outputs, concepts) */
 .common-word-style {
   font-family: inherit;
-  font-size: 1em;
+  font-size: 1.2em;
   padding: 0;
+  margin-right: 0.2em;
   white-space: pre-wrap;
   border-radius: 0.5em;
   background-color: transparent;
