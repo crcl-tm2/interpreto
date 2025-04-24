@@ -192,7 +192,7 @@ class InferenceWrapper:
         # If input ids are present, get the embeddings and add them to the model inputs
         if "input_ids" in model_inputs:
             base_shape = model_inputs["input_ids"].shape
-            input_ids = model_inputs.pop("input_ids").flatten(0, -2).to(self.device)
+            input_ids = model_inputs["input_ids"].flatten(0, -2).to(self.device)
             flatten_embeds = self.model.get_input_embeddings()(input_ids)
             model_inputs["inputs_embeds"] = flatten_embeds.view(*base_shape, flatten_embeds.shape[-1])
             return model_inputs

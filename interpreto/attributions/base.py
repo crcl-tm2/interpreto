@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import itertools
 from collections.abc import Iterable, MutableMapping, Sequence
-from copy import deepcopy
 from typing import Any
 
 import torch
@@ -50,6 +49,18 @@ SingleAttribution = (
     Float[torch.Tensor, "l"] | Float[torch.Tensor, "l c"] | Float[torch.Tensor, "l l_g"] | Float[torch.Tensor, "l l_t"]
 )
 
+def clone_tensor_mapping(tm:TensorMapping, detach:bool=False)->TensorMapping:
+    """
+    Clone a TensorMapping, optionally detaching the tensors.
+
+    Args:
+        tm (TensorMapping): tensor mapping to clone
+        detach (bool, optional): specify if new tensors must be detached. Defaults to False.
+
+    Returns:
+        TensorMapping: cloned tensor mapping
+    """
+    return {k:v.detach().clone() if detach else v.clone() for k,v in tm.items()}
 
 class AttributionOutput:
     """
@@ -244,10 +255,17 @@ class AttributionExplainer:
             model_inputs, targets, **model_kwargs
         )
 
+        # Decompose each input for the desired granularity level
+        decompositions = [
+            GranularityLevel.get_decomposition(t, self.granularity_level) for t in model_inputs_to_explain
+        ]
+
+
         # TODO : change this line to avoid copying the model inputs
         pert_generator, mask_generator = split_iterator(
-            self.perturbator.perturb(m) for m in deepcopy(model_inputs_to_explain)
+            self.perturbator.perturb(m) for m in (model_inputs_to_explain)
         )
+
 
         scores = self.get_scores(pert_generator, targets.to(self.device))
 
@@ -258,16 +276,11 @@ class AttributionExplainer:
         #     self.aggregator(score.unsqueeze(0), mask).squeeze(0)
         #     for score, mask in zip(scores, masks, strict=True)  # generation version
         # ]
-
         contributions = [
             self.aggregator(score.detach(), mask.to(self.device)).squeeze(0)
             for score, mask in zip(scores, mask_generator, strict=True)
         ]  # classification version
 
-        # Decompose each input for the desired granularity level
-        decompositions = [
-            GranularityLevel.get_decomposition(t, self.granularity_level) for t in model_inputs_to_explain
-        ]
 
         # Create and return AttributionOutput objects with the contributions and decoded token sequences:
         return [
@@ -309,9 +322,7 @@ class ClassificationAttributionExplainer(AttributionExplainer):
     def process_inputs_to_explain_and_targets(
         self, model_inputs: Iterable[TensorMapping], targets: torch.Tensor | None
     ) -> tuple[Iterable[TensorMapping], torch.Tensor]:
-        print("before calculating targets", flush=True)
-        logits = torch.stack([a.detach() for a in self.inference_wrapper.get_logits(deepcopy(model_inputs))])
-        print(torch.cuda.memory_summary(device=None, abbreviated=False), flush=True)
+        logits = torch.stack([a.detach() for a in self.inference_wrapper.get_logits(clone_tensor_mapping(a) for a in model_inputs)])
         if targets is None:
             targets = logits.argmax(dim=-1)
 
@@ -380,7 +391,6 @@ class GenerationAttributionExplainer(AttributionExplainer):
             model_inputs_to_explain_basic, targets = self.inference_wrapper.get_inputs_to_explain_and_targets(
                 model_inputs, **model_kwargs
             )
-            print(model_inputs_to_explain_basic)
         else:
             targets = self.process_targets(targets)
             model_inputs_to_explain_basic = []
