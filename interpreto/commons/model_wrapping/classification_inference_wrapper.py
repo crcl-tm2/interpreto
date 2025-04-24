@@ -36,9 +36,7 @@ import torch.nn.functional as F
 
 from interpreto.commons.model_wrapping.inference_wrapper import InferenceWrapper
 from interpreto.typing import TensorMapping
-from interpreto.commons.debug import timer, gpu_stats
 
-import gc
 
 class ClassificationInferenceWrapper(InferenceWrapper):
     """

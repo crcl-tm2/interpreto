@@ -274,8 +274,7 @@ class AttributionExplainer:
         contributions = (
             self.aggregator(score.detach(), mask.to(self.device) if mask is not None else None).squeeze(0)
             for score, mask in zip(scores, mask_generator, strict=True)
-          )  # classification version
-
+        )  # classification version
 
         # Create and return AttributionOutput objects with the contributions and decoded token sequences:
         return [

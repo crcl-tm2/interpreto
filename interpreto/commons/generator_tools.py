@@ -93,4 +93,5 @@ def allow_nested_iterables_of(*types: type | EllipsisType) -> Callable[[Callable
 
         res.register(Iterable, iterable_func)
         return res
+
     return decorator
