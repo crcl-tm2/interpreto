@@ -445,7 +445,7 @@ class InferenceWrapper:
 
     @overload
     def get_gradients(
-        self, model_inputs: Iterable[TensorMapping], targets: torch.Tensor
+        self, model_inputs: Iterable[TensorMapping], targets: Iterable[torch.Tensor]
     ) -> Iterable[torch.Tensor]: ...
 
     # @allow_nested_iterables_of(MutableMapping)
@@ -502,7 +502,7 @@ class InferenceWrapper:
 
     @get_gradients.register(Iterable)  # type: ignore
     def _get_gradients_from_iterable(
-        self, model_inputs: Iterable[TensorMapping], targets: torch.Tensor
+        self, model_inputs: Iterable[TensorMapping], targets: Iterable[torch.Tensor]
     ) -> Iterable[torch.Tensor]:
         yield from (
             self.get_gradients(model_input, target) for model_input, target in zip(model_inputs, targets, strict=True)

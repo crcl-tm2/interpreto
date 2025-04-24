@@ -142,7 +142,7 @@ class ClassificationInferenceWrapper(InferenceWrapper):
 
     @singledispatchmethod
     def get_targeted_logits(
-        self, model_inputs: Any, targets: torch.Tensor
+        self, model_inputs: Any, targets: torch.Tensor | Iterable[torch.Tensor]
     ) -> torch.Tensor | Generator[torch.Tensor, None, None]:
         """
         Get the logits associated to a collection of targets.
@@ -199,7 +199,7 @@ class ClassificationInferenceWrapper(InferenceWrapper):
 
     @get_targeted_logits.register(Iterable)
     def _get_targeted_logits_from_iterable(
-        self, model_inputs: Iterable[TensorMapping], targets: torch.Tensor
+        self, model_inputs: Iterable[TensorMapping], targets: Iterable[torch.Tensor]
     ) -> Generator[torch.Tensor, None, None]:
         """
         Get the logits associated to a collection of targets.
@@ -214,9 +214,9 @@ class ClassificationInferenceWrapper(InferenceWrapper):
             torch.Tensor: logits given by the model for the given targets.
         """
         predictions = self._get_logits_from_iterable(model_inputs)
-        # TODO : refaire ça proprement
-        if targets.dim() in (0, 1):
-            targets = targets.view(1, -1)
-        multiple_index = int(targets.shape[0] > 1)
-        for index, logits in enumerate(predictions):
-            yield logits.gather(-1, self.process_target(targets[multiple_index and index], logits.shape[:-1]))
+        for index, (logits, target) in enumerate(zip(predictions, targets, strict=True)):
+            # TODO : refaire ça proprement
+            multiple_index = int(target.shape[0] > 1)
+            yield logits.gather(-1, self.process_target(target[multiple_index and index], logits.shape[:-1]))
+        #for index, logits in enumerate(predictions):
+        #    yield logits.gather(-1, self.process_target(targets[multiple_index and index], logits.shape[:-1]))

@@ -43,7 +43,7 @@ from interpreto.commons.granularity import GranularityLevel
 from interpreto.commons.model_wrapping.classification_inference_wrapper import ClassificationInferenceWrapper
 from interpreto.commons.model_wrapping.generation_inference_wrapper import GenerationInferenceWrapper
 from interpreto.commons.model_wrapping.inference_wrapper import InferenceWrapper
-from interpreto.typing import Generated_Target, ModelInputs, TensorMapping
+from interpreto.typing import ClassificationTarget, GeneratedTarget, ModelInputs, TensorMapping
 
 SingleAttribution = (
     Float[torch.Tensor, "l"] | Float[torch.Tensor, "l c"] | Float[torch.Tensor, "l l_g"] | Float[torch.Tensor, "l l_t"]
@@ -142,7 +142,7 @@ class AttributionExplainer:
         # TODO : check this line, eventually move it
         self.inference_wrapper.pad_token_id = self.tokenizer.pad_token_id
 
-    def get_scores(self, model_inputs: Iterable[TensorMapping], targets: torch.Tensor) -> Iterable[torch.Tensor]:
+    def get_scores(self, model_inputs: Iterable[TensorMapping], targets: Iterable[torch.Tensor]) -> Iterable[torch.Tensor]:
         """
         Computes scores for the given perturbations and targets.
 
@@ -216,13 +216,13 @@ class AttributionExplainer:
         )
 
     def process_inputs_to_explain_and_targets(
-        self, model_inputs: Iterable[TensorMapping], targets: Sequence[torch.Tensor] | None, **model_kwargs: Any
-    ) -> tuple[list[TensorMapping], Sequence[torch.Tensor]]:
+        self, model_inputs: Iterable[TensorMapping], targets:Any, **model_kwargs: Any
+    ) -> tuple[Iterable[TensorMapping], Iterable[torch.Tensor]]:
         # TODO : update docstring and add error message
         raise NotImplementedError()
 
     def explain(
-        self, model_inputs: ModelInputs, targets: Generated_Target = None, **model_kwargs: Any
+        self, model_inputs: ModelInputs, targets: Any = None, **model_kwargs: Any
     ) -> Iterable[AttributionOutput]:
         """
         Computes attributions for generative models.
@@ -266,8 +266,7 @@ class AttributionExplainer:
             self.perturbator.perturb(m) for m in (model_inputs_to_explain)
         )
 
-
-        scores = self.get_scores(pert_generator, targets.to(self.device))
+        scores = self.get_scores(pert_generator, (a.to(self.device) for a in targets))
 
         # Aggregate the scores using the aggregator to obtain contribution values.
 
@@ -319,15 +318,24 @@ class ClassificationAttributionExplainer(AttributionExplainer):
 
     _associated_inference_wrapper = ClassificationInferenceWrapper
 
+    def process_targets(self, targets:ClassificationTarget, batch_size:int=1) -> Iterable[torch.Tensor]:
+        if isinstance(targets, int):
+            targets = torch.tensor([targets])
+        if isinstance(targets, torch.Tensor):
+            return targets.view(batch_size, 1, -1).split(1, dim=0)
+        if isinstance(targets, Iterable):
+            if all(isinstance(t, int) for t in targets):
+                return self.process_targets(torch.tensor(targets), batch_size)
+            return list(itertools.chain(*[self.process_targets(item, batch_size) for item in targets]))
+
     def process_inputs_to_explain_and_targets(
-        self, model_inputs: Iterable[TensorMapping], targets: torch.Tensor | None
+        self, model_inputs: Iterable[TensorMapping], targets: ClassificationTarget | None
     ) -> tuple[Iterable[TensorMapping], torch.Tensor]:
         logits = torch.stack([a.detach() for a in self.inference_wrapper.get_logits(clone_tensor_mapping(a) for a in model_inputs)])
         if targets is None:
             targets = logits.argmax(dim=-1)
-
         # TODO : change call to process_target
-        targets = ClassificationInferenceWrapper.process_target(targets, logits.shape[:-1])
+        targets = self.process_targets(targets, logits.shape[0])
         return model_inputs, targets
 
 
@@ -338,7 +346,7 @@ class GenerationAttributionExplainer(AttributionExplainer):
 
     _associated_inference_wrapper = GenerationInferenceWrapper
 
-    def process_targets(self, targets: Generated_Target) -> list[torch.Tensor]:
+    def process_targets(self, targets: GeneratedTarget) -> list[torch.Tensor]:
         """
         Processes the target inputs for generative models into a standardized format.
 
@@ -370,8 +378,8 @@ class GenerationAttributionExplainer(AttributionExplainer):
         )
 
     def process_inputs_to_explain_and_targets(
-        self, model_inputs: ModelInputs, targets: Generated_Target, **model_kwargs: dict[str, Any]
-    ) -> tuple[list[TensorMapping], Sequence[torch.Tensor]]:
+        self, model_inputs: ModelInputs, targets: GeneratedTarget | None=None, **model_kwargs: dict[str, Any]
+    ) -> tuple[Iterable[TensorMapping], Iterable[torch.Tensor]]:
         """
         Processes the inputs and targets for the generative model.
         If targets are not provided, create them with model_inputs_to_explain. Otherwise, for each input-target pair:
@@ -381,7 +389,7 @@ class GenerationAttributionExplainer(AttributionExplainer):
 
         Args:
             model_inputs (ModelInputs): The raw inputs for the generative model.
-            targets (Generated_Target): The target texts or tokens for which explanations are desired.
+            targets (GeneratedTarget): The target texts or tokens for which explanations are desired.
             model_kwargs (dict): Additional arguments for the generation process.
 
         Returns:
