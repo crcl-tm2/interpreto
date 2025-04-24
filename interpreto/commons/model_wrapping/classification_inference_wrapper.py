@@ -32,6 +32,7 @@ from functools import singledispatchmethod
 from typing import Any
 
 import torch
+import torch.nn.functional as F
 
 from interpreto.commons.model_wrapping.inference_wrapper import InferenceWrapper
 from interpreto.typing import TensorMapping
@@ -127,9 +128,7 @@ class ClassificationInferenceWrapper(InferenceWrapper):
         return self._get_logits_from_mapping(model_inputs).argmax(dim=-1)
 
     @get_targets.register(Iterable)
-    def _get_targets_from_iterable(
-        self, model_inputs: Iterable[TensorMapping]
-    ) -> Generator[torch.Tensor, None, None]:
+    def _get_targets_from_iterable(self, model_inputs: Iterable[TensorMapping]) -> Generator[torch.Tensor, None, None]:
         """
         Get the targets from the model for the given inputs.
         registered for Iterable type.
@@ -144,7 +143,7 @@ class ClassificationInferenceWrapper(InferenceWrapper):
 
     @singledispatchmethod
     def get_targeted_logits(
-        self, model_inputs: Any, targets: torch.Tensor | Iterable[torch.Tensor]
+        self, model_inputs: Any, targets: torch.Tensor | Iterable[torch.Tensor], mode: str = "logits"
     ) -> torch.Tensor | Generator[torch.Tensor, None, None]:
         """
         Get the logits associated to a collection of targets.
@@ -181,7 +180,7 @@ class ClassificationInferenceWrapper(InferenceWrapper):
 
     @get_targeted_logits.register(MutableMapping)
     def _get_targeted_logits_from_mapping(
-        self, model_inputs: TensorMapping, targets: torch.Tensor
+        self, model_inputs: TensorMapping, targets: torch.Tensor, mode: str = "logits"
     ):
         """
         Get the logits associated to a collection of targets.
@@ -195,13 +194,19 @@ class ClassificationInferenceWrapper(InferenceWrapper):
         Returns:
             torch.Tensor: logits given by the model for the given targets.
         """
+        assert mode in {"logits", "softmax", "log_softmax"}, f"Unknown mode '{mode}'"
         logits = self._get_logits_from_mapping(model_inputs)
+        # Apply post-processing mode
+        if mode == "softmax":
+            logits = F.softmax(logits, dim=-1)
+        elif mode == "log_softmax":
+            logits = F.log_softmax(logits, dim=-1)
         targets = self.process_target(targets, logits.shape[:-1])
         return logits.gather(-1, targets)
 
     @get_targeted_logits.register(Iterable)
     def _get_targeted_logits_from_iterable(
-        self, model_inputs: Iterable[TensorMapping], targets: Iterable[torch.Tensor]
+        self, model_inputs: Iterable[TensorMapping], targets: Iterable[torch.Tensor], mode: str = "logits"
     ) -> Generator[torch.Tensor, None, None]:
         """
         Get the logits associated to a collection of targets.
@@ -215,17 +220,17 @@ class ClassificationInferenceWrapper(InferenceWrapper):
         Yields:
             torch.Tensor: logits given by the model for the given targets.
         """
+        assert mode in {"logits", "softmax", "log_softmax"}, f"Unknown mode '{mode}'"
         predictions = self._get_logits_from_iterable(model_inputs)
         for index, (logits, target) in enumerate(zip(predictions, targets, strict=True)):
             # TODO : refaire ça proprement
             multiple_index = int(target.shape[0] > 1)
-            # del logits
-            # del target
-            # ld = logits.detach()
-            # td = target.detach()
-            # for referer in gc.get_referrers(logits):
-            #     print(type(referer), referer)
-            # exit()
-            yield logits.gather(-1, self.process_target(target[multiple_index and index], logits.shape[:-1]))
-        #for index, logits in enumerate(predictions):
+            if mode == "softmax":
+                logits_mode = F.softmax(logits, dim=-1)
+            elif mode == "log_softmax":
+                logits_mode = F.log_softmax(logits, dim=-1)
+            else:
+                logits_mode = logits
+            yield logits_mode.gather(-1, self.process_target(target[multiple_index and index], logits_mode.shape[:-1]))
+        # for index, logits in enumerate(predictions):
         #    yield logits.gather(-1, self.process_target(targets[multiple_index and index], logits.shape[:-1]))
