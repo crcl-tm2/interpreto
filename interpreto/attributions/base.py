@@ -258,8 +258,9 @@ class AttributionExplainer:
         #     self.aggregator(score.unsqueeze(0), mask).squeeze(0)
         #     for score, mask in zip(scores, masks, strict=True)  # generation version
         # ]
+
         contributions = [
-            self.aggregator(score, mask.to(self.device)).squeeze(0)
+            self.aggregator(score.detach(), mask.to(self.device)).squeeze(0)
             for score, mask in zip(scores, mask_generator, strict=True)
         ]  # classification version
 
@@ -308,7 +309,9 @@ class ClassificationAttributionExplainer(AttributionExplainer):
     def process_inputs_to_explain_and_targets(
         self, model_inputs: Iterable[TensorMapping], targets: torch.Tensor | None
     ) -> tuple[Iterable[TensorMapping], torch.Tensor]:
-        logits = torch.stack(list(self.inference_wrapper.get_logits(deepcopy(model_inputs))))
+        print("before calculating targets", flush=True)
+        logits = torch.stack([a.detach() for a in self.inference_wrapper.get_logits(deepcopy(model_inputs))])
+        print(torch.cuda.memory_summary(device=None, abbreviated=False), flush=True)
         if targets is None:
             targets = logits.argmax(dim=-1)
 
