@@ -176,11 +176,6 @@ class GenerationInferenceWrapper(InferenceWrapper):
 
         # assume the sequence dimension is the second-to-last.
         target_logits = logits[..., -target_length:, :]  # (n,lg,v)
-        if targets.shape != target_logits.shape[:-1]:
-            raise ValueError(
-                "target logits shape without the vocabulary dimension must match the target inputs ids shape."
-                f"Got {target_logits.shape[:-1]} and {targets.shape}."
-            )
 
         # Apply post-processing depending on selected mode
         if mode == "softmax":
@@ -190,9 +185,14 @@ class GenerationInferenceWrapper(InferenceWrapper):
 
         extended_targets = targets.expand(logits.shape[0], -1)
 
+        if extended_targets.shape != target_logits.shape[:-1]:
+            raise ValueError(
+                "target logits shape without the vocabulary dimension must match the extended_targets inputs ids shape."
+                f"Got {target_logits.shape[:-1]} and {extended_targets.shape}."
+            )
+
         # For a batch case, unsqueeze the targets so that they match the logits shape.
         selected_logits = target_logits.gather(dim=-1, index=extended_targets.unsqueeze(-1)).squeeze(-1)
-        # selected_logits = selected_logits.unsqueeze(-1)
 
         return selected_logits
 
