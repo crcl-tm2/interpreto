@@ -8,10 +8,10 @@ import json
 
 from interpreto.attributions.base import AttributionOutput
 
-from ..base import WordHighlightVisualization, tensor_to_list
+from ..base import ConceptAttributionVisualization, tensor_to_list
 
 
-class ConceptHighlightVisualization(WordHighlightVisualization):
+class ConceptHighlightVisualization(ConceptAttributionVisualization):
     """
     Class for concepts visualization
     """
