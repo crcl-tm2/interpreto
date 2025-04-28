@@ -270,7 +270,6 @@ class AttributionExplainer:
         scores = self.get_scores(pert_generator, (a.to(self.device) for a in targets), mode=mode)
 
         # Aggregate the scores using the aggregator to obtain contribution values.
-
         contributions = (
             self.aggregator(score.detach(), mask.to(self.device) if mask is not None else None).squeeze(0)
             for score, mask in zip(scores, mask_generator, strict=True)
