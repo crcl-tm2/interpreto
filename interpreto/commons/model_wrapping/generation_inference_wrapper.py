@@ -28,6 +28,7 @@ from collections.abc import Iterable, MutableMapping
 from functools import singledispatchmethod
 
 import torch
+import torch.nn.functional as F
 
 from interpreto.commons.model_wrapping.inference_wrapper import InferenceWrapper
 
@@ -125,7 +126,7 @@ class GenerationInferenceWrapper(InferenceWrapper):
         return l_full_mappings, l_targets_ids
 
     @singledispatchmethod
-    def get_targeted_logits(self, model_inputs, targets):
+    def get_targeted_logits(self, model_inputs, targets, mode="logits"):
         """
         Abstract method to retrieve the logits associated with the target tokens.
         Must be implemented per input type (e.g., MutableMapping, Iterable).
@@ -135,7 +136,7 @@ class GenerationInferenceWrapper(InferenceWrapper):
         )
 
     @get_targeted_logits.register(MutableMapping)
-    def _(self, model_inputs: MutableMapping[str, torch.Tensor], targets: torch.Tensor):
+    def _(self, model_inputs: MutableMapping[str, torch.Tensor], targets: torch.Tensor, mode: str = "logits"):
         """
         Retrieves the logits corresponding to the target token IDs for a single MutableMapping
         (i.e., a batch of inputs stored as a dictionary of tensors).
@@ -159,6 +160,8 @@ class GenerationInferenceWrapper(InferenceWrapper):
             - A tensor of shape (batch_size, target_length) containing the predicted logits for the target
               tokens in each sequence of the batch.
         """
+        assert mode in {"logits", "softmax", "log_softmax"}, f"Unknown mode '{mode}'"
+
         # remove last target token from the model inputs
         # to avoid using the last token in the generation process
         model_inputs = {
@@ -173,39 +176,51 @@ class GenerationInferenceWrapper(InferenceWrapper):
 
         # assume the sequence dimension is the second-to-last.
         target_logits = logits[..., -target_length:, :]  # (n,lg,v)
-        if targets.shape != target_logits.shape[:-1]:
+
+        # Apply post-processing depending on selected mode
+        if mode == "softmax":
+            target_logits = F.softmax(target_logits, dim=-1)
+        elif mode == "log_softmax":
+            target_logits = F.log_softmax(target_logits, dim=-1)
+
+        extended_targets = targets.expand(logits.shape[0], -1)
+
+        if extended_targets.shape != target_logits.shape[:-1]:
             raise ValueError(
-                "target logits shape without the vocabulary dimension must match the target inputs ids shape."
-                f"Got {target_logits.shape[:-1]} and {targets.shape}."
+                "target logits shape without the vocabulary dimension must match the extended_targets inputs ids shape."
+                f"Got {target_logits.shape[:-1]} and {extended_targets.shape}."
             )
 
         # For a batch case, unsqueeze the targets so that they match the logits shape.
-        selected_logits = target_logits.gather(dim=-1, index=targets.unsqueeze(-1)).squeeze(-1)
+        selected_logits = target_logits.gather(dim=-1, index=extended_targets.unsqueeze(-1)).squeeze(-1)
 
         return selected_logits
 
-    # @get_targeted_logits.register(Iterable)
-    # def _(self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]], targets: Iterable[torch.Tensor]):
-    #     # Get the logits for each model input and target pair.
-    #     if len(model_inputs) != len(targets):
-    #         raise ValueError(
-    #             f"model_inputs and targets must have the same length. Got {len(model_inputs)} and {len(targets)}."
-    #         )
-    #     selected_logits = []
-    #     for model_input, target in zip(model_inputs, targets, strict=True):
-    #         p = model_input["attention_mask"].shape[0]
-    #         p_targets = target.unsqueeze(0).repeat(p, 1)
-    #         selected_logits.append(self.get_targeted_logits(model_input, p_targets))
-    #     return torch.stack(selected_logits)
-
     @get_targeted_logits.register(Iterable)
-    def _(self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]], targets: Iterable[torch.Tensor]):
+    def _(
+        self,
+        model_inputs: Iterable[MutableMapping[str, torch.Tensor]],
+        targets: Iterable[torch.Tensor],
+        mode: str = "logits",
+    ):
         """
         Retrieves logits for each pair of model input and target in an iterable.
         """
-        all_logits = self.get_logits(model_inputs)
+        assert mode in {"logits", "softmax", "log_softmax"}, f"Unknown mode '{mode}'"
+        # remove last target token from the model inputs
+        # to avoid using the last token in the generation process
+        model_inputs = [
+            {key: value[..., :-1, :] if key == "inputs_embeds" else value[..., :-1] for key, value in elem.items()}
+            for elem in model_inputs
+        ]
+        all_logits = self._get_logits_from_iterable(model_inputs)
         for logits, target in zip(all_logits, targets, strict=True):
             target_length = target.shape[-1]
             targeted_logits = logits[..., -target_length:, :]
-            selected_logits = targeted_logits.gather(dim=-1, index=target.unsqueeze(-1)).squeeze(-1)
+            if mode == "softmax":
+                targeted_logits = F.softmax(targeted_logits, dim=-1)
+            elif mode == "log_softmax":
+                targeted_logits = F.log_softmax(targeted_logits, dim=-1)
+            extended_target = target.expand(logits.shape[0], -1)
+            selected_logits = targeted_logits.gather(dim=-1, index=extended_target.unsqueeze(-1)).squeeze(-1)
             yield selected_logits

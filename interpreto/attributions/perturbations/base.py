@@ -54,6 +54,29 @@ class Perturbator:
         # Embedders is optional
         self.inputs_embedder = inputs_embedder
 
+    @property
+    def device(self) -> torch.device:
+        """
+        Get the device of the inputs embedder
+        """
+        if self.inputs_embedder is not None:
+            return self.inputs_embedder.weight.device
+        return torch.device("cpu")
+
+    @device.setter
+    def device(self, device: torch.device):
+        """
+        Set the device of the inputs embedder
+        """
+        if self.inputs_embedder is not None:
+            self.inputs_embedder.to(device)
+
+    def to(self, device: torch.device):
+        """
+        Set the device of the inputs embedder
+        """
+        self.device = device
+
     # TODO : this function is replicated in the inference wrapper, enventually merge them
     def _embed(self, model_inputs: TensorMapping) -> TensorMapping:
         """
@@ -77,7 +100,7 @@ class Perturbator:
         # If input ids are present, get the embeddings and add them to the model inputs
         if "input_ids" in model_inputs:
             base_shape = model_inputs["input_ids"].shape
-            flatten_embeds = self.inputs_embedder(model_inputs.pop("input_ids").flatten(0, -2))
+            flatten_embeds = self.inputs_embedder(model_inputs.pop("input_ids").flatten(0, -2).to(self.device))
             model_inputs["inputs_embeds"] = flatten_embeds.view(*base_shape, flatten_embeds.shape[-1])
             return model_inputs
         # If neither input ids nor input embeds are present, raise an error

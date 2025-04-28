@@ -163,7 +163,7 @@ class GranularityLevel(Enum):
                 res: list[list[list[Number]]] = []
                 for index, token_ids in enumerate(tokens_ids["input_ids"]):
                     word_ids = tokens_ids.word_ids(index)
-                    res.append([[] for _ in range(max(a for a in tokens_ids.word_ids(index) if a is not None) + 1)])
+                    res.append([[] for _ in range(max(a for a in word_ids if a is not None) + 1)])
                     for tok, word_id in zip(token_ids, word_ids, strict=True):
                         if word_id is not None:
                             res[-1][word_id] += [tok.item()]

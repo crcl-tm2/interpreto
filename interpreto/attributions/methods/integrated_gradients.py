@@ -40,6 +40,7 @@ class IntegratedGradients(MultitaskExplainerMixin, AttributionExplainer):
     """
     Integrated Gradients method
     """
+
     use_gradient = True
 
     def __init__(
