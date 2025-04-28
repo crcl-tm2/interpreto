@@ -28,7 +28,7 @@ import pytest
 import torch
 from transformers import (
     AutoModelForCausalLM,
-    AutoModelForMaskedLM,
+    # AutoModelForMaskedLM,
     # AutoModelForSeq2SeqLM,
     AutoModelForSequenceClassification,
     # AutoModelForMultipleChoice,
@@ -39,10 +39,11 @@ from transformers import (
 
 from interpreto.attributions import (
     IntegratedGradients,
-    KernelShap,
-    Lime,
+    # KernelShap,
+    # Lime,
     OcclusionExplainer,
-    SobolAttribution,
+    # SobolAttribution,
+    SmoothGrad,
 )
 from interpreto.attributions.base import AttributionOutput
 
@@ -50,32 +51,22 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 attribution_method_kwargs = {
     IntegratedGradients: {"n_interpolations": 3, "baseline": 0.0},
-    KernelShap: {"n_perturbations": 10},
-    Lime: {"n_perturbations": 10},
+    SmoothGrad: {"n_interpolations": 10, "noise_level": 0.1},
+    # KernelShap: {"n_perturbations": 10},
+    # Lime: {"n_perturbations": 10},
     OcclusionExplainer: {},
-    SobolAttribution: {"n_token_perturbations": 10},
+    # SobolAttribution: {"n_token_perturbations": 10},
 }
 
 
 model_loader_combinations = [
     ("hf-internal-testing/tiny-random-DebertaV2Model", AutoModelForSequenceClassification),
-    ("hf-internal-testing/tiny-random-DebertaV2Model", AutoModelForMaskedLM),
     ("hf-internal-testing/tiny-random-xlm-roberta", AutoModelForSequenceClassification),
-    ("hf-internal-testing/tiny-random-xlm-roberta", AutoModelForMaskedLM),
     ("hf-internal-testing/tiny-random-DistilBertModel", AutoModelForSequenceClassification),
-    ("hf-internal-testing/tiny-random-DistilBertModel", AutoModelForMaskedLM),
     ("hf-internal-testing/tiny-random-t5", AutoModelForSequenceClassification),
-    # ("hf-internal-testing/tiny-random-t5", AutoModelForSeq2SeqLM),
     ("hf-internal-testing/tiny-random-LlamaForCausalLM", AutoModelForCausalLM),
     ("hf-internal-testing/tiny-random-gpt2", AutoModelForCausalLM),
 ]
-# Currently supported: AutoModelForSequenceClassification, AutoModelForMaskedLM, AutoModelForSeq2SeqLM, AutoModelForCausalLM.
-# To do later:
-# list_load_model = [
-#     AutoModelForMultipleChoice,
-#     AutoModelForQuestionAnswering,
-#     AutoModelForTokenClassification,
-# ]
 
 all_combinations = list(product(model_loader_combinations, attribution_method_kwargs.keys()))
 

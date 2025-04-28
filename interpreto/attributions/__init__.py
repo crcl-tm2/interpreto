@@ -3,6 +3,7 @@ from .methods import (
     # KernelShap,
     # Lime,
     OcclusionExplainer,
+    Saliency,
     SmoothGrad,
     SobolAttribution,
 )
@@ -14,4 +15,5 @@ __all__ = [
     "OcclusionExplainer",
     "SobolAttribution",
     "SmoothGrad",
+    "Saliency",
 ]

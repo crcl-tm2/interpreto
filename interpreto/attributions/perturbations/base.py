@@ -425,3 +425,14 @@ class GaussianNoisePerturbator(Perturbator):
         model_inputs["inputs_embeds"] += torch.randn_like(model_inputs["inputs_embeds"]) * self.std
 
         return model_inputs, None  # return noise ? noise.bool().long() ?
+
+
+class NoPerturbator(Perturbator):
+    """
+    No perturbation
+    """
+
+    __slots__ = ()
+
+    def perturb(self, inputs: TensorMapping) -> tuple[TensorMapping, torch.Tensor | None]:
+        return inputs, None

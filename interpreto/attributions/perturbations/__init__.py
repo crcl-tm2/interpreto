@@ -22,6 +22,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from .base import GaussianNoisePerturbator, TokenMaskBasedPerturbator
+from .base import GaussianNoisePerturbator, NoPerturbator, TokenMaskBasedPerturbator
 from .linear_interpolation_perturbation import LinearInterpolationPerturbator
 from .sobol_perturbation import SobolTokenPerturbator
