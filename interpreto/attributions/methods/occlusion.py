@@ -48,12 +48,23 @@ class OcclusionExplainer(MultitaskExplainerMixin, AttributionExplainer):
     def __init__(
         self,
         model: Any,
-        batch_size: int,
         tokenizer: PreTrainedTokenizer,
+        batch_size: int,
         granularity_level: GranularityLevel = GranularityLevel.WORD,
         device: torch.device | None = None,
         replace_token_id: int | None = None,
     ):
+        """
+        Initialize the attribution method.
+
+        Args:
+            model (PreTrainedModel): model to explain
+            tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
+            batch_size (int): batch size for the attribution method
+            granularity_level (GranularityLevel): granularity level of the perturbations (token, word, sentence, etc.)
+            device (torch.device): device on which the attribution method will be run
+            replace_token_id (int): token id to use for replacing the occluded tokens
+        """
         if replace_token_id is None:
             # TODO : move this in upper class (MaskingExplainer or something)
             replace_token = "[REPLACE]"

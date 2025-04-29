@@ -1,7 +1,7 @@
 from .methods import (
     IntegratedGradients,
-    # KernelShap,
-    # Lime,
+    KernelShap,
+    Lime,
     OcclusionExplainer,
     Saliency,
     SmoothGrad,
@@ -10,8 +10,8 @@ from .methods import (
 
 __all__ = [
     "IntegratedGradients",
-    # "KernelShap",
-    # "Lime",
+    "KernelShap",
+    "Lime",
     "OcclusionExplainer",
     "SobolAttribution",
     "SmoothGrad",

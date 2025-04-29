@@ -49,6 +49,8 @@ class SobolAttribution(MultitaskExplainerMixin, AttributionExplainer):
     Sobol Attribution method
     """
 
+    use_gradient = False
+
     def __init__(
         self,
         model: PreTrainedModel,
@@ -97,7 +99,6 @@ class SobolAttribution(MultitaskExplainerMixin, AttributionExplainer):
             perturbator=perturbator,
             aggregator=SobolAggregator(n_token_perturbations=n_token_perturbations),
             batch_size=batch_size,
-            usegradient=False,
             granularity_level=granularity_level,
             device=device,
         )

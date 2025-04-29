@@ -45,6 +45,8 @@ class KernelShap(MultitaskExplainerMixin, AttributionExplainer):
     Kernel SHAP attribution method.
     """
 
+    use_gradient = False
+
     def __init__(
         self,
         model: PreTrainedModel,
@@ -61,7 +63,7 @@ class KernelShap(MultitaskExplainerMixin, AttributionExplainer):
             model (PreTrainedModel): model to explain
             tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
             batch_size (int): batch size for the attribution method
-            granularity_level (str): granularity level of the perturbations (token, word, sentence, etc.)
+            granularity_level (GranularityLevel): granularity level of the perturbations (token, word, sentence, etc.)
             n_perturbations (int): the number of perturbations to generate
             distance_function (DistancesFromMaskProtocol): distance function used to compute weights of perturbed samples in the linear model training.
             similarity_kernel (SimilarityKernelProtocol): similarity kernel used to compute weights of perturbed samples in the linear model training.
@@ -95,7 +97,6 @@ class KernelShap(MultitaskExplainerMixin, AttributionExplainer):
             perturbator=perturbator,
             aggregator=aggregator,
             batch_size=batch_size,
-            usegradient=False,
             granularity_level=granularity_level,
             device=device,
         )
