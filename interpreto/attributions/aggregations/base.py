@@ -42,7 +42,7 @@ class Aggregator:
         """
         Get results from multiple "Inference wrappers", aggregate results and gives an explanation
         """
-        return results
+        return results.squeeze(0)
 
     def __call__(self, results: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
         return self.aggregate(results, mask)

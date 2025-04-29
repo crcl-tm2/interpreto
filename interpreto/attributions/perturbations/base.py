@@ -412,12 +412,6 @@ class GaussianNoisePerturbator(Perturbator):
         self.std = std
 
     def perturb_embeds(self, model_inputs: TensorMapping) -> tuple[TensorMapping, torch.Tensor | None]:
-        # model_inputs["inputs_embeds"] = (
-        #     model_inputs["inputs_embeds"].unsqueeze(1).repeat(1, self.n_perturbations, 1, 1)
-        # )
-        # model_inputs["attention_mask"] = (
-        #     model_inputs["attention_mask"].unsqueeze(1).repeat(1, self.n_perturbations, 1, 1)
-        # )
         model_inputs["inputs_embeds"] = model_inputs["inputs_embeds"].repeat(self.n_perturbations, 1, 1)
         model_inputs["attention_mask"] = model_inputs["attention_mask"].repeat(self.n_perturbations, 1, 1)
 
@@ -425,14 +419,3 @@ class GaussianNoisePerturbator(Perturbator):
         model_inputs["inputs_embeds"] += torch.randn_like(model_inputs["inputs_embeds"]) * self.std
 
         return model_inputs, None  # return noise ? noise.bool().long() ?
-
-
-class NoPerturbator(Perturbator):
-    """
-    No perturbation
-    """
-
-    __slots__ = ()
-
-    def perturb(self, inputs: TensorMapping) -> tuple[TensorMapping, torch.Tensor | None]:
-        return inputs, None

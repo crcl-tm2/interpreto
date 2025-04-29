@@ -118,7 +118,6 @@ class AttributionExplainer:
         model: PreTrainedModel,
         tokenizer: PreTrainedTokenizer,
         batch_size: int,
-        # inference_wrapper: InferenceWrapper,
         perturbator: Perturbator | None = None,
         aggregator: Aggregator | None = None,
         device: torch.device | None = None,
@@ -128,12 +127,17 @@ class AttributionExplainer:
         Initializes the AttributionExplainer.
 
         Args:
-            TODO : update docstring
-            perturbator (Perturbator, optional): An instance for generating input perturbations.
-                Defaults to a Perturbator if not provided.
-            aggregator (Aggregator, optional): An instance used to aggregate computed attribution scores.
-            device (torch.device, optional): The device on which computations will be performed.
-            granularity_level (GranularityLevel): The level of granularity for the explanation (e.g., token, word, sentence).
+            model (PreTrainedModel): The model to be explained.
+            tokenizer (PreTrainedTokenizer): The tokenizer associated with the model.
+            batch_size (int): The batch size used for model inference.
+            perturbator (Perturbator, optional): Instance used to generate input perturbations.
+                If None, the perturbator returns only the original input.
+            aggregator (Aggregator, optional): Instance used to aggregate computed attribution scores.
+                If None, the aggregator returns the original scores.
+            device (torch.device, optional): The device on which computations are performed.
+                If None, defaults to the device of the model.
+            granularity_level (GranularityLevel, optional): The level of granularity for the explanation (e.g., token, word, sentence).
+                Defaults to GranularityLevel.DEFAULT (TOKEN)
         """
         self.tokenizer = tokenizer
         self.inference_wrapper = self._associated_inference_wrapper(model, batch_size=batch_size, device=device)
@@ -160,7 +164,7 @@ class AttributionExplainer:
         """
         if self.use_gradient:
             return self.inference_wrapper.get_gradients(model_inputs, targets)
-        return self.inference_wrapper.get_targeted_logits(model_inputs, targets)
+        return self.inference_wrapper.get_targeted_logits(model_inputs, targets, mode=mode)
 
     @property
     def device(self) -> torch.device:
@@ -233,14 +237,13 @@ class AttributionExplainer:
         Computes attributions for generative models.
 
         Process:
-            1. Move the model to the designated device.
-            2. Process and standardize the model inputs.
-            3. Create the tokenizer's pad token if not already set and add it to the inference wrapper.
-            4. If targets are not provided, create them. Otherwise, for each input-target pair, process them.
+            1. Process and standardize the model inputs.
+            2. Create the tokenizer's pad token if not already set and add it to the inference wrapper.
+            3. If targets are not provided, create them. Otherwise, for each input-target pair, process them.
+            4. Decompose the inputs based on the desired granularity and decode tokens.
             5. Generate perturbations for the constructed inputs.
             6. Compute scores using either gradients (if use_gradient is True) or targeted logits.
             7. Aggregate the scores to obtain contribution values.
-            8. Decompose the inputs based on the desired granularity and decode tokens.
 
         Args:
             model_inputs (ModelInputs): Raw inputs for the generative model.
@@ -382,6 +385,7 @@ class GenerationAttributionExplainer(AttributionExplainer):
             a. Embed the input.
             b. Embed the target and concatenate with the input embeddings.
             c. Construct a new input mapping that includes both embeddings.
+        Then, add offsets mapping and special tokens mask.
 
         Args:
             model_inputs (ModelInputs): The raw inputs for the generative model.
@@ -418,11 +422,6 @@ class GenerationAttributionExplainer(AttributionExplainer):
             )
             for model_inputs_to_explain_text in model_inputs_to_explain_text
         ]
-
-        # Decompose each input for the desired granularity level.
-        # TODO: move this in a better place
-        if self.granularity_level == GranularityLevel.TOKEN:
-            self.granularity_level = GranularityLevel.ALL_TOKENS  # equal for generative models
 
         return model_inputs_to_explain, targets
 
