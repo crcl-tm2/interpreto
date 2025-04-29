@@ -29,7 +29,7 @@ Basic standard classes for attribution methods
 from __future__ import annotations
 
 import itertools
-from collections.abc import Iterable, MutableMapping
+from collections.abc import Iterable
 from typing import Any
 
 import torch
@@ -199,10 +199,10 @@ class AttributionExplainer:
             - If an iterable is provided, it processes each item recursively.
 
         Args:
-            model_inputs (str, MutableMapping, or Iterable): The raw model inputs.
+            model_inputs (str, TensorMapping, or Iterable): The raw model inputs.
 
         Returns:
-            List[MutableMapping]: A list of processed model input mappings.
+            List[TensorMapping]: A list of processed model input mappings.
 
         Raises:
             ValueError: If the type of model_inputs is not supported.
@@ -213,7 +213,7 @@ class AttributionExplainer:
                     model_inputs, return_tensors="pt", return_offsets_mapping=True, return_special_tokens_mask=True
                 )
             ]
-        if isinstance(model_inputs, MutableMapping):
+        if isinstance(model_inputs, TensorMapping):
             return [
                 {key: value[i].unsqueeze(0) for key, value in model_inputs.items()}
                 for i in range(model_inputs["attention_mask"].shape[0])
@@ -227,14 +227,32 @@ class AttributionExplainer:
     def process_inputs_to_explain_and_targets(
         self, model_inputs: Iterable[TensorMapping], targets: Any, **model_kwargs: Any
     ) -> tuple[Iterable[TensorMapping], Iterable[torch.Tensor]]:
-        # TODO : update docstring and add error message
-        raise NotImplementedError()
+        """
+        Processes the inputs and targets for explanation.
+
+        This method must be implemented by subclasses.
+
+        Args:
+            model_inputs (Iterable[TensorMapping]): The inputs to the model.
+            targets (Any): The targets to be explained.
+            model_kwargs (Any): Additional model-specific arguments.
+
+        Returns:
+            tuple: A tuple of (processed_inputs, processed_targets).
+
+        Raises:
+            NotImplementedError: Always raised. Subclasses must implement this method.
+        """
+        raise NotImplementedError(
+            "Specific task subclasses must implement the 'process_inputs_to_explain_and_targets' method "
+            "to correctly process inputs and targets for explanations."
+        )
 
     def explain(
         self, model_inputs: ModelInputs, targets: Any = None, mode: str = "logits", **model_kwargs: Any
     ) -> Iterable[AttributionOutput]:
         """
-        Computes attributions for generative models.
+        Computes attributions for NLP models.
 
         Process:
             1. Process and standardize the model inputs.
@@ -246,7 +264,7 @@ class AttributionExplainer:
             7. Aggregate the scores to obtain contribution values.
 
         Args:
-            model_inputs (ModelInputs): Raw inputs for the generative model.
+            model_inputs (ModelInputs): Raw inputs for the model.
             targets (ModelInputs, optional): Target texts or tokens for which explanations are desired.
 
         Returns:
@@ -276,7 +294,7 @@ class AttributionExplainer:
         contributions = (
             self.aggregator(score.detach(), mask.to(self.device) if mask is not None else None).squeeze(0)
             for score, mask in zip(scores, mask_generator, strict=True)
-        )  # classification version
+        )
 
         # Create and return AttributionOutput objects with the contributions and decoded token sequences:
         return [
@@ -349,11 +367,11 @@ class GenerationAttributionExplainer(AttributionExplainer):
         """
         Processes the target inputs for generative models into a standardized format.
 
-        This function handles various input types for targets (string, MutableMapping, or Iterable)
+        This function handles various input types for targets (string, TensorMapping, or Iterable)
         and converts them into a list of tensors containing token IDs.
 
         Args:
-            targets (str, MutableMapping, torch.Tensor, or Iterable): The target texts or tokens.
+            targets (str, TensorMapping, torch.Tensor, or Iterable): The target texts or tokens.
 
         Returns:
             List[torch.Tensor]: A list of tensors representing the target token IDs.
@@ -363,7 +381,7 @@ class GenerationAttributionExplainer(AttributionExplainer):
         """
         if isinstance(targets, str):
             return [self.tokenizer(targets, return_tensors="pt")["input_ids"]]
-        if isinstance(targets, MutableMapping):
+        if isinstance(targets, TensorMapping):
             targets = targets["input_ids"]
             if targets.shape[0] > 1:
                 return list(targets.split(1, dim=0))

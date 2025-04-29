@@ -53,7 +53,7 @@ def concat_and_pad(
     pad_dims: Iterable[int] | None = None,
 ) -> torch.Tensor:
     """
-    Concatenate and (pad tensors to the maximum length of each dimension.
+    Concatenate and pad tensors to the maximum length of each dimension.
 
     Args:
         *tensors (torch.Tensor | None): tensors to concatenate (can be of different shapes but must have the same number of dimensions). Can be None.

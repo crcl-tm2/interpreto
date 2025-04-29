@@ -38,11 +38,15 @@ from interpreto.attributions.base import (
     AttributionExplainer,
     MultitaskExplainerMixin,
 )
-from interpreto.attributions.perturbations.base import OcclusionPerturbator
+from interpreto.attributions.perturbations import OcclusionPerturbator
 from interpreto.commons.granularity import GranularityLevel
 
 
 class OcclusionExplainer(MultitaskExplainerMixin, AttributionExplainer):
+    """
+    Occlusion method
+    """
+
     use_gradient = False
 
     def __init__(
