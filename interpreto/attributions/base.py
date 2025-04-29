@@ -83,12 +83,12 @@ class AttributionOutput:
             attributions (Iterable[SingleAttribution]): A list (n elements, with n the number of samples) of attribution score tensors:
                 - `l` represents the number of elements for which attribution is computed (for NLP tasks: can be the total sequence length).
                 - Shapes depend on the task:
-                    - Classification (single class): `(l,)`
-                    - Classification (all classes): `(l, c)`, where `c` is the number of classes.
+                    - Classification (single class): `(l)`
+                    - Classification (all classes): `(c, l)`, where `c` is the number of classes.
                     - Generative models: `(l_g, l)`, where `l_g` is the length of the generated part.
                         - For non-generated elements, there are `l_g` attribution scores.
                         - For generated elements, scores are zero for previously generated tokens.
-                    - Token classification: `(l, l_t)`, where `l_t` is the number of token classes. When the tokens are disturbed, l = l_t.
+                    - Token classification: `(l_t, l)`, where `l_t` is the number of token classes. When the tokens are disturbed, l = l_t.
             elements (Iterable[list[str]] | Iterable[torch.Tensor] | None, optional): A list or tensor representing the elements for which attributions are computed.
                 - These elements can be tokens, words, sentences, or tensors of size `l`.
         """
