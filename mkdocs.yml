@@ -26,8 +26,8 @@ nav:
     - Attribution Explainers:
       - Overview: api/attributions/overview.md
       - Methods: 
-        - Occlusion: api/attributions/methods/occlusion.md
         - Integrated Gradients: api/attributions/methods/integrated_gradients.md
+        - Occlusion: api/attributions/methods/occlusion.md
         - Saliency: api/attributions/methods/saliency.md
         - SmoothGrad: api/attributions/methods/smoothgrad.md
     - Evaluation Metrics:
