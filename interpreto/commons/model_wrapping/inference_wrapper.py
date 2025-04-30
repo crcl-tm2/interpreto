@@ -316,6 +316,20 @@ class InferenceWrapper:
         """
         Get the logits from the model for the given inputs.
         registered for Iterable type.
+        Args:
+            model_inputs (Iterable[TensorMapping]): Iterable of input mappings containing either "input_ids" or "inputs_embeds".
+        Yields:
+            torch.Tensor: logits associated to the input mappings.
+        """
+        for model_input in model_inputs:
+            yield self._get_logits_from_mapping(model_input)
+
+    def get_logits_from_iterable_error(
+        self, model_inputs: Iterable[TensorMapping]
+    ) -> Generator[torch.Tensor, None, str]:
+        """
+        Get the logits from the model for the given inputs.
+        registered for Iterable type.
 
         Args:
             model_inputs (Iterable[TensorMapping]): Iterable of input mappings containing either "input_ids" or "inputs_embeds".

@@ -25,14 +25,11 @@ nav:
       - SAEs (Sparse AutoEncoders): api/concepts/sae.md
     - Attribution Explainers:
       - Overview: api/attributions/overview.md
-      - Inference Based: api/attributions/methods/inference_based.md
-      - Gradient Based: api/attributions/methods/gradient_based.md
-    - Concept Explainers:
-      - Overview: api/concepts/overview.md
-      - NMF: api/concepts/concepts_extraction/nmf.md
-      - ICA: api/concepts/concepts_extraction/ica.md
-      - SVD: api/concepts/concepts_extraction/svd.md
-      - Concepts Interpretation: api/concepts/concepts_interpretation/overview.md
+      - Methods: 
+        - Occlusion: api/attributions/methods/occlusion.md
+        - Integrated Gradients: api/attributions/methods/integrated_gradients.md
+        - Saliency: api/attributions/methods/saliency.md
+        - SmoothGrad: api/attributions/methods/smoothgrad.md
     - Evaluation Metrics:
       - Overview: api/evaluation_metrics/overview.md
   - Roadmap: roadmap.md

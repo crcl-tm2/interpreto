@@ -29,7 +29,7 @@ Basic standard classes for attribution methods
 from __future__ import annotations
 
 import itertools
-from collections.abc import Iterable
+from collections.abc import Iterable, MutableMapping
 from typing import Any
 
 import torch
@@ -213,7 +213,9 @@ class AttributionExplainer:
                     model_inputs, return_tensors="pt", return_offsets_mapping=True, return_special_tokens_mask=True
                 )
             ]
-        if isinstance(model_inputs, TensorMapping):
+        if isinstance(
+            model_inputs, MutableMapping
+        ):  # we cant use TensorMapping in the isinstance so we use MutableMapping.
             return [
                 {key: value[i].unsqueeze(0) for key, value in model_inputs.items()}
                 for i in range(model_inputs["attention_mask"].shape[0])
