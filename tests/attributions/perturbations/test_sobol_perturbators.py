@@ -1,11 +1,12 @@
 import pytest
+import torch
 
 from interpreto.attributions.perturbations import SobolTokenPerturbator
 from interpreto.attributions.perturbations.sobol_perturbation import SequenceSamplers, SobolIndicesOrders
 
 
 @pytest.mark.parametrize(
-    "sobol_indices, sampler",
+    "sobol_indices_order, sampler",
     [
         (SobolIndicesOrders.FIRST_ORDER, SequenceSamplers.SOBOL),
         (SobolIndicesOrders.TOTAL_ORDER, SequenceSamplers.SOBOL),
@@ -18,33 +19,35 @@ from interpreto.attributions.perturbations.sobol_perturbation import SequenceSam
 def test_get_masks(sobol_indices_order, sampler):
     k = 10
     perturbator = SobolTokenPerturbator(
-        tokenizer=None,
         inputs_embedder=None,
-        nb_token_perturbations=k,
-        granularity_level="token",
-        baseline="[MASK]",
+        n_token_perturbations=k,
         sobol_indices_order=sobol_indices_order,
         sampler=sampler,
     )
 
     sizes = list(range(2, 20, 3))
 
-    masks = perturbator.get_masks(sizes)
+    masks = [perturbator.get_mask(size) for size in sizes]
 
     for l, mask in zip(sizes, masks, strict=True):
-        assert mask.shape == ((l + 1) * k, k)
+        assert mask.shape == ((l + 1) * k, l)
         initial_mask = mask[:k]
 
         # verify token-wise mask compared to the initial mask
         for i in range(l):
             token_mask_i = mask[(i + 1) * k : (i + 2) * k]
             if sobol_indices_order == SobolIndicesOrders.FIRST_ORDER:
-                assert all(token_mask_i[i] != initial_mask[i])
-                assert all(token_mask_i[:i] == initial_mask[:i])
+                assert torch.all(torch.isclose(token_mask_i[:, i], 1 - initial_mask[:, i], atol=1e-5))
+                if i != 0:
+                    assert torch.all(torch.isclose(token_mask_i[:, :i], initial_mask[:, :i], atol=1e-5))
                 if i != l - 1:
-                    assert all(token_mask_i[i + 1 :] != initial_mask[i + 1 :])
+                    assert torch.all(torch.isclose(token_mask_i[:, i + 1 :], initial_mask[:, i + 1 :], atol=1e-5))
             else:
-                assert all(token_mask_i[i] == initial_mask[i])
-                assert all(token_mask_i[:i] != initial_mask[:i])
+                assert torch.all(torch.isclose(token_mask_i[:, i], initial_mask[:, i], atol=1e-5))
+                if i != 0:
+                    assert torch.all(torch.isclose(token_mask_i[:, :i], 1 - initial_mask[:, :i], atol=1e-5))
                 if i != l - 1:
-                    assert all(token_mask_i[i + 1 :] == initial_mask[i + 1 :])
+                    assert torch.all(torch.isclose(token_mask_i[:, i + 1 :], 1 - initial_mask[:, i + 1 :], atol=1e-5))
+
+
+test_get_masks(SobolIndicesOrders.TOTAL_ORDER, SequenceSamplers.LatinHypercube)
