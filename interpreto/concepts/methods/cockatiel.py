@@ -29,7 +29,7 @@ Implementation of the Cockatiel concept explainer
 from __future__ import annotations
 
 from interpreto.concepts.methods.overcomplete import NMFConcepts
-from interpreto.typing import ConceptsActivations, ModelInput
+from interpreto.typing import ConceptsActivations, ModelInputs
 
 
 class Cockatiel(NMFConcepts):
@@ -63,7 +63,7 @@ class Cockatiel(NMFConcepts):
         Computes the attribution of each input to a given concept.
 
         Args:
-            inputs (ModelInput): The input data, which can be a string, a list of tokens/words/clauses/sentences, or a dataset.
+            inputs (ModelInputs): The input data, which can be a string, a list of tokens/words/clauses/sentences, or a dataset.
             concept (int | list[int]): The concept index (or list of concepts indices) to analyze.
 
         Returns:
@@ -74,12 +74,12 @@ class Cockatiel(NMFConcepts):
         )  # TODO: add occlusion class when it exists
 
     def concept_output_attribution(
-        self, inputs: ModelInput, concepts: ConceptsActivations, target: int, **attribution_kwargs
+        self, inputs: ModelInputs, concepts: ConceptsActivations, target: int, **attribution_kwargs
     ) -> list[float]:
         """Computes the attribution of each concept for the logit of a target output element.
 
         Args:
-            inputs (ModelInput): An input datapoint for the model.
+            inputs (ModelInputs): An input datapoint for the model.
             concepts (torch.Tensor): Concept activation tensor.
             target (int): The target class for which the concept output attribution should be computed.
 
