@@ -27,28 +27,6 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from interpreto.commons.model_wrapping.generation_inference_wrapper import GenerationInferenceWrapper
 
-
-@pytest.fixture
-def sentences():
-    return [
-        "Once upon a time, in a village nestled between two mountains, there lived a curious child named Elio.",
-        "Write a short story about a robot who learns how to paint emotions.",
-        "Describe a world where water flows upward instead of down.",
-        "What would a conversation sound like between a dragon and a scientist?",
-        "Explain quantum physics to a five-year-old using a bedtime story.",
-        "Generate a poem about loneliness that ends on a hopeful note.",
-        "Imagine a dialogue between the moon and the ocean.",
-        "Continue the sentence: 'She opened the door and saw…'",
-        "Invent a new holiday and describe how people celebrate it.",
-        "Create a futuristic news headline for the year 3025.",
-    ]
-
-
-@pytest.fixture
-def sentence():
-    return "Once upon a time, in a village nestled between two mountains, there lived a curious child named Elio."
-
-
 generation_models = ["hf-internal-testing/tiny-random-LlamaForCausalLM", "hf-internal-testing/tiny-random-gpt2"]
 
 
@@ -63,7 +41,7 @@ def prepare_model_and_tokenizer(model_name: str):
 
 
 @pytest.mark.parametrize("model_name", generation_models)
-def test_generation_inference_wrapper_single_sentence(model_name, sentence):
+def test_generation_inference_wrapper_single_sentence(model_name, sentences):
     """
     Tests the all function of the generation inference wrapper with a single sentence input.
 
@@ -79,7 +57,7 @@ def test_generation_inference_wrapper_single_sentence(model_name, sentence):
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    model_inputs = tokenizer(sentence, return_tensors="pt", padding=True, truncation=True)
+    model_inputs = tokenizer(sentences[0], return_tensors="pt", padding=True, truncation=True)
     model_inputs_length = model_inputs["input_ids"].shape[1]
 
     full_model_inputs, target = inference_wrapper.get_inputs_to_explain_and_targets(

@@ -27,9 +27,21 @@ Common fixtures for all tests
 """
 
 from pytest import fixture
-from transformers import AutoModelForMaskedLM
+from transformers import AutoModelForMaskedLM, AutoModelForSequenceClassification, AutoTokenizer
 
 from interpreto.commons import ModelWithSplitPoints
+
+
+@fixture(scope="session")
+def sentences():
+    return [
+        "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+        "Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.",
+        "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.",
+        "Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
+        "Interpreto is magical",
+        "Testing interpreto",
+    ]
 
 
 @fixture(scope="session")
@@ -39,3 +51,18 @@ def splitted_encoder_ml() -> ModelWithSplitPoints:
         split_points=[],
         model_autoclass=AutoModelForMaskedLM,  # type: ignore
     )
+
+
+@fixture(scope="session")
+def model():
+    return AutoModelForSequenceClassification.from_pretrained("huawei-noah/TinyBERT_General_4L_312D")
+
+
+@fixture(scope="session")
+def tokenizer():
+    return AutoTokenizer.from_pretrained("huawei-noah/TinyBERT_General_4L_312D")
+
+
+@fixture(scope="session")
+def inputs_embedder(model):
+    return model.get_input_embeddings()

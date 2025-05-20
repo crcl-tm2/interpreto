@@ -28,22 +28,6 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 from interpreto.commons.model_wrapping.classification_inference_wrapper import ClassificationInferenceWrapper
 
-
-@pytest.fixture
-def sentences():
-    return [
-        "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
-        "Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.",
-        "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.",
-        "Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
-    ]
-
-
-@pytest.fixture
-def sentence():
-    return "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
-
-
 # classification_models = [
 #     "distilbert-base-uncased-finetuned-sst-2-english",
 # ]
@@ -65,12 +49,12 @@ def prepare_model_and_tokenizer(model_name: str):
 
 
 @pytest.mark.parametrize("model_name", classification_models)
-def test_classification_inference_wrapper_single_sentence(model_name, sentence):
+def test_classification_inference_wrapper_single_sentence(model_name, sentences):
     # Model preparation
     tokenizer, model, inference_wrapper = prepare_model_and_tokenizer(model_name)
 
     # Reference values
-    tokens = tokenizer(sentence, return_tensors="pt", padding=True, truncation=True)
+    tokens = tokenizer(sentences[0], return_tensors="pt", padding=True, truncation=True)
     logits = model(**tokens).logits
     target = logits.argmax(dim=-1)
     predefined_targets = torch.randperm(logits.shape[-1])
