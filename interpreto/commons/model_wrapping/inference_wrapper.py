@@ -324,119 +324,122 @@ class InferenceWrapper:
         for model_input in model_inputs:
             yield self._get_logits_from_mapping(model_input)
 
-    def get_logits_from_iterable_error(
-        self, model_inputs: Iterable[TensorMapping]
-    ) -> Generator[torch.Tensor, None, str]:
-        """
-        Get the logits from the model for the given inputs.
-        registered for Iterable type.
+    # TODO: make test at scale
+    # TODO: uncomment the following code and solve the memory issue
 
-        Args:
-            model_inputs (Iterable[TensorMapping]): Iterable of input mappings containing either "input_ids" or "inputs_embeds".
+    # def get_logits_from_iterable_error(
+    #     self, model_inputs: Iterable[TensorMapping]
+    # ) -> Generator[torch.Tensor, None, str]:
+    #     """
+    #     Get the logits from the model for the given inputs.
+    #     registered for Iterable type.
 
-        Yields:
-            torch.Tensor: logits associated to the input mappings.
-        """
-        # create an iterator from the input iterable
-        model_inputs = iter(model_inputs)
+    #     Args:
+    #         model_inputs (Iterable[TensorMapping]): Iterable of input mappings containing either "input_ids" or "inputs_embeds".
 
-        # If no pad token id has been given
-        if self.pad_token_id is None:
-            # raise ValueError(
-            #     "Asking to pad but the tokenizer does not have a padding token. Please select a token to use as pad_token (tokenizer.pad_token = tokenizer.eos_token e.g.) or add a new pad token via tokenizer.add_special_tokens({'pad_token': '[PAD]'})"
-            # )
-            raise ValueError(
-                "Padding token is not set in the inference wrapper. Please assign it explicitly by setting: inference_wrapper.pad_token_id = tokenizer.pad_token_id"
-            )
+    #     Yields:
+    #         torch.Tensor: logits associated to the input mappings.
+    #     """
+    #     # create an iterator from the input iterable
+    #     model_inputs = iter(model_inputs)
 
-        result_buffer = torch.zeros(0)
-        result_indexes: list[int] = []
+    #     # If no pad token id has been given
+    #     if self.pad_token_id is None:
+    #         # raise ValueError(
+    #         #     "Asking to pad but the tokenizer does not have a padding token. Please select a token to use as pad_token (tokenizer.pad_token = tokenizer.eos_token e.g.) or add a new pad token via tokenizer.add_special_tokens({'pad_token': '[PAD]'})"
+    #         # )
+    #         raise ValueError(
+    #             "Padding token is not set in the inference wrapper. Please assign it explicitly by setting: inference_wrapper.pad_token_id = tokenizer.pad_token_id"
+    #         )
 
-        batch: torch.Tensor | None = None
-        batch_mask: torch.Tensor | None = None
+    #     result_buffer = torch.zeros(0)
+    #     result_indexes: list[int] = []
 
-        input_buffer = torch.zeros(0)
-        mask_buffer = torch.zeros(0)
+    #     batch: torch.Tensor | None = None
+    #     batch_mask: torch.Tensor | None = None
 
-        last_item = False
+    #     input_buffer = torch.zeros(0)
+    #     mask_buffer = torch.zeros(0)
 
-        # Generation loop
-        while True:
-            # check if the ouput buffer contains enough data to correspond to the next element
-            if result_buffer.numel() and result_indexes and len(result_buffer) >= result_indexes[0]:
-                # pop the first index from the result indexes
-                index = result_indexes.pop(0)
-                # yield the associated logits
-                yield result_buffer[:index]
-                # remove the yielded logits from the result buffer
-                result_buffer = result_buffer[index:]
-                # if there is no element left in the input stream and the result buffer is empty, break the loop
-                if last_item and not result_indexes:
-                    break
-                continue
-            # check if the batch of inputs is large enough to be processed (or if the last item is reached)
-            if batch is not None and (last_item or len(batch) == self.batch_size):
-                # Call the model
-                logits = self.call_model(batch, batch_mask).logits
-                # Concatenate the results to the output buffer
+    #     last_item = False
 
-                ##################### FIXME #####################
-                # The .detach().clone() if used to avoid memory issues provoked by the bad usage of the result_buffer
-                # This will block the gradient calculation on the yielded logits
-                # Gradient calculation currently only call _get_logits_from_mapping register for the jacobian calculation
-                # This code works but should be improved in the future
-                ###############################################
-                result_buffer = concat_and_pad(result_buffer, logits, pad_left=self.PAD_LEFT).detach().clone()
-                # update batch and mask
-                batch = batch_mask = None
-                continue
-            # check if the input buffer contains enough data to fill the batch
-            if input_buffer.numel():
-                # calculate the missing length of the batch
-                missing_length = self.batch_size - len(batch if batch is not None else ())
-                # fill the batch with the missing data
-                batch = concat_and_pad(
-                    batch,
-                    input_buffer[:missing_length],
-                    pad_left=self.PAD_LEFT,
-                    dim=0,
-                    pad_value=self.pad_token_id,
-                    pad_dims=(1,),
-                )
-                batch_mask = concat_and_pad(
-                    batch_mask,
-                    mask_buffer[:missing_length],
-                    pad_left=self.PAD_LEFT,
-                    dim=0,
-                    pad_value=0,
-                    pad_dims=(-1,),
-                )
-                # remove the used data from the input buffer
-                input_buffer = input_buffer[missing_length:]
-                mask_buffer = mask_buffer[missing_length:]
-                continue
-            # If there is not enough data in the input buffer, get the next item from the input stream
-            try:
-                # Get next item and ensure embeddings are calculated
-                next_item = self.embed(next(model_inputs))
-                input_buffer = self._reshape_inputs(next_item["inputs_embeds"], non_batch_dims=2)
-                mask_buffer = self._reshape_inputs(next_item["attention_mask"], non_batch_dims=1)
-                # update results index list
-                result_indexes += [len(input_buffer)]
-            # If the input stream is empty
-            except StopIteration:
-                if last_item:
-                    # This should never happen
-                    break
-                last_item = True
-        # Chack that all the buffers are empty
-        if any(element.numel() for element in [result_buffer, input_buffer, mask_buffer]):
-            warnings.warn(
-                "Some data were not well fetched in inference wrapper, please check your code if you made custom method or notify it to the developers",
-                stacklevel=2,
-            )
-            return "Some data were not well fetched in inference wrapper"
-        return "All data were well fetched in inference wrapper"
+    #     # Generation loop
+    #     while True:
+    #         # check if the ouput buffer contains enough data to correspond to the next element
+    #         if result_buffer.numel() and result_indexes and len(result_buffer) >= result_indexes[0]:
+    #             # pop the first index from the result indexes
+    #             index = result_indexes.pop(0)
+    #             # yield the associated logits
+    #             yield result_buffer[:index]
+    #             # remove the yielded logits from the result buffer
+    #             result_buffer = result_buffer[index:]
+    #             # if there is no element left in the input stream and the result buffer is empty, break the loop
+    #             if last_item and not result_indexes:
+    #                 break
+    #             continue
+    #         # check if the batch of inputs is large enough to be processed (or if the last item is reached)
+    #         if batch is not None and (last_item or len(batch) == self.batch_size):
+    #             # Call the model
+    #             logits = self.call_model(batch, batch_mask).logits
+    #             # Concatenate the results to the output buffer
+
+    #             ##################### FIXME #####################
+    #             # The .detach().clone() if used to avoid memory issues provoked by the bad usage of the result_buffer
+    #             # This will block the gradient calculation on the yielded logits
+    #             # Gradient calculation currently only call _get_logits_from_mapping register for the jacobian calculation
+    #             # This code works but should be improved in the future
+    #             ###############################################
+    #             result_buffer = concat_and_pad(result_buffer, logits, pad_left=self.PAD_LEFT).detach().clone()
+    #             # update batch and mask
+    #             batch = batch_mask = None
+    #             continue
+    #         # check if the input buffer contains enough data to fill the batch
+    #         if input_buffer.numel():
+    #             # calculate the missing length of the batch
+    #             missing_length = self.batch_size - len(batch if batch is not None else ())
+    #             # fill the batch with the missing data
+    #             batch = concat_and_pad(
+    #                 batch,
+    #                 input_buffer[:missing_length],
+    #                 pad_left=self.PAD_LEFT,
+    #                 dim=0,
+    #                 pad_value=self.pad_token_id,
+    #                 pad_dims=(1,),
+    #             )
+    #             batch_mask = concat_and_pad(
+    #                 batch_mask,
+    #                 mask_buffer[:missing_length],
+    #                 pad_left=self.PAD_LEFT,
+    #                 dim=0,
+    #                 pad_value=0,
+    #                 pad_dims=(-1,),
+    #             )
+    #             # remove the used data from the input buffer
+    #             input_buffer = input_buffer[missing_length:]
+    #             mask_buffer = mask_buffer[missing_length:]
+    #             continue
+    #         # If there is not enough data in the input buffer, get the next item from the input stream
+    #         try:
+    #             # Get next item and ensure embeddings are calculated
+    #             next_item = self.embed(next(model_inputs))
+    #             input_buffer = self._reshape_inputs(next_item["inputs_embeds"], non_batch_dims=2)
+    #             mask_buffer = self._reshape_inputs(next_item["attention_mask"], non_batch_dims=1)
+    #             # update results index list
+    #             result_indexes += [len(input_buffer)]
+    #         # If the input stream is empty
+    #         except StopIteration:
+    #             if last_item:
+    #                 # This should never happen
+    #                 break
+    #             last_item = True
+    #     # Chack that all the buffers are empty
+    #     if any(element.numel() for element in [result_buffer, input_buffer, mask_buffer]):
+    #         warnings.warn(
+    #             "Some data were not well fetched in inference wrapper, please check your code if you made custom method or notify it to the developers",
+    #             stacklevel=2,
+    #         )
+    #         return "Some data were not well fetched in inference wrapper"
+    #     return "All data were well fetched in inference wrapper"
 
     def _reshape_inputs(self, tensor: torch.Tensor, non_batch_dims: int = 2) -> torch.Tensor:
         """
