@@ -29,8 +29,9 @@ Basic standard classes for attribution methods
 from __future__ import annotations
 
 import itertools
+from abc import abstractmethod
 from collections.abc import Iterable, MutableMapping
-from typing import Any
+from typing import Any, Tuple
 
 import torch
 from jaxtyping import Float
@@ -146,8 +147,11 @@ class AttributionExplainer:
         self.aggregator = aggregator or Aggregator()
         self.granularity_level = granularity_level
 
-        # TODO : check this line, eventually move it
-        self.inference_wrapper.pad_token_id = self.tokenizer.pad_token_id
+        # TODO : check these line, eventually move them
+        # give pad token id to the inference wrapper
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.inference_wrapper.pad_token_id = self.tokenizer.pad_token_id  # type: ignore
 
     def get_scores(
         self, model_inputs: Iterable[TensorMapping], targets: Iterable[torch.Tensor], mode: str = "logits"
@@ -218,16 +222,20 @@ class AttributionExplainer:
         ):  # we cant use TensorMapping in the isinstance so we use MutableMapping.
             return [
                 {key: value[i].unsqueeze(0) for key, value in model_inputs.items()}
-                for i in range(model_inputs["attention_mask"].shape[0])
-            ]
+                for i in range(model_inputs["attention_mask"].shape[0])  # type: ignore
+            ]  # type: ignore
         if isinstance(model_inputs, Iterable):
             return list(itertools.chain(*[self.process_model_inputs(item) for item in model_inputs]))
         raise ValueError(
             f"type {type(model_inputs)} not supported for method process_model_inputs in class {self.__class__.__name__}"
         )
 
+    @abstractmethod
     def process_inputs_to_explain_and_targets(
-        self, model_inputs: Iterable[TensorMapping], targets: Any, **model_kwargs: Any
+        self,
+        model_inputs: Iterable[TensorMapping],
+        targets: torch.Tensor | Iterable[torch.Tensor] | None = None,
+        **model_kwargs: Any,
     ) -> tuple[Iterable[TensorMapping], Iterable[torch.Tensor]]:
         """
         Processes the inputs and targets for explanation.
@@ -251,7 +259,11 @@ class AttributionExplainer:
         )
 
     def explain(
-        self, model_inputs: ModelInputs, targets: Any = None, mode: str = "logits", **model_kwargs: Any
+        self,
+        model_inputs: ModelInputs,
+        targets: torch.Tensor | Iterable[torch.Tensor] | None = None,
+        mode: str = "logits",
+        **model_kwargs: Any,
     ) -> Iterable[AttributionOutput]:
         """
         Computes attributions for NLP models.
@@ -267,32 +279,44 @@ class AttributionExplainer:
 
         Args:
             model_inputs (ModelInputs): Raw inputs for the model.
-            targets (ModelInputs, optional): Target texts or tokens for which explanations are desired.
+            targets (torch.Tensor | Iterable[torch.Tensor] | None): Targets for which explanations are desired.
+            Further types might be supported by sub-classes.
+            It depends on the task:
+                - For classification tasks, encodes the target class or classes to explain.
+                - For generation tasks, encodes the target text or tokens to explain.
 
         Returns:
             List[AttributionOutput]: A list of attribution outputs, one per input sample.
         """
-        model_inputs = self.process_model_inputs(model_inputs)
+        # Ensure the model inputs are in the correct format
+        sanitized_model_inputs: Iterable[TensorMapping] = self.process_model_inputs(model_inputs)
 
-        # give pad token id to the inference wrapper
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-        self.inference_wrapper.pad_token_id = self.tokenizer.pad_token_id
-
-        model_inputs_to_explain, targets = self.process_inputs_to_explain_and_targets(
-            model_inputs, targets, **model_kwargs
+        # Process the inputs and targets for explanation
+        # If targets are not provided, create them from model_inputs_to_explain.
+        model_inputs_to_explain: Iterable[TensorMapping]
+        sanitized_targets: Iterable[torch.Tensor]
+        model_inputs_to_explain, sanitized_targets = self.process_inputs_to_explain_and_targets(
+            sanitized_model_inputs, targets, **model_kwargs
         )
 
-        # Decompose each input for the desired granularity level
+        # Decompose each input for the desired granularity level (tokens, words, sentences...)
         decompositions = [
             GranularityLevel.get_decomposition(t, self.granularity_level) for t in model_inputs_to_explain
         ]
 
+        # Create perturbation masks and perturb inputs based on the masks.
+        pert_generator: Iterable[TensorMapping]
+        mask_generator: Iterable[torch.Tensor | None]
         pert_generator, mask_generator = split_iterator(self.perturbator.perturb(m) for m in model_inputs_to_explain)
 
-        scores = self.get_scores(pert_generator, (a.to(self.device) for a in targets), mode=mode)
+        # Compute the score on perturbed inputs:
+        # - If use_gradient is True, compute gradients.
+        # - Otherwise, compute targeted logits.
+        scores: Iterable[torch.Tensor] = self.get_scores(
+            pert_generator, (a.to(self.device) for a in sanitized_targets), mode=mode
+        )
 
-        # Aggregate the scores using the aggregator to obtain contribution values.
+        # Aggregate the scores using the aggregator function and the perturbation masks.
         contributions = (
             self.aggregator(score.detach(), mask.to(self.device) if mask is not None else None).squeeze(0)
             for score, mask in zip(scores, mask_generator, strict=True)
@@ -312,18 +336,18 @@ class AttributionExplainer:
             for c, d in zip(contributions, decompositions, strict=True)
         ]
 
-    def __call__(
-        self, model_inputs: ModelInputs, targets: ModelInputs | torch.Tensor | None = None
-    ) -> Iterable[AttributionOutput]:
+    def __call__(self, model_inputs: ModelInputs, targets=None) -> Iterable[AttributionOutput]:
         """
         Enables the explainer instance to be called as a function.
 
         Args:
-            model_inputs (ModelInputs): The inputs to the model.
-            targets (torch.Tensor, optional): The target classes or tokens.
+            model_inputs (ModelInputs): Raw inputs for the model.
+            targets: Targets for which explanations are desired. It depends on the task:
+                - For classification tasks, encodes the target class or classes to explain.
+                - For generation tasks, encodes the target text or tokens to explain.
 
         Returns:
-            Any: The computed attributions.
+            List[AttributionOutput]: A list of attribution outputs, one per input sample.
         """
         return self.explain(model_inputs, targets)
 
@@ -346,16 +370,19 @@ class ClassificationAttributionExplainer(AttributionExplainer):
             return list(itertools.chain(*[self.process_targets(item, batch_size) for item in targets]))
 
     def process_inputs_to_explain_and_targets(
-        self, model_inputs: Iterable[TensorMapping], targets: ClassificationTarget | None
-    ) -> tuple[Iterable[TensorMapping], torch.Tensor]:
+        self,
+        model_inputs: Iterable[TensorMapping],
+        targets: ClassificationTarget | None = None,
+        **model_kwargs: Any,
+    ) -> tuple[Iterable[TensorMapping], Iterable[torch.Tensor]]:
         logits = torch.stack(
             [a.detach() for a in self.inference_wrapper.get_logits(clone_tensor_mapping(a) for a in model_inputs)]
         )
         if targets is None:
             targets = logits.argmax(dim=-1)
         # TODO : change call to process_target
-        targets = self.process_targets(targets, logits.shape[0])
-        return model_inputs, targets
+        sanitized_targets: Iterable[torch.Tensor] = self.process_targets(targets, logits.shape[0])
+        return model_inputs, sanitized_targets
 
 
 class GenerationAttributionExplainer(AttributionExplainer):
@@ -364,6 +391,7 @@ class GenerationAttributionExplainer(AttributionExplainer):
     """
 
     _associated_inference_wrapper = GenerationInferenceWrapper
+    inference_wrapper: GenerationInferenceWrapper
 
     def process_targets(self, targets: GeneratedTarget) -> list[torch.Tensor]:
         """
@@ -382,8 +410,8 @@ class GenerationAttributionExplainer(AttributionExplainer):
             ValueError: If the target type is not supported.
         """
         if isinstance(targets, str):
-            return [self.tokenizer(targets, return_tensors="pt")["input_ids"]]
-        if isinstance(targets, TensorMapping):
+            return [self.tokenizer(targets, return_tensors="pt")["input_ids"]]  # type: ignore
+        if isinstance(targets, MutableMapping):  # TensorMapping cannot be used in isinstance
             targets = targets["input_ids"]
             if targets.shape[0] > 1:
                 return list(targets.split(1, dim=0))
@@ -415,18 +443,19 @@ class GenerationAttributionExplainer(AttributionExplainer):
         Returns:
             tuple: A tuple containing a list of processed model inputs and a list of processed targets.
         """
+        sanitized_targets: list[torch.Tensor]
         if targets is None:
-            model_inputs_to_explain_basic, targets = self.inference_wrapper.get_inputs_to_explain_and_targets(
-                model_inputs, **model_kwargs
+            model_inputs_to_explain_basic, sanitized_targets = (
+                self.inference_wrapper.get_inputs_to_explain_and_targets(model_inputs, **model_kwargs)
             )
         else:
-            targets = self.process_targets(targets)
+            sanitized_targets = self.process_targets(targets)
             model_inputs_to_explain_basic = []
-            for model_input, target in zip(model_inputs, targets, strict=True):
+            for model_input, target in zip(model_inputs, sanitized_targets, strict=True):
                 model_inputs_to_explain_basic.append(
                     {
-                        "input_ids": torch.cat([model_input["input_ids"], target], dim=1),
-                        "attention_mask": torch.cat([model_input["attention_mask"], torch.ones_like(target)], dim=1),
+                        "input_ids": torch.cat([model_input["input_ids"], target], dim=1),  # type: ignore
+                        "attention_mask": torch.cat([model_input["attention_mask"], torch.ones_like(target)], dim=1),  # type: ignore
                     }
                 )
         # Add offsets mapping and special tokens mask:
@@ -443,7 +472,7 @@ class GenerationAttributionExplainer(AttributionExplainer):
             for model_inputs_to_explain_text in model_inputs_to_explain_text
         ]
 
-        return model_inputs_to_explain, targets
+        return model_inputs_to_explain, sanitized_targets
 
 
 class FactoryGeneratedMeta(type):
