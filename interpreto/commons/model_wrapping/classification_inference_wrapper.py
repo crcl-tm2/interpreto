@@ -97,14 +97,11 @@ class ClassificationInferenceWrapper(InferenceWrapper):
             Single input given as a mapping
                 >>> model_inputs = {"input_ids": torch.tensor([[1, 2, 3], [4, 5, 6]])}
                 >>> target = wrapper.get_targets(model_inputs)
-                >>> print(target)
 
             Sequence of inputs given as an iterable of mappings (generator, list, etc.)
                 >>> model_inputs = [{"input_ids": torch.tensor([[1, 2, 3], [4, 5, 6]])},
                 ...                 {"input_ids": torch.tensor([[7, 8, 9], [10, 11, 12]])}]
                 >>> targets = wrapper.get_targets(model_inputs)
-                >>> for target in targets:
-                ...     print(target)
 
         """
         raise NotImplementedError(

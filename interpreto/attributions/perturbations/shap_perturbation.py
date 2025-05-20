@@ -100,13 +100,6 @@ class ShapTokenPerturbator(TokenMaskBasedPerturbator):
 
         # Generate a random binary mask for each perturbation
         rand_values: Float[Tensor, f"{p} {l}"] = torch.rand(p, l, dtype=torch.float)
-        print("Shap get mask possible_k", possible_k)
-        print("Shap get mask probability_to_select_k_elements", probability_to_select_k_elements)
-        print("Shap get mask p", p)
-        print("Shap get mask k", k)
-        for i in range(p):
-            print("Shap get mask rand_values", i, rand_values[i])
-            print("Shap get mask thresholds", i, torch.kthvalue(rand_values[i], int(k[i]), dim=0).values)
         thresholds: Float[Tensor, f"{p}"] = torch.stack(
             [torch.kthvalue(rand_values[i], int(k[i]) + 1, dim=0).values for i in range(p)]
         )

@@ -54,15 +54,10 @@ def test_perturbators(perturbator_class, sentences, tokenizer, inputs_embedder):
 
     for sent in sentences:
         elem = tokenizer(sent, return_tensors="pt", return_offsets_mapping=True, return_special_tokens_mask=True)
-        print(f"Tensor shape: {elem['input_ids'].shape}, Device: {elem['input_ids'].device}")
         elem.to(DEVICE)
         assert isinstance(elem, MutableMapping)
 
-        print("pre-perturb", elem.keys())
         perturbed_inputs, masks = perturbator.perturb(elem)
-
-        print("post-perturb", elem.keys())
-        print(perturbed_inputs.keys())
 
         assert isinstance(perturbed_inputs, MutableMapping)
         assert "inputs_embeds" in perturbed_inputs.keys()
