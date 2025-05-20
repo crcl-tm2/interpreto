@@ -60,7 +60,7 @@ class Perturbator:
         Get the device of the inputs embedder
         """
         if self.inputs_embedder is not None:
-            return self.inputs_embedder.weight.device
+            return self.inputs_embedder.weight.device  # type: ignore
         return torch.device("cpu")
 
     @device.setter
@@ -91,6 +91,7 @@ class Perturbator:
         Returns:
             TensorMapping: The input mapping with "inputs_embeds" added.
         """
+        print("TEST _embed")
         # If input embeds are already present, return the unmodified model inputs
         if "inputs_embeds" in model_inputs:
             return model_inputs
@@ -102,26 +103,28 @@ class Perturbator:
             base_shape = model_inputs["input_ids"].shape
             flatten_embeds = self.inputs_embedder(model_inputs.pop("input_ids").flatten(0, -2).to(self.device))
             model_inputs["inputs_embeds"] = flatten_embeds.view(*base_shape, flatten_embeds.shape[-1])
+            print("TEST 'inputs_embeds' added")
             return model_inputs
         # If neither input ids nor input embeds are present, raise an error
         raise ValueError("model_inputs should contain either 'input_ids' or 'inputs_embeds'")
 
-    @overload
-    def perturb(self, inputs: TensorMapping) -> tuple[TensorMapping, torch.Tensor | None]:
-        """
-        base implementation
-        """
+    # TODO: see if needed (not used by explainers)
+    # @overload
+    # def perturb(self, inputs: TensorMapping) -> tuple[TensorMapping, torch.Tensor | None]:
+    #     """
+    #     base implementation
+    #     """
 
-    @overload
-    def perturb(
-        self, inputs: NestedIterable[TensorMapping]
-    ) -> NestedIterable[tuple[TensorMapping, torch.Tensor | None]]:
-        """
-        overload for nested iterable of inputs
-        handled by the allow_nested_iterables_of decorator
-        """
+    # @overload
+    # def perturb(
+    #     self, inputs: NestedIterable[TensorMapping]
+    # ) -> NestedIterable[tuple[TensorMapping, torch.Tensor | None]]:
+    #     """
+    #     overload for nested iterable of inputs
+    #     handled by the allow_nested_iterables_of decorator
+    #     """
 
-    @allow_nested_iterables_of(MutableMapping)
+    # @allow_nested_iterables_of(MutableMapping)
     def perturb(self, inputs: TensorMapping) -> tuple[TensorMapping, torch.Tensor | None]:
         """
         Method called when we ask the perturbator to perturb a mapping of tensors, generally the output of a tokenizer
@@ -145,8 +148,12 @@ class Perturbator:
             # inputs, ids_pert_mask = self.perturb_embeds(self._embed(inputs))
             # final_mask = some_combination(ids_pert_mask, embeds_pert_mask) # something like a elementwise binary or on the tensors ?
             # return inputs, final_mask
-            return self.perturb_embeds(self._embed(inputs))
+            embeddings = self._embed(inputs)
+            print("post-embed", embeddings.keys())
+            return self.perturb_embeds(embeddings)
         except (ValueError, NotImplementedError):
+            print("DID NOT WORK")
+            print(inputs.keys())
             return (inputs, mask)
 
     def perturb_ids(self, model_inputs: TensorMapping) -> tuple[TensorMapping, torch.Tensor | None]:
@@ -310,12 +317,15 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
         )
 
         # real_mask, gran_mask = self.get_model_inputs_mask(model_inputs)
+        real_mask = real_mask.to(self.device)
+        mask_value = torch.Tensor([self.replace_token_id])
+        mask_value = mask_value.to(self.device)
 
         model_inputs["input_ids"] = (
             self.apply_mask(
                 inputs=model_inputs["input_ids"].T,
                 mask=real_mask,
-                mask_value=torch.Tensor([self.replace_token_id]),
+                mask_value=mask_value,
             )
             .squeeze(-1)
             .to(torch.int)

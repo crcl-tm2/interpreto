@@ -305,6 +305,7 @@ class AttributionExplainer:
         ]
 
         # Create perturbation masks and perturb inputs based on the masks.
+        # Inputs are embedded during the perturbation process. (before or after depending on the perturbator)
         pert_generator: Iterable[TensorMapping]
         mask_generator: Iterable[torch.Tensor | None]
         pert_generator, mask_generator = split_iterator(self.perturbator.perturb(m) for m in model_inputs_to_explain)

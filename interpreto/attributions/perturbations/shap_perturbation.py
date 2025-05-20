@@ -61,7 +61,7 @@ class ShapTokenPerturbator(TokenMaskBasedPerturbator):
             replace_token_id=replace_token_id,
             granularity_level=granularity_level,
         )
-        self.device = device
+        self.device = device  # type: ignore
 
     @jaxtyped
     def get_mask(self, mask_dim: int) -> Float[Tensor, "{self.n_perturbations} {mask_dim}"]:
@@ -91,14 +91,24 @@ class ShapTokenPerturbator(TokenMaskBasedPerturbator):
         p, l = self.n_perturbations, mask_dim
 
         # Generate a random number of selected features k for each perturbation
-        possible_k: Float[Tensor, "{l}"] = torch.arange(1, l + 1, dtype=torch.float, device=self.device)
-        probability_to_select_k_elements: Float[Tensor, l] = (l - 1) / (possible_k * (l - possible_k))
-        k: Float[Tensor, p] = torch.multinomial(probability_to_select_k_elements, p, replacement=True)
+        possible_k: Float[Tensor, f"{l - 1}"] = torch.arange(1, l, dtype=torch.float)
+        probability_to_select_k_elements: Float[Tensor, f"{l - 1}"] = (l - 1) / (possible_k * (l - possible_k))
+        probability_to_select_k_elements: Float[Tensor, f"{l}"] = torch.cat(
+            [torch.zeros(1), probability_to_select_k_elements]
+        )
+        k: Float[Tensor, f"{p}"] = torch.multinomial(probability_to_select_k_elements, p, replacement=True)
 
         # Generate a random binary mask for each perturbation
-        rand_values: Float[Tensor, "{p} {l}"] = torch.rand(p, l, dtype=torch.float, device=self.device)
-        thresholds: Float[Tensor, "{p}"] = torch.stack(
-            [torch.kthvalue(rand_values[i], int(k[i]), dim=0).values for i in range(p)]
+        rand_values: Float[Tensor, f"{p} {l}"] = torch.rand(p, l, dtype=torch.float)
+        print("Shap get mask possible_k", possible_k)
+        print("Shap get mask probability_to_select_k_elements", probability_to_select_k_elements)
+        print("Shap get mask p", p)
+        print("Shap get mask k", k)
+        for i in range(p):
+            print("Shap get mask rand_values", i, rand_values[i])
+            print("Shap get mask thresholds", i, torch.kthvalue(rand_values[i], int(k[i]), dim=0).values)
+        thresholds: Float[Tensor, f"{p}"] = torch.stack(
+            [torch.kthvalue(rand_values[i], int(k[i]) + 1, dim=0).values for i in range(p)]
         )
 
         mask: Float[Tensor, "{p} {l}"] = (rand_values < thresholds.unsqueeze(1)).float()

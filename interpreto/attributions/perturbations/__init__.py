@@ -26,4 +26,6 @@ from .base import TokenMaskBasedPerturbator
 from .gaussian_noise_perturbation import GaussianNoisePerturbator
 from .linear_interpolation_perturbation import LinearInterpolationPerturbator
 from .occlusion_perturbation import OcclusionPerturbator
+from .random_perturbation import RandomMaskedTokenPerturbator
+from .shap_perturbation import ShapTokenPerturbator
 from .sobol_perturbation import SobolTokenPerturbator

@@ -23,6 +23,7 @@ class GaussianNoisePerturbator(Perturbator):
         model_inputs["attention_mask"] = model_inputs["attention_mask"].repeat(self.n_perturbations, 1, 1)
 
         # add noise
+        # TODO: check if we should not limit this to relevant tokens (not padding, end of sequence, etc.)
         model_inputs["inputs_embeds"] += torch.randn_like(model_inputs["inputs_embeds"]) * self.std
 
         return model_inputs, None  # return noise ? noise.bool().long() ?
