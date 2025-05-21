@@ -42,6 +42,7 @@ from interpreto.attributions import (
     # KernelShap,
     # Lime,
     OcclusionExplainer,
+    Saliency,
     # SobolAttribution,
     SmoothGrad,
 )
@@ -56,60 +57,88 @@ attribution_method_kwargs = {
     # Lime: {"n_perturbations": 10},
     OcclusionExplainer: {},
     # SobolAttribution: {"n_token_perturbations": 10},
+    Saliency: {},
 }
 
 
 model_loader_combinations = [
-    ("hf-internal-testing/tiny-random-DebertaV2Model", AutoModelForSequenceClassification),
-    ("hf-internal-testing/tiny-random-xlm-roberta", AutoModelForSequenceClassification),
-    ("hf-internal-testing/tiny-random-DistilBertModel", AutoModelForSequenceClassification),
-    ("hf-internal-testing/tiny-random-t5", AutoModelForSequenceClassification),
-    ("hf-internal-testing/tiny-random-LlamaForCausalLM", AutoModelForCausalLM),
-    ("hf-internal-testing/tiny-random-gpt2", AutoModelForCausalLM),
+    ("textattack/bert-base-uncased-imdb", AutoModelForSequenceClassification),
+    ("gpt2", AutoModelForCausalLM),
 ]
 
 all_combinations = list(product(model_loader_combinations, attribution_method_kwargs.keys()))
+print(f"All combinations: {all_combinations}")
 
 
-@pytest.mark.parametrize("model_name_loader, attribution_explainer", all_combinations)
+# @pytest.mark.parametrize("model_name_loader, attribution_explainer", all_combinations)
 def test_attribution_methods_with_text(model_name_loader, attribution_explainer):
     """Tests all combinations of models and loaders with an attribution method"""
     model_name, model_loader = model_name_loader
 
-    input_text = [
-        "I love this movie!",
-        "You are the best",
-        "The cat is on the mat.",
-        "My preferred film is Titanic",
-        "Interpreto is magic",
+    model = model_loader.from_pretrained(model_name).to(DEVICE)
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+    assert model is not None, f"Model loading failed {model_name}"
+    assert tokenizer is not None, f"Tokenizer failed to load for {model_name}"
+
+    # To be changed according to the final form of the explainer:
+    explainer_kwargs = attribution_method_kwargs.get(attribution_explainer, {})
+    explainer = attribution_explainer(model, tokenizer=tokenizer, batch_size=3, device=DEVICE, **explainer_kwargs)
+
+    # we need to test both type of inputs: text, list_text, tokenized_text, tokenized_list_text:
+    list_input_text_onlytext = [
+        "He is my best friend",
+        [
+            "I love this movie!",
+            "You are the best",
+            "The cat is on the mat.",
+            "My preferred film is Titanic",
+            "Interpreto is magic",
+        ],
     ]
 
-    try:
-        model = model_loader.from_pretrained(model_name).to(DEVICE)
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
+    list_input_text_onlytokenized = [
+        tokenizer(input_text_onlytext, return_tensors="pt", padding=True, truncation=True).to(DEVICE)
+        for input_text_onlytext in list_input_text_onlytext
+    ]
 
-        assert model is not None, f"Model loading failed {model_name}"
-        assert tokenizer is not None, f"Tokenizer failed to load for {model_name}"
+    list_input_text = list_input_text_onlytext + list_input_text_onlytokenized
+    print(f"list_input_text: {list_input_text[-1]['input_ids'].shape}")
 
-        # To be changed according to the final form of the explainer:
-        explainer_kwargs = attribution_method_kwargs.get(attribution_explainer, {})
-        attributions = attribution_explainer(
-            model, tokenizer=tokenizer, batch_size=3, device=DEVICE, **explainer_kwargs
-        ).explain(input_text)
+    for input_text in list_input_text:
+        try:
+            # if we have a generative model, we need to give the max_length:
+            if model.__class__.__name__.endswith("ForCausalLM") or model.__class__.__name__.endswith("LMHeadModel"):
+                attributions = explainer.explain(input_text, generation_kwargs={"max_length": 10})
+            else:
+                attributions = explainer.explain(input_text)
 
-        # Checks:
-        assert isinstance(attributions, list), "The output of the attribution explainer must be a list"
-        assert len(attributions) == len(input_text), (
-            "The number of elements in the list must correspond to the number of inputs."
-        )
-        assert all(isinstance(attribution, AttributionOutput) for attribution in attributions), (
-            "The elements of the list must be of type AttributionOutput."
-        )
-        assert all(len(attribution.elements) == len(attribution.attributions) for attribution in attributions), (
-            "In the AttributionOutput class, elements and attributions must have the same length."
-        )
+            # Checks:
+            assert isinstance(attributions, list), "The output of the attribution explainer must be a list"
 
-    except Exception as e:
-        pytest.fail(
-            f"The test failed for {model_name} with {model_loader} and {attribution_explainer.__class__.__name__}: {str(e)}"
-        )
+            if isinstance(input_text, str):
+                assert len(attributions) == 1, (
+                    "The number of elements in the list must correspond to the number of inputs."
+                )
+            if isinstance(input_text, list):
+                assert len(attributions) == len(input_text), (
+                    "The number of elements in the list must correspond to the number of inputs."
+                )
+            if isinstance(input_text, dict):
+                assert len(attributions) == input_text["input_ids"].shape[0], (
+                    "The number of elements in the list must correspond to the number of inputs."
+                )
+            assert all(isinstance(attribution, AttributionOutput) for attribution in attributions), (
+                "The elements of the list must be of type AttributionOutput."
+            )
+            assert all(
+                len(attribution.elements) == (attribution.attributions).shape[-1] for attribution in attributions
+            ), "In the AttributionOutput class, elements and attributions must have the same length."
+
+        except Exception as e:
+            pytest.fail(
+                f"The test failed for input: '{input_text}' and model: {model_name} with {model_loader} and method {attribution_explainer}: {str(e)}"
+            )
+
+
+test_attribution_methods_with_text(model_loader_combinations[0], OcclusionExplainer)

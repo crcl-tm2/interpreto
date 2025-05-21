@@ -31,7 +31,7 @@ from __future__ import annotations
 import itertools
 from abc import abstractmethod
 from collections.abc import Iterable, MutableMapping
-from typing import Any, Tuple
+from typing import Any
 
 import torch
 from jaxtyping import Float
@@ -383,7 +383,20 @@ class ClassificationAttributionExplainer(AttributionExplainer):
             targets = logits.argmax(dim=-1)
         # TODO : change call to process_target
         sanitized_targets: Iterable[torch.Tensor] = self.process_targets(targets, logits.shape[0])
-        return model_inputs, sanitized_targets
+
+        # add special tokens mask if not already present:
+        model_inputs_to_explain = []
+        for mapping in model_inputs:
+            if "special_tokens_mask" or "offsets_mapping" not in mapping:
+                text = self.tokenizer.decode(mapping["input_ids"][0])
+                mapping_with_special_values = self.tokenizer(
+                    [text], return_tensors="pt", return_offsets_mapping=True, return_special_tokens_mask=True
+                )
+                model_inputs_to_explain.append(mapping_with_special_values)
+            else:
+                model_inputs_to_explain.append(mapping)
+
+        return model_inputs_to_explain, sanitized_targets
 
 
 class GenerationAttributionExplainer(AttributionExplainer):
