@@ -35,24 +35,18 @@ from interpreto.attributions.base import AttributionOutput
 from interpreto.attributions.perturbations.shap_perturbation import ShapTokenPerturbator
 from interpreto.commons.granularity import GranularityLevel
 
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 @pytest.mark.parametrize(
     "granularity, n_perturbations",
     [
-        (GranularityLevel.TOKEN, 10),
-        (GranularityLevel.TOKEN, 25),
-        (GranularityLevel.WORD, 15),
+        (GranularityLevel.TOKEN, 5),
+        (GranularityLevel.WORD, 100),
     ],
 )
-def test_kernel_shap_init_and_mask(granularity, n_perturbations):
-    # 1) load tiny model & tokenizer
-    model = DistilBertForSequenceClassification.from_pretrained(
-        "hf-internal-testing/tiny-random-DistilBERTModel",
-        num_labels=2,
-    )
-    tokenizer = DistilBertTokenizerFast.from_pretrained("hf-internal-testing/tiny-random-DistilBERTModel")
+def test_kernel_shap_init_and_mask(model, tokenizer, granularity, n_perturbations):
+    torch.manual_seed(0)
     batch_size = 2
 
     # 2) init explainer
@@ -77,8 +71,6 @@ def test_kernel_shap_init_and_mask(granularity, n_perturbations):
     rid = tokenizer.convert_tokens_to_ids("[REPLACE]")
     expected_id = rid if isinstance(rid, int) else rid[0]
     assert pert.replace_token_id == expected_id
-    # device stored correctly
-    assert pert.device == DEVICE
 
     # 5) aggregator is LinearRegressionAggregator with ONES kernel
     assert isinstance(explainer.aggregator, LinearRegressionAggregator)

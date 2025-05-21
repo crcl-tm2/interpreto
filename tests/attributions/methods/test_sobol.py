@@ -50,19 +50,14 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
         (GranularityLevel.WORD, SobolIndicesOrders.FIRST_ORDER, SequenceSamplers.LatinHypercube, 10),
     ],
 )
-def test_sobol_attribution_init_and_mask(granularity, order, sampler, n_token_perturbations):
-    model = DistilBertForSequenceClassification.from_pretrained(
-        "hf-internal-testing/tiny-random-DistilBERTModel",
-        num_labels=2,
-    )
-    tokenizer = DistilBertTokenizerFast.from_pretrained("hf-internal-testing/tiny-random-DistilBERTModel")
-
+def test_sobol_attribution_init_and_mask(model, tokenizer, granularity, order, sampler, n_token_perturbations):
     batch_size = 2
 
     explainer = SobolAttribution(
         model=model,
         tokenizer=tokenizer,
         batch_size=batch_size,
+        device=DEVICE,
         granularity_level=granularity,
         n_token_perturbations=n_token_perturbations,
         sobol_indices_order=order,
