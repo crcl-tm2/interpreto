@@ -31,7 +31,8 @@ from __future__ import annotations
 from enum import Enum
 
 import torch
-from jaxtyping import Float, Int
+from beartype import beartype
+from jaxtyping import Float, Int, jaxtyped
 from scipy.stats import qmc
 
 from interpreto.attributions.perturbations.base import TokenMaskBasedPerturbator
@@ -87,7 +88,8 @@ class SobolTokenPerturbator(TokenMaskBasedPerturbator):
         self.sobol_indices_order = sobol_indices_order.value
         self.sampler_class = sampler.value
 
-    def get_mask(self, mask_dim: int) -> Float[torch.Tensor, "p l"]:
+    @jaxtyped(typechecker=beartype)
+    def get_mask(self, mask_dim: int) -> Float[torch.Tensor, "p {mask_dim}"]:
         """
         Generates a binary mask for each token in the sequence.
 

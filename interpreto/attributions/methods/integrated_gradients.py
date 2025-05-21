@@ -28,12 +28,15 @@ Integrated Gradients method
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import torch
 from transformers import PreTrainedModel, PreTrainedTokenizer
 
 from interpreto.attributions.aggregations import MeanAggregator
 from interpreto.attributions.base import AttributionExplainer, MultitaskExplainerMixin
 from interpreto.attributions.perturbations import LinearInterpolationPerturbator
+from interpreto.commons.model_wrapping.inference_wrapper import InferenceModes
 
 
 class IntegratedGradients(MultitaskExplainerMixin, AttributionExplainer):
@@ -49,6 +52,7 @@ class IntegratedGradients(MultitaskExplainerMixin, AttributionExplainer):
         tokenizer: PreTrainedTokenizer,
         batch_size: int,
         device: torch.device | None = None,
+        inference_mode: Callable[[torch.Tensor], torch.Tensor] = InferenceModes.LOGITS,
         n_interpolations: int = 10,
         baseline: torch.Tensor | float | None = None,
     ):
@@ -60,6 +64,8 @@ class IntegratedGradients(MultitaskExplainerMixin, AttributionExplainer):
             tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
             batch_size (int): batch size for the attribution method
             device (torch.device): device on which the attribution method will be run
+            inference_mode (Callable[[torch.Tensor], torch.Tensor], optional): The mode used for inference.
+                It can be either one of LOGITS, SOFTMAX, or LOG_SOFTMAX. Use InferenceModes to choose the appropriate mode.
             n_interpolations (int): the number of interpolations to generate
             baseline (torch.Tensor | float | None): the baseline to use for the interpolations
         """
@@ -73,4 +79,5 @@ class IntegratedGradients(MultitaskExplainerMixin, AttributionExplainer):
             device=device,
             perturbator=perturbator,
             aggregator=MeanAggregator(),  # TODO: check if we need a trapezoidal mean
+            inference_mode=inference_mode,
         )

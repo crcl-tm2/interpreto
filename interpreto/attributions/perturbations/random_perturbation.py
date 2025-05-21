@@ -29,6 +29,7 @@ Random perturbation for token-wise masking, used in LIME
 from __future__ import annotations
 
 import torch
+from beartype import beartype
 from jaxtyping import Float, jaxtyped
 from torch import Tensor
 
@@ -66,7 +67,7 @@ class RandomMaskedTokenPerturbator(TokenMaskBasedPerturbator):
         )
         self.perturb_probability = perturb_probability
 
-    @jaxtyped
+    @jaxtyped(typechecker=beartype)
     def get_mask(self, mask_dim: int) -> Float[Tensor, "{self.n_perturbations} {mask_dim}"]:
         """
         Method returning a random perturbation mask for a given input sequence.

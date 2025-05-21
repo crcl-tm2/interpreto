@@ -29,6 +29,7 @@ Perturbation for SHAP
 from __future__ import annotations
 
 import torch
+from beartype import beartype
 from jaxtyping import Float, jaxtyped
 from torch import Tensor
 
@@ -63,7 +64,7 @@ class ShapTokenPerturbator(TokenMaskBasedPerturbator):
         )
         self.device = device  # type: ignore
 
-    @jaxtyped
+    @jaxtyped(typechecker=beartype)
     def get_mask(self, mask_dim: int) -> Float[Tensor, "{self.n_perturbations} {mask_dim}"]:
         """
         Generates a binary mask for each token in the sequence.

@@ -33,15 +33,33 @@ processing. The class is designed to be subclassed for specific model types and 
 from __future__ import annotations
 
 import warnings
-from collections.abc import Generator, Iterable, MutableMapping
+from abc import ABC, abstractmethod
+from collections.abc import Callable, Generator, Iterable, MutableMapping
+from enum import Enum
 from functools import singledispatchmethod
 from typing import Any, overload
 
 import torch
+import torch.nn.functional as F
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import BaseModelOutput
 
 from interpreto.typing import ModelInputs, TensorMapping
+
+
+class InferenceModes(Enum):
+    """
+    Enum class for inference modes.
+
+    Attributes:
+        LOGITS: Return the logits.
+        SOFTMAX: Return the softmax of the logits.
+        LOG_SOFTMAX: Return the log softmax of the logits.
+    """
+
+    LOGITS = staticmethod(lambda logits: logits)
+    SOFTMAX = staticmethod(lambda logits: F.softmax(logits, dim=-1))
+    LOG_SOFTMAX = staticmethod(lambda logits: F.log_softmax(logits, dim=-1))
 
 
 # TODO : move that somewhere else
@@ -100,7 +118,7 @@ def concat_and_pad(
     return torch.cat(padded_tensors, dim=dim)
 
 
-class InferenceWrapper:
+class InferenceWrapper(ABC):
     """
     Base class for inference wrapper objects.
     This class is designed to wrap a model and provide a consistent interface for
@@ -123,13 +141,17 @@ class InferenceWrapper:
         model: PreTrainedModel,
         batch_size: int,
         device: torch.device | None = None,
+        mode: Callable[[torch.Tensor], torch.Tensor] = InferenceModes.LOGITS,
     ):
         self.model = model
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        self.model.to(device)
+        self.model.to(device)  # type: ignore
         self.batch_size = batch_size
+
+        assert callable(mode), "mode should be a callable function from `InferenceModes`"
+        self.mode = mode
 
         # Pad token id should be set by the explainer
         self.pad_token_id = None
@@ -150,7 +172,7 @@ class InferenceWrapper:
         Args:
             device (torch.device): wanted device (e.g., "cpu" or "cuda").
         """
-        self.model.to(device)
+        self.model.to(device)  # type: ignore
 
     def to(self, device: torch.device):
         """
@@ -283,12 +305,12 @@ class InferenceWrapper:
         Returns:
             torch.Tensor: logits associated to the input mapping.
         """
-        # if emebeddings has not been calculated yet, embed the inputs
+        # if embeddings has not been calculated yet, embed the inputs
         model_inputs = self.embed(model_inputs)
         # depending on the number of dimensions of the input
         match model_inputs["inputs_embeds"].dim():
             case 2:  # (sequence_length, embedding_size)
-                return self.call_model(**model_inputs).logits
+                return self.call_model(**model_inputs).logits  # type: ignore
             case 3:  # (batch_size, sequence_length, embedding_size)
                 # If a batch dimension is given, split the inputs into chunks of batch_size
                 embeds_chunks = model_inputs["inputs_embeds"].split(self.batch_size)
@@ -297,7 +319,7 @@ class InferenceWrapper:
                 # call the model on each chunk and concatenate the results
                 return torch.cat(
                     [
-                        self.call_model(embeds_chunk, mask_chunk).logits
+                        self.call_model(embeds_chunk, mask_chunk).logits  # type: ignore
                         for embeds_chunk, mask_chunk in zip(embeds_chunks, mask_chunks, strict=False)
                     ],
                 )
@@ -312,7 +334,7 @@ class InferenceWrapper:
                 return prediction.view(*model_inputs["inputs_embeds"].shape[:-2], -1)
 
     @get_logits.register(Iterable)  # type: ignore
-    def _get_logits_from_iterable(self, model_inputs: Iterable[TensorMapping]) -> Generator[torch.Tensor, None, str]:
+    def _get_logits_from_iterable(self, model_inputs: Iterable[TensorMapping]) -> Generator[torch.Tensor, None, None]:
         """
         Get the logits from the model for the given inputs.
         registered for Iterable type.
@@ -365,7 +387,7 @@ class InferenceWrapper:
 
     #     # Generation loop
     #     while True:
-    #         # check if the ouput buffer contains enough data to correspond to the next element
+    #         # check if the output buffer contains enough data to correspond to the next element
     #         if result_buffer.numel() and result_indexes and len(result_buffer) >= result_indexes[0]:
     #             # pop the first index from the result indexes
     #             index = result_indexes.pop(0)
@@ -432,7 +454,7 @@ class InferenceWrapper:
     #                 # This should never happen
     #                 break
     #             last_item = True
-    #     # Chack that all the buffers are empty
+    #     # Check that all the buffers are empty
     #     if any(element.numel() for element in [result_buffer, input_buffer, mask_buffer]):
     #         warnings.warn(
     #             "Some data were not well fetched in inference wrapper, please check your code if you made custom method or notify it to the developers",
@@ -457,6 +479,7 @@ class InferenceWrapper:
         return self._reshape_inputs(tensor[0], non_batch_dims=non_batch_dims)
 
     @singledispatchmethod
+    @abstractmethod
     def get_targeted_logits(
         self, model_inputs: Any, targets: torch.Tensor
     ) -> torch.Tensor | Generator[torch.Tensor, None, None]:

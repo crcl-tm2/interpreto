@@ -42,6 +42,7 @@ from interpreto.attributions.aggregations.linear_regression_aggregation import (
 from interpreto.attributions.base import AttributionExplainer, MultitaskExplainerMixin
 from interpreto.attributions.perturbations.random_perturbation import RandomMaskedTokenPerturbator
 from interpreto.commons.granularity import GranularityLevel
+from interpreto.commons.model_wrapping.inference_wrapper import InferenceModes
 
 
 class Lime(MultitaskExplainerMixin, AttributionExplainer):
@@ -57,6 +58,7 @@ class Lime(MultitaskExplainerMixin, AttributionExplainer):
         tokenizer: PreTrainedTokenizer,
         batch_size: int,
         granularity_level: GranularityLevel = GranularityLevel.WORD,
+        inference_mode: Callable[[torch.Tensor], torch.Tensor] = InferenceModes.LOGITS,
         n_perturbations: int = 1000,
         perturb_probability: float = 0.5,
         distance_function: DistancesFromMaskProtocol = DistancesFromMask.COSINE,
@@ -71,6 +73,8 @@ class Lime(MultitaskExplainerMixin, AttributionExplainer):
             tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
             batch_size (int): batch size for the attribution method
             granularity_level (GranularityLevel): granularity level of the perturbations (token, word, sentence, etc.)
+            inference_mode (Callable[[torch.Tensor], torch.Tensor], optional): The mode used for inference.
+                It can be either one of LOGITS, SOFTMAX, or LOG_SOFTMAX. Use InferenceModes to choose the appropriate mode.
             n_perturbations (int): the number of perturbations to generate.
             perturb_probability (float): probability of perturbation.
             distance_function (DistancesFromMaskProtocol): distance function used to compute weights of perturbed samples in the linear model training.
@@ -108,5 +112,6 @@ class Lime(MultitaskExplainerMixin, AttributionExplainer):
             aggregator=aggregator,
             batch_size=batch_size,
             granularity_level=granularity_level,
+            inference_mode=inference_mode,
             device=device,
         )

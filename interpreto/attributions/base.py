@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import itertools
 from abc import abstractmethod
-from collections.abc import Iterable, MutableMapping
+from collections.abc import Callable, Iterable, MutableMapping
 from typing import Any
 
 import torch
@@ -43,7 +43,7 @@ from interpreto.commons.generator_tools import split_iterator
 from interpreto.commons.granularity import GranularityLevel
 from interpreto.commons.model_wrapping.classification_inference_wrapper import ClassificationInferenceWrapper
 from interpreto.commons.model_wrapping.generation_inference_wrapper import GenerationInferenceWrapper
-from interpreto.commons.model_wrapping.inference_wrapper import InferenceWrapper
+from interpreto.commons.model_wrapping.inference_wrapper import InferenceModes, InferenceWrapper
 from interpreto.typing import ClassificationTarget, GeneratedTarget, ModelInputs, TensorMapping
 
 SingleAttribution = (
@@ -123,6 +123,7 @@ class AttributionExplainer:
         aggregator: Aggregator | None = None,
         device: torch.device | None = None,
         granularity_level: GranularityLevel = GranularityLevel.DEFAULT,
+        inference_mode: Callable[[torch.Tensor], torch.Tensor] = InferenceModes.LOGITS,  # TODO: add to all classes
     ) -> None:
         """
         Initializes the AttributionExplainer.
@@ -139,9 +140,13 @@ class AttributionExplainer:
                 If None, defaults to the device of the model.
             granularity_level (GranularityLevel, optional): The level of granularity for the explanation (e.g., token, word, sentence).
                 Defaults to GranularityLevel.DEFAULT (TOKEN)
+            inference_mode (Callable[[torch.Tensor], torch.Tensor], optional): The mode used for inference.
+                It can be either one of LOGITS, SOFTMAX, or LOG_SOFTMAX. Use InferenceModes to choose the appropriate mode.
         """
         self.tokenizer = tokenizer
-        self.inference_wrapper = self._associated_inference_wrapper(model, batch_size=batch_size, device=device)
+        self.inference_wrapper = self._associated_inference_wrapper(
+            model, batch_size=batch_size, device=device, mode=inference_mode
+        )  # type: ignore
         self.perturbator = perturbator or Perturbator()
         self.perturbator.to(self.device)
         self.aggregator = aggregator or Aggregator()
@@ -154,7 +159,9 @@ class AttributionExplainer:
         self.inference_wrapper.pad_token_id = self.tokenizer.pad_token_id  # type: ignore
 
     def get_scores(
-        self, model_inputs: Iterable[TensorMapping], targets: Iterable[torch.Tensor], mode: str = "logits"
+        self,
+        model_inputs: Iterable[TensorMapping],
+        targets: Iterable[torch.Tensor],
     ) -> Iterable[torch.Tensor]:
         """
         Computes scores for the given perturbations and targets.
@@ -168,7 +175,7 @@ class AttributionExplainer:
         """
         if self.use_gradient:
             return self.inference_wrapper.get_gradients(model_inputs, targets)
-        return self.inference_wrapper.get_targeted_logits(model_inputs, targets, mode=mode)
+        return self.inference_wrapper.get_targeted_logits(model_inputs, targets)
 
     @property
     def device(self) -> torch.device:
@@ -262,7 +269,6 @@ class AttributionExplainer:
         self,
         model_inputs: ModelInputs,
         targets: torch.Tensor | Iterable[torch.Tensor] | None = None,
-        mode: str = "logits",
         **model_kwargs: Any,
     ) -> Iterable[AttributionOutput]:
         """
@@ -314,7 +320,7 @@ class AttributionExplainer:
         # - If use_gradient is True, compute gradients.
         # - Otherwise, compute targeted logits.
         scores: Iterable[torch.Tensor] = self.get_scores(
-            pert_generator, (a.to(self.device) for a in sanitized_targets), mode=mode
+            pert_generator, (a.to(self.device) for a in sanitized_targets)
         )
 
         # Aggregate the scores using the aggregator function and the perturbation masks.

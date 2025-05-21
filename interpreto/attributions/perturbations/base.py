@@ -29,14 +29,13 @@ Base classes for perturbations used in attribution methods
 from __future__ import annotations
 
 from abc import abstractmethod
-from collections.abc import MutableMapping
-from typing import overload
 
 import torch
+from beartype import beartype
+from jaxtyping import Float, jaxtyped
 
-from interpreto.commons.generator_tools import allow_nested_iterables_of
 from interpreto.commons.granularity import GranularityLevel
-from interpreto.typing import NestedIterable, TensorMapping
+from interpreto.typing import TensorMapping
 
 
 class Perturbator:
@@ -147,7 +146,7 @@ class Perturbator:
             # final_mask = some_combination(ids_pert_mask, embeds_pert_mask) # something like a elementwise binary or on the tensors ?
             # return inputs, final_mask
             embeddings = self._embed(
-                inputs.copy()
+                inputs.copy()  # type: ignore
             )  # copy is necessary otherwise inputs are embedded even if an error is raised
             return self.perturb_embeds(embeddings)
         except (ValueError, NotImplementedError):
@@ -228,8 +227,9 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
         # in most commons cases, this should be set to GranularityLevel.TOKEN
         self.granularity_level = granularity_level
 
+    @jaxtyped(typechecker=beartype)
     @abstractmethod
-    def get_mask(self, mask_dim: int) -> torch.Tensor:
+    def get_mask(self, mask_dim: int) -> Float[torch.Tensor, "{self.n_perturbations} {mask_dim}"]:
         """
         Method returning a perturbation mask for a given set of inputs
         This method should be implemented in subclasses
@@ -307,6 +307,9 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
         Returns:
             tuple: model_inputs with perturbations and the specific granularity mask
         """
+        model_inputs = model_inputs.copy()  # type: ignore
+        model_inputs.to(self.device)  # type: ignore
+
         mask_dim = int(GranularityLevel.get_length(model_inputs, self.granularity_level).max().item())
         gran_mask = self.get_mask(mask_dim)
         real_mask = self.get_real_mask_from_gran_mask(

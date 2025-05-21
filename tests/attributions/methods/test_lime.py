@@ -52,15 +52,9 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     ],
 )
 def test_lime_attribution_init_and_mask(
-    granularity, n_perturbations, perturb_probability, distance_function, kernel_width
+    model, tokenizer, granularity, n_perturbations, perturb_probability, distance_function, kernel_width
 ):
-    # load a tiny random model and tokenizer
-    model = DistilBertForSequenceClassification.from_pretrained(
-        "hf-internal-testing/tiny-random-DistilBERTModel",
-        num_labels=2,
-    )
-    tokenizer = DistilBertTokenizerFast.from_pretrained("hf-internal-testing/tiny-random-DistilBERTModel")
-
+    torch.manual_seed(0)
     batch_size = 2
 
     explainer = Lime(

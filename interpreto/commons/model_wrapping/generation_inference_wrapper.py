@@ -28,7 +28,6 @@ from collections.abc import Iterable, MutableMapping
 from functools import singledispatchmethod
 
 import torch
-import torch.nn.functional as F
 
 from interpreto.commons.model_wrapping.inference_wrapper import InferenceWrapper
 
@@ -111,7 +110,7 @@ class GenerationInferenceWrapper(InferenceWrapper):
     @get_inputs_to_explain_and_targets.register(Iterable)
     def _(
         self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]], **generation_kwargs
-    ) -> tuple[MutableMapping[str, torch.Tensor], torch.Tensor]:
+    ) -> tuple[Iterable[MutableMapping[str, torch.Tensor]], Iterable[torch.Tensor]]:
         """
         Applies get_inputs_to_explain_and_targets to each MutableMapping in an iterable (e.g., a list of batched inputs).
 
@@ -136,7 +135,11 @@ class GenerationInferenceWrapper(InferenceWrapper):
         )
 
     @get_targeted_logits.register(MutableMapping)
-    def _(self, model_inputs: MutableMapping[str, torch.Tensor], targets: torch.Tensor, mode: str = "logits"):
+    def _(
+        self,
+        model_inputs: MutableMapping[str, torch.Tensor],
+        targets: torch.Tensor,
+    ):
         """
         Retrieves the logits corresponding to the target token IDs for a single MutableMapping
         (i.e., a batch of inputs stored as a dictionary of tensors).
@@ -160,8 +163,6 @@ class GenerationInferenceWrapper(InferenceWrapper):
             - A tensor of shape (batch_size, target_length) containing the predicted logits for the target
               tokens in each sequence of the batch.
         """
-        assert mode in {"logits", "softmax", "log_softmax"}, f"Unknown mode '{mode}'"
-
         # remove last target token from the model inputs
         # to avoid using the last token in the generation process
         model_inputs = {
@@ -178,10 +179,7 @@ class GenerationInferenceWrapper(InferenceWrapper):
         target_logits = logits[..., -target_length:, :]  # (n,lg,v)
 
         # Apply post-processing depending on selected mode
-        if mode == "softmax":
-            target_logits = F.softmax(target_logits, dim=-1)
-        elif mode == "log_softmax":
-            target_logits = F.log_softmax(target_logits, dim=-1)
+        target_logits = self.mode(target_logits)
 
         extended_targets = targets.expand(logits.shape[0], -1)
 
@@ -201,12 +199,10 @@ class GenerationInferenceWrapper(InferenceWrapper):
         self,
         model_inputs: Iterable[MutableMapping[str, torch.Tensor]],
         targets: Iterable[torch.Tensor],
-        mode: str = "logits",
     ):
         """
         Retrieves logits for each pair of model input and target in an iterable.
         """
-        assert mode in {"logits", "softmax", "log_softmax"}, f"Unknown mode '{mode}'"
         # remove last target token from the model inputs
         # to avoid using the last token in the generation process
         model_inputs = [
@@ -217,10 +213,9 @@ class GenerationInferenceWrapper(InferenceWrapper):
         for logits, target in zip(all_logits, targets, strict=True):
             target_length = target.shape[-1]
             targeted_logits = logits[..., -target_length:, :]
-            if mode == "softmax":
-                targeted_logits = F.softmax(targeted_logits, dim=-1)
-            elif mode == "log_softmax":
-                targeted_logits = F.log_softmax(targeted_logits, dim=-1)
+
+            targeted_logits = self.mode(targeted_logits)
+
             extended_target = target.expand(logits.shape[0], -1)
             selected_logits = targeted_logits.gather(dim=-1, index=extended_target.unsqueeze(-1)).squeeze(-1)
             yield selected_logits

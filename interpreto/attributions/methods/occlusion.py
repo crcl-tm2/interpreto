@@ -28,6 +28,7 @@ Occlusion attribution method
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import torch
@@ -40,6 +41,7 @@ from interpreto.attributions.base import (
 )
 from interpreto.attributions.perturbations import OcclusionPerturbator
 from interpreto.commons.granularity import GranularityLevel
+from interpreto.commons.model_wrapping.inference_wrapper import InferenceModes
 
 
 class OcclusionExplainer(MultitaskExplainerMixin, AttributionExplainer):
@@ -55,6 +57,7 @@ class OcclusionExplainer(MultitaskExplainerMixin, AttributionExplainer):
         tokenizer: PreTrainedTokenizer,
         batch_size: int,
         granularity_level: GranularityLevel = GranularityLevel.WORD,
+        inference_mode: Callable[[torch.Tensor], torch.Tensor] = InferenceModes.LOGITS,
         device: torch.device | None = None,
         replace_token_id: int | None = None,
     ):
@@ -66,6 +69,8 @@ class OcclusionExplainer(MultitaskExplainerMixin, AttributionExplainer):
             tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
             batch_size (int): batch size for the attribution method
             granularity_level (GranularityLevel): granularity level of the perturbations (token, word, sentence, etc.)
+            inference_mode (Callable[[torch.Tensor], torch.Tensor], optional): The mode used for inference.
+                It can be either one of LOGITS, SOFTMAX, or LOG_SOFTMAX. Use InferenceModes to choose the appropriate mode.
             device (torch.device): device on which the attribution method will be run
             replace_token_id (int): token id to use for replacing the occluded tokens
         """
@@ -85,4 +90,5 @@ class OcclusionExplainer(MultitaskExplainerMixin, AttributionExplainer):
             perturbator=OcclusionPerturbator(granularity_level=granularity_level, replace_token_id=replace_token_id),  # type: ignore
             aggregator=OcclusionAggregator(),
             granularity_level=granularity_level,
+            inference_mode=inference_mode,
         )
