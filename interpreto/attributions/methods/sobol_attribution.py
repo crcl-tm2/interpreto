@@ -28,6 +28,8 @@ Sobol attribution method
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import torch
 from transformers import PreTrainedModel, PreTrainedTokenizer
 
@@ -42,6 +44,7 @@ from interpreto.attributions.perturbations.sobol_perturbation import (
     SobolTokenPerturbator,
 )
 from interpreto.commons.granularity import GranularityLevel
+from interpreto.commons.model_wrapping.inference_wrapper import InferenceModes
 
 
 class SobolAttribution(MultitaskExplainerMixin, AttributionExplainer):
@@ -57,6 +60,7 @@ class SobolAttribution(MultitaskExplainerMixin, AttributionExplainer):
         tokenizer: PreTrainedTokenizer,
         batch_size: int,
         granularity_level: GranularityLevel = GranularityLevel.WORD,
+        inference_mode: Callable[[torch.Tensor], torch.Tensor] = InferenceModes.LOGITS,
         n_token_perturbations: int = 30,
         sobol_indices_order: SobolIndicesOrders = SobolIndicesOrders.FIRST_ORDER,
         sampler: SequenceSamplers = SequenceSamplers.SOBOL,
@@ -70,6 +74,8 @@ class SobolAttribution(MultitaskExplainerMixin, AttributionExplainer):
             tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
             batch_size (int): batch size for the attribution method
             granularity_level (GranularityLevel): The level of granularity for the explanation (e.g., token, word, sentence).
+            inference_mode (Callable[[torch.Tensor], torch.Tensor], optional): The mode used for inference.
+                It can be either one of LOGITS, SOFTMAX, or LOG_SOFTMAX. Use InferenceModes to choose the appropriate mode.
             n_token_perturbations (int): the number of perturbations to generate
             sobol_indices (SobolIndicesOrders): Sobol indices order, either `FIRST_ORDER` or `TOTAL_ORDER`.
             sampler (SequenceSamplers): Sobol sequence sampler, either `SOBOL`, `HALTON` or `LatinHypercube`.
@@ -100,5 +106,6 @@ class SobolAttribution(MultitaskExplainerMixin, AttributionExplainer):
             aggregator=SobolAggregator(n_token_perturbations=n_token_perturbations),
             batch_size=batch_size,
             granularity_level=granularity_level,
+            inference_mode=inference_mode,
             device=device,
         )
