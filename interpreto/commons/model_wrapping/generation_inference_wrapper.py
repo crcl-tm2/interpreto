@@ -28,7 +28,6 @@ from collections.abc import Iterable, MutableMapping
 from functools import singledispatchmethod
 
 import torch
-import torch.nn.functional as F
 
 from interpreto.commons.model_wrapping.inference_wrapper import InferenceWrapper
 

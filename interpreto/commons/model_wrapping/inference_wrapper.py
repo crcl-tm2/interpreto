@@ -33,6 +33,7 @@ processing. The class is designed to be subclassed for specific model types and 
 from __future__ import annotations
 
 import warnings
+from abc import ABC, abstractmethod
 from collections.abc import Callable, Generator, Iterable, MutableMapping
 from enum import Enum
 from functools import singledispatchmethod
@@ -117,7 +118,7 @@ def concat_and_pad(
     return torch.cat(padded_tensors, dim=dim)
 
 
-class InferenceWrapper:
+class InferenceWrapper(ABC):
     """
     Base class for inference wrapper objects.
     This class is designed to wrap a model and provide a consistent interface for
@@ -478,6 +479,7 @@ class InferenceWrapper:
         return self._reshape_inputs(tensor[0], non_batch_dims=non_batch_dims)
 
     @singledispatchmethod
+    @abstractmethod
     def get_targeted_logits(
         self, model_inputs: Any, targets: torch.Tensor
     ) -> torch.Tensor | Generator[torch.Tensor, None, None]:

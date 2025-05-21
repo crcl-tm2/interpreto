@@ -146,7 +146,7 @@ class AttributionExplainer:
         self.tokenizer = tokenizer
         self.inference_wrapper = self._associated_inference_wrapper(
             model, batch_size=batch_size, device=device, mode=inference_mode
-        )
+        )  # type: ignore
         self.perturbator = perturbator or Perturbator()
         self.perturbator.to(self.device)
         self.aggregator = aggregator or Aggregator()
@@ -162,7 +162,6 @@ class AttributionExplainer:
         self,
         model_inputs: Iterable[TensorMapping],
         targets: Iterable[torch.Tensor],
-        mode: Callable[[torch.Tensor], torch.Tensor] = InferenceModes.LOGITS,
     ) -> Iterable[torch.Tensor]:
         """
         Computes scores for the given perturbations and targets.
@@ -176,7 +175,7 @@ class AttributionExplainer:
         """
         if self.use_gradient:
             return self.inference_wrapper.get_gradients(model_inputs, targets)
-        return self.inference_wrapper.get_targeted_logits(model_inputs, targets, mode=mode)
+        return self.inference_wrapper.get_targeted_logits(model_inputs, targets)
 
     @property
     def device(self) -> torch.device:
