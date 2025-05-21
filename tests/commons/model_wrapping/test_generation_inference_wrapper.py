@@ -23,9 +23,12 @@
 # SOFTWARE.
 
 import pytest
+import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from interpreto.commons.model_wrapping.generation_inference_wrapper import GenerationInferenceWrapper
+
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 generation_models = ["hf-internal-testing/tiny-random-LlamaForCausalLM", "hf-internal-testing/tiny-random-gpt2"]
 
@@ -36,7 +39,7 @@ def prepare_model_and_tokenizer(model_name: str):
     """
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForCausalLM.from_pretrained(model_name)
-    inference_wrapper = GenerationInferenceWrapper(model, batch_size=5)
+    inference_wrapper = GenerationInferenceWrapper(model, batch_size=5, device=DEVICE)
     return tokenizer, model, inference_wrapper
 
 
@@ -58,6 +61,7 @@ def test_generation_inference_wrapper_single_sentence(model_name, sentences):
         tokenizer.pad_token = tokenizer.eos_token
 
     model_inputs = tokenizer(sentences[0], return_tensors="pt", padding=True, truncation=True)
+    model_inputs.to(DEVICE)
     model_inputs_length = model_inputs["input_ids"].shape[1]
 
     full_model_inputs, target = inference_wrapper.get_inputs_to_explain_and_targets(
@@ -89,6 +93,7 @@ def test_generation_inference_wrapper_single_sentence(model_name, sentences):
 
     grad_matrix = inference_wrapper.get_gradients(full_model_inputs, target)
     # Check that the gradient matrix shape is correct.
+    assert isinstance(grad_matrix, torch.Tensor)
     assert grad_matrix.shape == (1, target_length, full_shape), (
         "For a single sentence, the gradient matrix shape is incorrect."
     )
@@ -111,6 +116,7 @@ def test_generation_inference_wrapper_multiple_sentences(model_name, sentences):
         tokenizer.pad_token = tokenizer.eos_token
     n_sentences = len(sentences)
     model_inputs = tokenizer(sentences, return_tensors="pt", padding=True, truncation=True)
+    model_inputs.to(DEVICE)
     model_inputs_length = model_inputs["input_ids"].shape[1]
 
     full_model_inputs, target = inference_wrapper.get_inputs_to_explain_and_targets(
@@ -142,6 +148,7 @@ def test_generation_inference_wrapper_multiple_sentences(model_name, sentences):
 
     grad_matrix = inference_wrapper.get_gradients(full_model_inputs, target)
     # Check that the gradient matrix shape is correct.
+    assert isinstance(grad_matrix, torch.Tensor)
     assert grad_matrix.shape == (n_sentences, target_length, full_shape), (
         "For multiple sentences, the gradient matrix shape is incorrect."
     )
@@ -170,6 +177,8 @@ def test_generation_inference_wrapper_multiple_mappings(model_name, sentences):
 
     model_inputs1 = tokenizer(sentences[:nb_split], return_tensors="pt", padding=True, truncation=True)
     model_inputs2 = tokenizer(sentences[nb_split:], return_tensors="pt", padding=True, truncation=True)
+    model_inputs1.to(DEVICE)
+    model_inputs2.to(DEVICE)
     model_inputs = [model_inputs1, model_inputs2]
     model_inputs_length1 = model_inputs1["input_ids"].shape[1]
     model_inputs_length2 = model_inputs2["input_ids"].shape[1]
@@ -216,11 +225,11 @@ def test_generation_inference_wrapper_multiple_mappings(model_name, sentences):
         "Targeted logits shape for mapping 1 is incorrect."
     )
 
-    grad_matrix = inference_wrapper.get_gradients(full_model_inputs, target)
+    grad_matrix = iter(inference_wrapper.get_gradients(full_model_inputs, target))
     # check that the grad matrix shape is correct:
-    assert grad_matrix[0].shape == (nb_split, target_length1, full_shape1), (
+    assert next(grad_matrix).shape == (nb_split, target_length1, full_shape1), (
         "Gradient matrix shape for mapping 0 is incorrect."
     )
-    assert grad_matrix[1].shape == (n_sentences - nb_split, target_length2, full_shape2), (
+    assert next(grad_matrix).shape == (n_sentences - nb_split, target_length2, full_shape2), (
         "Gradient matrix shape for mapping 1 is incorrect."
     )

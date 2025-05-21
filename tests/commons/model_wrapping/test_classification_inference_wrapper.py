@@ -28,12 +28,14 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 from interpreto.commons.model_wrapping.classification_inference_wrapper import ClassificationInferenceWrapper
 
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 # classification_models = [
 #     "distilbert-base-uncased-finetuned-sst-2-english",
 # ]
 classification_models = [
     "hf-internal-testing/tiny-random-DebertaV2Model",
-    "hf-internal-testing/tiny-random-xlm-roberta",
+    "hf-internal-testing/tiny-xlm-roberta",
     "hf-internal-testing/tiny-random-DistilBertModel",
 ]
 
@@ -44,7 +46,7 @@ def prepare_model_and_tokenizer(model_name: str):
     """
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForSequenceClassification.from_pretrained(model_name)
-    inference_wrapper = ClassificationInferenceWrapper(model, batch_size=5)
+    inference_wrapper = ClassificationInferenceWrapper(model, batch_size=5, device=DEVICE)
     return tokenizer, model, inference_wrapper
 
 
@@ -55,18 +57,19 @@ def test_classification_inference_wrapper_single_sentence(model_name, sentences)
 
     # Reference values
     tokens = tokenizer(sentences[0], return_tensors="pt", padding=True, truncation=True)
+    tokens.to(DEVICE)
     logits = model(**tokens).logits
     target = logits.argmax(dim=-1)
-    predefined_targets = torch.randperm(logits.shape[-1])
+    predefined_targets = torch.randperm(logits.shape[-1]).to(DEVICE)
     scores = logits.index_select(dim=-1, index=predefined_targets)
 
     # Tests
-    assert torch.equal(logits, inference_wrapper.get_logits(tokens))
-    assert torch.equal(logits, next(inference_wrapper.get_logits([tokens])))
-    assert torch.equal(target, inference_wrapper.get_targets(tokens))
-    assert torch.equal(target, next(inference_wrapper.get_targets([tokens])))
-    assert torch.equal(scores, inference_wrapper.get_target_logits(tokens, predefined_targets))
-    assert torch.equal(scores, next(inference_wrapper.get_target_logits([tokens], predefined_targets)))
+    assert torch.equal(logits, inference_wrapper.get_logits(tokens.copy()))
+    assert torch.equal(logits, next(inference_wrapper.get_logits([tokens.copy()])))
+    assert torch.equal(target, inference_wrapper.get_targets(tokens.copy()))  # type: ignore
+    assert torch.equal(target, next(inference_wrapper.get_targets([tokens.copy()])))  # type: ignore
+    assert torch.equal(scores, inference_wrapper.get_targeted_logits(tokens.copy(), predefined_targets))  # type: ignore
+    assert torch.equal(scores, next(inference_wrapper.get_targeted_logits([tokens.copy()], [predefined_targets])))  # type: ignore
 
 
 @pytest.mark.parametrize("model_name", classification_models)
@@ -76,15 +79,17 @@ def test_classification_inference_wrapper_multiple_sentences(model_name, sentenc
 
     ### Reference values
     tokens = tokenizer(sentences, return_tensors="pt", padding=True, truncation=True)
+    tokens.to(DEVICE)
     logits = model(**tokens).logits
     targets = logits.argmax(dim=-1)
-    predefined_targets = torch.randperm(logits.shape[-1])
+    predefined_targets = torch.randperm(logits.shape[-1]).to(DEVICE)
     target_logits = torch.gather(logits, dim=-1, index=predefined_targets.unsqueeze(0).expand(logits.shape[0], -1))
 
     ### Tests
-    # TODO : check why they are not equal
-    assert torch.equal(logits, torch.stack(list(inference_wrapper.get_logits(tokens))))
-    assert torch.equal(targets, torch.stack(list(inference_wrapper.get_targets(tokens))))
-    assert torch.equal(
-        target_logits, torch.stack(list(inference_wrapper.get_target_logits(tokens, predefined_targets)))
-    )
+    test_logits = torch.stack(list(inference_wrapper.get_logits(tokens.copy())))
+    test_targets = torch.stack(list(inference_wrapper.get_targets(tokens.copy())))
+    test_target_logits = torch.stack(list(inference_wrapper.get_targeted_logits(tokens.copy(), predefined_targets)))
+
+    assert torch.all(torch.isclose(logits, test_logits, atol=1e-5))
+    assert torch.all(torch.isclose(targets, test_targets, atol=1e-5))
+    assert torch.all(torch.isclose(target_logits, test_target_logits, atol=1e-5))

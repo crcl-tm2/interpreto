@@ -147,7 +147,7 @@ class Perturbator:
             # final_mask = some_combination(ids_pert_mask, embeds_pert_mask) # something like a elementwise binary or on the tensors ?
             # return inputs, final_mask
             embeddings = self._embed(
-                inputs.copy()
+                inputs.copy()  # type: ignore
             )  # copy is necessary otherwise inputs are embedded even if an error is raised
             return self.perturb_embeds(embeddings)
         except (ValueError, NotImplementedError):
