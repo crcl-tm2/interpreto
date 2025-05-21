@@ -32,6 +32,7 @@ from collections.abc import Callable
 from enum import Enum
 
 import torch
+from beartype import beartype
 from jaxtyping import Float, jaxtyped
 from torch import Tensor
 from torch.nn import functional as F
@@ -126,20 +127,23 @@ class LinearRegressionAggregator(Aggregator):
         self.similarity_kernel = similarity_kernel
         self.kernel_width = kernel_width if kernel_width is not None else default_kernel_width_fn
 
-    @jaxtyped
+    @jaxtyped(typechecker=beartype)
     def aggregate(
         self,
-        results: Float[Tensor, "p"],
+        results: Float[Tensor, "p t"],
         mask: Float[Tensor, "p l"],
-    ) -> Float[Tensor, "l"]:
+    ) -> Float[Tensor, "t l"]:
         """
         Aggregate the results of the perturbations using a linear model.
 
         Args:
-            results (torch.Tensor): The results of the perturbations. Shape: (p,).
+            results (torch.Tensor): The results of the perturbations. Shape: (p, t).
+                p the number of perturbations
+                t the number of target classes/tokens
             mask (torch.Tensor): The mask used for the perturbations. Shape: (p, l).
+                l the length of the sequence
         Returns:
-            torch.Tensor: The aggregated results. Shape: (l,).
+            torch.Tensor: The aggregated results. Shape: (t, l).
         """
         # Simplify typing
         p, l = mask.shape
@@ -153,7 +157,7 @@ class LinearRegressionAggregator(Aggregator):
             if isinstance(self.kernel_width, Callable):
                 kernel_width: float = self.kernel_width(mask)
             else:
-                assert isinstance(self.kernel_width, float)
+                assert isinstance(self.kernel_width, float) or isinstance(self.kernel_width, int)
                 kernel_width: float = self.kernel_width
             weights: Float[Tensor, "{p}"] = self.similarity_kernel(distances, kernel_width)
         else:  # Kernel SHAP
@@ -161,13 +165,16 @@ class LinearRegressionAggregator(Aggregator):
 
         # Compute closed form solution for the linear model
         # Add a constant column for the bias term
-        X: Float[Tensor, "{p} l+1"] = torch.cat([torch.ones(results.shape[0], 1), mask], dim=1)
+        X: Float[Tensor, "{p} l+1"] = torch.cat([torch.ones(results.shape[0], 1, device=mask.device), mask], dim=1)
 
         # \theta =(X^T W X)^{-1} (X^T W y)
-        XT_W: Float[Tensor, "l+1 {p}"] = results.T * weights
-        theta: Float[Tensor, "l+1"] = torch.inverse(XT_W @ X) @ (XT_W @ results)
+        XT_W: Float[Tensor, "l+1 {p}"] = X.T * weights
+        epsilon: Float[Tensor, "l+1 l+1"] = (
+            torch.eye(XT_W.shape[0], device=XT_W.device) * 1e-6
+        )  # To prevent inversion errors
+        theta: Float[Tensor, "l+1 t"] = torch.inverse(XT_W @ X + epsilon) @ (XT_W @ results)
 
         # exclude the bias term
-        token_importance: Float[Tensor, "{l}"] = theta[1:]
+        token_importance: Float[Tensor, "t {l}"] = theta[1:].T
 
         return token_importance

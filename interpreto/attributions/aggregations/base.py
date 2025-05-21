@@ -31,6 +31,9 @@ from __future__ import annotations
 from collections.abc import Callable
 
 import torch
+from beartype import beartype
+from jaxtyping import Float, jaxtyped
+from torch import Tensor
 
 
 class Aggregator:
@@ -38,7 +41,7 @@ class Aggregator:
     Abstract class for aggregation made at the end of attribution methods
     """
 
-    def aggregate(self, results: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
+    def aggregate(self, results: torch.Tensor, mask) -> torch.Tensor:
         """
         Get results from multiple "Inference wrappers", aggregate results and gives an explanation
         """
@@ -55,9 +58,13 @@ class TorchAggregator(Aggregator):
 
     _method: Callable[[torch.Tensor, int], torch.Tensor]
 
-    def aggregate(self, results: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
-        # TODO: check dimension with explicit jax typing for results parameter
-        return self._method(results, dim=0)
+    @jaxtyped(typechecker=beartype)
+    def aggregate(
+        self,
+        results: Float[Tensor, "p t l"],
+        mask: torch.Tensor | None = None,
+    ) -> Float[Tensor, "t l"]:
+        return self._method(results, dim=0)  # type: ignore
 
 
 class MeanAggregator(TorchAggregator):
@@ -99,7 +106,12 @@ class MaskwiseMeanAggregator(Aggregator):
     TODO : add docstring
     """
 
-    def aggregate(self, results: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    @jaxtyped(typechecker=beartype)
+    def aggregate(
+        self,
+        results: Float[Tensor, "p t"],
+        mask: Float[Tensor, "p l"],
+    ) -> Float[Tensor, "t l"]:
         return torch.einsum("pt,pl->tl", results, mask) / mask.sum(dim=1)
 
 
@@ -108,7 +120,12 @@ class OcclusionAggregator(Aggregator):
     TODO : add docstring
     """
 
-    def aggregate(self, results: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    @jaxtyped(typechecker=beartype)
+    def aggregate(
+        self,
+        results: Float[Tensor, "p t"],
+        mask: Float[Tensor, "p l"],
+    ) -> Float[Tensor, "t l"]:
         # first prediction is reference, unmodified input
         scores = results[..., 0, :] - results[..., 1:, :]
         mask = mask[..., 1:, :]
