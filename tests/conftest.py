@@ -61,8 +61,3 @@ def model():
 @fixture(scope="session")
 def tokenizer():
     return AutoTokenizer.from_pretrained("huawei-noah/TinyBERT_General_4L_312D")
-
-
-@fixture(scope="session")
-def inputs_embedder(model):
-    return model.get_input_embeddings()
