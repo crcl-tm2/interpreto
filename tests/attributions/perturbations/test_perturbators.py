@@ -16,64 +16,30 @@ from interpreto.attributions.perturbations.base import TokenMaskBasedPerturbator
 from interpreto.attributions.perturbations.sobol_perturbation import SequenceSamplers, SobolIndicesOrders
 from interpreto.commons.granularity import GranularityLevel
 
-perturbators = [
+embeddings_perturbators = [
     GaussianNoisePerturbator,
     LinearInterpolationPerturbator,
+]
+
+tokens_perturbators = [
     OcclusionPerturbator,
     RandomMaskedTokenPerturbator,
     ShapTokenPerturbator,
-    SobolTokenPerturbator,  # Sobol is not included as it does not n_perturbations similarly to other perturbators
+    SobolTokenPerturbator,
 ]
 
 DEVICE = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 
-@pytest.mark.parametrize(
-    "perturbator_class",
-    [
-        RandomMaskedTokenPerturbator,
-        ShapTokenPerturbator,
-    ],
-)
-def test_perturbators_get_mask(perturbator_class):
-    k = 10
-    perturbator = perturbator_class(n_perturbations=k)
-
-    for size in range(2, 20, 3):
-        masks = perturbator.get_mask(size)
-        assert masks.shape == (k, size)
-
-
-@pytest.mark.parametrize("perturbator_class", perturbators)
-def test_perturbators(perturbator_class, sentences, model, tokenizer):
+@pytest.mark.parametrize("perturbator_class", embeddings_perturbators)
+def test_embeddings_perturbators(perturbator_class, sentences, model, tokenizer):
     """test all perturbators respect the API"""
+    assert not issubclass(perturbator_class, TokenMaskBasedPerturbator)
     p = 10
     d = 312
     inputs_embedder = model.get_input_embeddings()
 
-    if issubclass(perturbator_class, TokenMaskBasedPerturbator):
-        replace_token = "[REPLACE]"
-        if replace_token not in tokenizer.get_vocab():
-            tokenizer.add_tokens([replace_token])
-            model.resize_token_embeddings(len(tokenizer))
-        replace_token_id = tokenizer.convert_tokens_to_ids(replace_token)  # type: ignore
-
-        if perturbator_class in [OcclusionPerturbator, SobolTokenPerturbator]:
-            # the number of perturbations depends on the sequence length
-            perturbator = perturbator_class(
-                inputs_embedder=inputs_embedder,
-                granularity_level=GranularityLevel.ALL_TOKENS,
-                replace_token_id=replace_token_id,
-            )
-        else:
-            perturbator = perturbator_class(
-                inputs_embedder=inputs_embedder,
-                granularity_level=GranularityLevel.ALL_TOKENS,
-                replace_token_id=replace_token_id,
-                n_perturbations=p,
-            )
-    else:
-        perturbator = perturbator_class(inputs_embedder=inputs_embedder, n_perturbations=p)
+    perturbator = perturbator_class(inputs_embedder=inputs_embedder, n_perturbations=p)
     perturbator.to(DEVICE)
 
     for sent in sentences:
@@ -91,24 +57,71 @@ def test_perturbators(perturbator_class, sentences, model, tokenizer):
         assert isinstance(perturbed_inputs["attention_mask"], torch.Tensor)
         assert isinstance(perturbed_inputs["offset_mapping"], torch.Tensor)
 
-        if isinstance(perturbator, TokenMaskBasedPerturbator):
-            # inputs should not have been embedded
-            assert "input_ids" in perturbed_inputs.keys()
-            assert isinstance(perturbed_inputs["input_ids"], torch.Tensor)
-            if isinstance(perturbator, OcclusionPerturbator):
-                assert perturbed_inputs["input_ids"].shape == (l + 1, l)
-            elif isinstance(perturbator, SobolTokenPerturbator):
-                k = 30  # default value
-                assert perturbed_inputs["input_ids"].shape == ((l + 1) * k, l)
-            else:
-                assert perturbed_inputs["input_ids"].shape == (p, l)
-            assert isinstance(masks, torch.Tensor)
-            assert masks.shape[0] == perturbed_inputs["input_ids"].shape[0]
+        # inputs are embedded before perturbation
+        assert "inputs_embeds" in perturbed_inputs.keys()
+        assert isinstance(perturbed_inputs["inputs_embeds"], torch.Tensor)
+        assert perturbed_inputs["inputs_embeds"].shape == (p, l, d)
+
+        assert torch.all(torch.isclose(perturbed_inputs["offset_mapping"], elem["offset_mapping"], atol=1e-5))
+        assert torch.all(torch.isclose(perturbed_inputs["attention_mask"], elem["attention_mask"], atol=1e-5))
+
+
+@pytest.mark.parametrize("perturbator_class", tokens_perturbators)
+def test_token_perturbators(perturbator_class, sentences, model, tokenizer):
+    """test all perturbators respect the API"""
+    assert issubclass(perturbator_class, TokenMaskBasedPerturbator)
+    p = 10
+    inputs_embedder = model.get_input_embeddings()
+
+    replace_token = "[REPLACE]"
+    if replace_token not in tokenizer.get_vocab():
+        tokenizer.add_tokens([replace_token])
+        model.resize_token_embeddings(len(tokenizer))
+    replace_token_id = tokenizer.convert_tokens_to_ids(replace_token)  # type: ignore
+
+    if perturbator_class in [OcclusionPerturbator, SobolTokenPerturbator]:
+        # the number of perturbations depends on the sequence length
+        perturbator = perturbator_class(
+            inputs_embedder=inputs_embedder,
+            granularity_level=GranularityLevel.ALL_TOKENS,
+            replace_token_id=replace_token_id,
+        )
+    else:
+        perturbator = perturbator_class(
+            inputs_embedder=inputs_embedder,
+            granularity_level=GranularityLevel.ALL_TOKENS,
+            replace_token_id=replace_token_id,
+            n_perturbations=p,
+        )
+    perturbator.to(DEVICE)
+
+    for sent in sentences:
+        elem = tokenizer(sent, return_tensors="pt", return_offsets_mapping=True, return_special_tokens_mask=True)
+        elem.to(DEVICE)
+        assert isinstance(elem, MutableMapping)
+        l = elem["input_ids"].shape[1]
+
+        perturbed_inputs, masks = perturbator.perturb(elem)
+
+        assert isinstance(perturbed_inputs, MutableMapping)
+
+        assert "attention_mask" in perturbed_inputs.keys()
+        assert "offset_mapping" in perturbed_inputs.keys()
+        assert isinstance(perturbed_inputs["attention_mask"], torch.Tensor)
+        assert isinstance(perturbed_inputs["offset_mapping"], torch.Tensor)
+
+        # inputs should not have been embedded
+        assert "input_ids" in perturbed_inputs.keys()
+        assert isinstance(perturbed_inputs["input_ids"], torch.Tensor)
+        if isinstance(perturbator, OcclusionPerturbator):
+            assert perturbed_inputs["input_ids"].shape == (l + 1, l)
+        elif isinstance(perturbator, SobolTokenPerturbator):
+            k = 30  # default value
+            assert perturbed_inputs["input_ids"].shape == ((l + 1) * k, l)
         else:
-            # inputs are embedded before perturbation
-            assert "inputs_embeds" in perturbed_inputs.keys()
-            assert isinstance(perturbed_inputs["inputs_embeds"], torch.Tensor)
-            assert perturbed_inputs["inputs_embeds"].shape == (p, l, d)
+            assert perturbed_inputs["input_ids"].shape == (p, l)
+        assert isinstance(masks, torch.Tensor)
+        assert masks.shape[0] == perturbed_inputs["input_ids"].shape[0]
 
         assert torch.all(torch.isclose(perturbed_inputs["offset_mapping"], elem["offset_mapping"], atol=1e-5))
         assert torch.all(torch.isclose(perturbed_inputs["attention_mask"], elem["attention_mask"], atol=1e-5))
