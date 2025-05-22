@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import pytest
 import torch
-from transformers import AutoModelForMaskedLM
 
 from interpreto.commons.model_wrapping.model_with_split_points import ModelWithSplitPoints
 from interpreto.concepts import (
@@ -74,20 +73,8 @@ ALL_CONCEPT_METHODS = [
 ]
 
 
-def test_cbe_fit_failure_cases():
+def test_cbe_fit_failure_cases(multi_split_model: ModelWithSplitPoints):
     """Test failure cases in matching the CBE with a ModelWithSplitPoints"""
-
-    split_points = [
-        "cls.predictions.transform.LayerNorm",
-        "bert.encoder.layer.1",
-        "bert.encoder.layer.3.attention.self.query",
-    ]
-
-    multi_split_model = ModelWithSplitPoints(
-        "huawei-noah/TinyBERT_General_4L_312D",
-        split_points=split_points,  # type: ignore
-        model_autoclass=AutoModelForMaskedLM,  # type: ignore
-    )
 
     # Raise when no split is provided and the model has more than one split
     with pytest.raises(ValueError, match="If the model has more than one split point"):

@@ -46,6 +46,19 @@ def sentences():
 
 
 @fixture(scope="session")
+def multi_split_model() -> ModelWithSplitPoints:
+    return ModelWithSplitPoints(
+        "huawei-noah/TinyBERT_General_4L_312D",
+        split_points=[
+            "cls.predictions.transform.LayerNorm",
+            "bert.encoder.layer.1.output",
+            "bert.encoder.layer.3.attention.self.query",
+        ],
+        model_autoclass=AutoModelForMaskedLM,  # type: ignore
+    )
+
+
+@fixture(scope="session")
 def splitted_encoder_ml() -> ModelWithSplitPoints:
     return ModelWithSplitPoints(
         "huawei-noah/TinyBERT_General_4L_312D",
