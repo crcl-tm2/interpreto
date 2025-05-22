@@ -159,7 +159,7 @@ def average_lp_distance(x1: torch.Tensor, x2: torch.Tensor, p: int = 2) -> torch
 
 
 def kl_divergence(x1: torch.Tensor, x2: torch.Tensor, dim: int | tuple[int, ...] | None = None) -> torch.Tensor:
-    """Compute the KL divergence between two tensors.
+    """Compute the Kullback-Leibler divergence between two tensors.
 
     Args:
         x1 (torch.Tensor): The first tensor.
