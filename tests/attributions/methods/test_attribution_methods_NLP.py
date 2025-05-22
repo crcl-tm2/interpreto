@@ -39,25 +39,33 @@ from transformers import (
 
 from interpreto.attributions import (
     IntegratedGradients,
-    # KernelShap,
-    # Lime,
+    KernelShap,
+    Lime,
     OcclusionExplainer,
     Saliency,
-    # SobolAttribution,
     SmoothGrad,
+    SobolAttribution,
 )
 from interpreto.attributions.base import AttributionOutput
+from interpreto.commons.granularity import GranularityLevel
+from interpreto.commons.model_wrapping.inference_wrapper import InferenceModes
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 attribution_method_kwargs = {
+    # Gradient based methods:
+    Saliency: {},
     IntegratedGradients: {"n_interpolations": 3, "baseline": 0.0},
     SmoothGrad: {"n_interpolations": 10, "noise_level": 0.1},
-    # KernelShap: {"n_perturbations": 10},
-    # Lime: {"n_perturbations": 10},
-    OcclusionExplainer: {},
-    # SobolAttribution: {"n_token_perturbations": 10},
-    Saliency: {},
+    # Perturbation based methods:
+    OcclusionExplainer: {"granularity_level": GranularityLevel.TOKEN, "inference_mode": InferenceModes.SOFTMAX},
+    KernelShap: {
+        "n_perturbations": 1000,
+        "inference_mode": InferenceModes.LOG_SOFTMAX,
+        "granularity_level": GranularityLevel.ALL_TOKENS,
+    },
+    Lime: {"n_perturbations": 100, "granularity_level": GranularityLevel.WORD},
+    SobolAttribution: {"n_token_perturbations": 10},
 }
 
 
