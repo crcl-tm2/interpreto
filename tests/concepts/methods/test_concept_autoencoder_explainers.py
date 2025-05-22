@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import pytest
 import torch
+from transformers import AutoModelForMaskedLM
 
 from interpreto.commons.model_wrapping.model_with_split_points import ModelWithSplitPoints
 from interpreto.concepts import (
