@@ -44,6 +44,7 @@ from interpreto.concepts.interpretations.base import BaseConceptInterpretationMe
 from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentActivations, ModelInput
 
 ConceptModel = TypeVar("ConceptModel", bound=ConceptModelProtocol)
+BDL = TypeVar("BDL", bound=BaseDictionaryLearning)
 MethodOutput = TypeVar("MethodOutput")
 
 
@@ -72,6 +73,7 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
         concept_model (ConceptModelProtocol): The model used to extract concepts from the activations of
             `model_with_split_points`. The only assumption for classes inheriting from this class is that
             the `concept_model` can encode activations into concepts with `encode_activations`.
+            The `ConceptModelProtocol` is defined in `interpreto.typing`. It is basically a `torch.nn.Module` with an `encode` method.
         is_fitted (bool): Whether the `concept_model` was fit on model activations.
         has_differentiable_concept_encoder (bool): Whether the `encode_activations` operation is differentiable.
     """
@@ -89,6 +91,7 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
                 It should have at least one split point on which a concept explainer can be trained.
             concept_model (ConceptModelProtocol): The model used to extract concepts from
                 the activations of `model_with_split_points`.
+                The `ConceptModelProtocol` is defined in `interpreto.typing`. It is basically a `torch.nn.Module` with an `encode` method.
             split_point (str | None): The split point used to train the `concept_model`. If None, tries to use the
                 split point of `model_with_split_points` if a single one is defined.
         """
@@ -104,6 +107,11 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
 
     @property
     def concept_model(self) -> ConceptModelProtocol:
+        """
+        Returns:
+            The concept model used to extract concepts from the activations of `model_with_split_points`.
+            The `ConceptModelProtocol` is defined in `interpreto.typing`. It is basically a `torch.nn.Module` with an `encode` method.
+        """
         # Declare the concept model as read-only property for inheritance typing flexibility
         return self._concept_model
 
@@ -266,7 +274,7 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
         raise NotImplementedError("Input-to-concept attribution method is not implemented yet.")
 
 
-class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning]):
+class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning], Generic[BDL]):
     """Code: [:octicons-mark-github-24: `concepts/base.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/base.py)
 
     A concept bottleneck explainer wraps a `concept_model` that should be able to encode activations into concepts
@@ -294,7 +302,7 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
         self,
         model_with_split_points: ModelWithSplitPoints,
         concept_model: BaseDictionaryLearning,
-        split_point: str | None,
+        split_point: str | None = None,
     ):
         """Initializes the concept explainer with a given splitted model.
 
