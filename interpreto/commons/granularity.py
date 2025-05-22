@@ -57,7 +57,7 @@ class GranularityLevel(Enum):
     ALL_TOKENS = "all_tokens"  # All tokens, including special tokens like padding, eos, cls, etc.
     TOKEN = "token"  # Strictly tokens of the input
     WORD = "word"  # Words of the input
-    DEFAULT = TOKEN
+    DEFAULT = ALL_TOKENS
 
     @staticmethod
     def __all_tokens_assoc_matrix(tokens_ids: TensorMapping) -> torch.Tensor:

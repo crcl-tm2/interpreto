@@ -268,7 +268,9 @@ class AttributionExplainer:
     def explain(
         self,
         model_inputs: ModelInputs,
-        targets: torch.Tensor | Iterable[torch.Tensor] | None = None,
+        targets: torch.Tensor
+        | Iterable[torch.Tensor]
+        | None = None,  # TODO: create specific target type for classification and generation
         **model_kwargs: Any,
     ) -> Iterable[AttributionOutput]:
         """
@@ -393,8 +395,9 @@ class ClassificationAttributionExplainer(AttributionExplainer):
         # add special tokens mask if not already present:
         model_inputs_to_explain = []
         for mapping in model_inputs:
-            if "special_tokens_mask" or "offsets_mapping" not in mapping:
-                text = self.tokenizer.decode(mapping["input_ids"][0])
+            # if "special_tokens_mask" or "offsets_mapping" not in mapping:
+            if "special_tokens_mask" not in mapping:
+                text = self.tokenizer.decode(mapping["input_ids"][0], skip_special_tokens=True)
                 mapping_with_special_values = self.tokenizer(
                     [text], return_tensors="pt", return_offsets_mapping=True, return_special_tokens_mask=True
                 )
@@ -480,7 +483,8 @@ class GenerationAttributionExplainer(AttributionExplainer):
                 )
         # Add offsets mapping and special tokens mask:
         model_inputs_to_explain_text = [
-            self.tokenizer.decode(elem["input_ids"][0]) for elem in model_inputs_to_explain_basic
+            self.tokenizer.decode(elem["input_ids"][0], skip_special_tokens=True)
+            for elem in model_inputs_to_explain_basic
         ]
         model_inputs_to_explain = [
             self.tokenizer(

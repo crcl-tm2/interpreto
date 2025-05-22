@@ -67,10 +67,9 @@ model_loader_combinations = [
 ]
 
 all_combinations = list(product(model_loader_combinations, attribution_method_kwargs.keys()))
-print(f"All combinations: {all_combinations}")
 
 
-# @pytest.mark.parametrize("model_name_loader, attribution_explainer", all_combinations)
+@pytest.mark.parametrize("model_name_loader, attribution_explainer", all_combinations)
 def test_attribution_methods_with_text(model_name_loader, attribution_explainer):
     """Tests all combinations of models and loaders with an attribution method"""
     model_name, model_loader = model_name_loader
@@ -86,32 +85,50 @@ def test_attribution_methods_with_text(model_name_loader, attribution_explainer)
     explainer = attribution_explainer(model, tokenizer=tokenizer, batch_size=3, device=DEVICE, **explainer_kwargs)
 
     # we need to test both type of inputs: text, list_text, tokenized_text, tokenized_list_text:
-    list_input_text_onlytext = [
-        "He is my best friend",
-        [
-            "I love this movie!",
-            "You are the best",
-            "The cat is on the mat.",
-            "My preferred film is Titanic",
-            "Interpreto is magic",
-        ],
+    text = "He is my best friend"
+    list_text = [
+        "I love this movie!",
+        "You are the best",
+        "The cat is on the mat.",
+        "My preferred film is Titanic",
+        "Interpreto is magic",
     ]
+    list_input_text_onlytext = [text, text, list_text, list_text]
 
     list_input_text_onlytokenized = [
         tokenizer(input_text_onlytext, return_tensors="pt", padding=True, truncation=True).to(DEVICE)
-        for input_text_onlytext in list_input_text_onlytext
+        for input_text_onlytext in [text, list_text]
     ]
 
     list_input_text = list_input_text_onlytext + list_input_text_onlytokenized
-    print(f"list_input_text: {list_input_text[-1]['input_ids'].shape}")
 
-    for input_text in list_input_text:
+    # we need to test with and without targets:
+    if model.__class__.__name__.endswith("ForCausalLM") or model.__class__.__name__.endswith("LMHeadModel"):
+        list_target = [
+            None,
+            "and I like him.",
+            None,
+            ["I recommand it", "friend ever", "The dog is outside", "because is the best", "try it."],
+            None,
+            None,
+        ]
+    else:
+        list_target = [
+            None,
+            1,
+            None,
+            torch.tensor([[0, 1], [0, 1], [0, 1], [0, 1], [0, 1]]),
+            None,
+            [0, 0, 1, 0, 1],
+        ]
+
+    for input_text, target in zip(list_input_text, list_target, strict=False):
         try:
             # if we have a generative model, we need to give the max_length:
             if model.__class__.__name__.endswith("ForCausalLM") or model.__class__.__name__.endswith("LMHeadModel"):
-                attributions = explainer.explain(input_text, generation_kwargs={"max_length": 10})
+                attributions = explainer.explain(input_text, targets=target, generation_kwargs={"max_length": 10})
             else:
-                attributions = explainer.explain(input_text)
+                attributions = explainer.explain(input_text, targets=target)
 
             # Checks:
             assert isinstance(attributions, list), "The output of the attribution explainer must be a list"
@@ -137,8 +154,5 @@ def test_attribution_methods_with_text(model_name_loader, attribution_explainer)
 
         except Exception as e:
             pytest.fail(
-                f"The test failed for input: '{input_text}' and model: {model_name} with {model_loader} and method {attribution_explainer}: {str(e)}"
+                f"The test failed for input: '{input_text}', target: '{target}' and model: {model_name} with {model_loader} and method {attribution_explainer}: {str(e)}"
             )
-
-
-test_attribution_methods_with_text(model_loader_combinations[0], OcclusionExplainer)
