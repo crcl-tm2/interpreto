@@ -1,6 +1,8 @@
 template: home.html
 ---
 
+TODO: make the banner fit in the page
+
 ![Interpreto: Interpretability Toolkit for LLMs](assets/img/interpreto_banner.png)
 
 [![Build status](https://img.shields.io/github/actions/workflow/status/FOR-sight-ai/interpreto/build.yml?branch=main)](https://github.com/FOR-sight-ai/interpreto/actions?query=workflow%3Abuild)
@@ -45,7 +47,6 @@ This project received funding from the French ”Investing for the Future – PI
 ## 👨‍🎓 Creators
 
 Interpreto 🪄 is a project of the FOR and the [DEEL](https://www.deel.ai) teams at the [IRT Saint-Exupéry](https://www.irt-saintexupery.com/) in Toulouse, France.
-
 
 ## 🗞️ Citation
 

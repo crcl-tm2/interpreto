@@ -4,7 +4,6 @@ icon: material/middleware-outline
 
 # Neurons as Concepts
 
-
 ::: interpreto.concepts.NeuronsAsConcepts
     handler: python
     options:
