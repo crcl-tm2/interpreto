@@ -37,6 +37,7 @@ def test_sparsity(splitted_encoder_ml: ModelWithSplitPoints):
     """
     Test that the sparsity metric measures expected sparsity
     """
+    torch.manual_seed(0)
     eps = 1e-5
     n = 50
     d = 312
@@ -48,12 +49,15 @@ def test_sparsity(splitted_encoder_ml: ModelWithSplitPoints):
     activations = torch.arange(n * d, device=DEVICE).reshape(n, d)
     sparse_activations = activations * (activations % (1 / sparsity_ratio) == 0).float()
 
+    # Ensure constructed activations are sparse
     assert torch.norm(sparse_activations, p=0, dim=1).mean() - sparsity_ratio * d < eps
 
+    # Compare computed sparsity with specified/constructed sparsity, it should be close
     sparsity_metric = Sparsity(concept_explainer)
     metric = sparsity_metric.compute(sparse_activations)
     assert metric - sparsity_ratio * d < eps
 
+    # Compare computed sparsity with specified/constructed sparsity, it should be close
     sparsity_ratio_metric = SparsityRatio(concept_explainer)
     metric = sparsity_ratio_metric.compute(sparse_activations)
     assert metric - sparsity_ratio < eps

@@ -37,16 +37,12 @@ from interpreto.concepts import NeuronsAsConcepts
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-def test_neurons_as_concepts(splitted_encoder_ml: ModelWithSplitPoints):
+def test_neurons_as_concepts(splitted_encoder_ml: ModelWithSplitPoints, activations_dict: dict[str, torch.Tensor]):
     """
     Test that the concept encoding and decoding of the `NeuronsAsConcepts` is the identity
     """
-
-    txt = ["Hello, my dog is cute", "The cat is on the [MASK]"]
-    split = "bert.encoder.layer.1.output"
-    splitted_encoder_ml.split_points = split
-    activations = splitted_encoder_ml.get_activations(txt, select_strategy="flatten")
-    assert activations[split].shape == (16, 312)
+    split, activations = next(iter(activations_dict.items()))  # dictionary with only one element
+    d = activations.shape[1]
 
     concept_explainer = NeuronsAsConcepts(model_with_split_points=splitted_encoder_ml, split_point=split)
 
@@ -54,13 +50,13 @@ def test_neurons_as_concepts(splitted_encoder_ml: ModelWithSplitPoints):
     assert concept_explainer.split_point == split
     assert hasattr(concept_explainer, "has_differentiable_concept_encoder")
     assert hasattr(concept_explainer, "has_differentiable_concept_decoder")
-    assert concept_explainer.concept_model.nb_concepts == 312
+    assert concept_explainer.concept_model.nb_concepts == d
 
-    concepts = concept_explainer.encode_activations(activations[split])
+    concepts = concept_explainer.encode_activations(activations)
     reconstructed_activations = concept_explainer.decode_concepts(concepts)
 
-    assert torch.allclose(concepts, activations[split])  # type: ignore
-    assert torch.allclose(reconstructed_activations, activations[split])  # type: ignore
+    assert torch.allclose(concepts, activations)  # type: ignore
+    assert torch.allclose(reconstructed_activations, activations)  # type: ignore
 
     with pytest.raises(NotImplementedError):
-        concept_explainer.fit(activations[split])
+        concept_explainer.fit(activations)

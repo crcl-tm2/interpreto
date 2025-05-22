@@ -48,12 +48,15 @@ def test_stability_values():
         ConceptMatchingAlgorithm.COSINE_MAXIMUM,
     ]:
         try:
+            # Stability of two identical matrices should be really close to 1
             stability_identical = Stability(range_up, range_up, matching_algorithm=algo).compute()
             assert abs(stability_identical - 1.0) < eps
 
+            # Stability should be between 0 and 1
             stability_different = Stability(range_up, range_down_T, matching_algorithm=algo).compute()
             assert 0 < stability_different < 1.0
 
+            # Stability of orthogonal matrices should be really close to 0
             eye = torch.eye(50)
             stability_orthogonal = Stability(eye[:25], eye[25:], matching_algorithm=algo).compute()
             assert stability_orthogonal < eps
@@ -78,12 +81,15 @@ def test_dictionary_metrics_with_dict_and_ce(splitted_encoder_ml: ModelWithSplit
     concept_explainer2.get_dictionary = lambda: rand2
 
     for metric in [Stability]:
-        try:  # TODO: add back
+        try:
+            # Creating metrics with either matrices or explainers
             score_dd = metric(rand1, rand2).compute()
             score_cece = metric(concept_explainer1, concept_explainer2).compute()
             score_ced = metric(concept_explainer1, rand2).compute()
             score_dce = metric(rand1, concept_explainer2).compute()
             score_all = metric(concept_explainer1, concept_explainer2, rand1, rand2).compute()
+            # Calculating the distance between two matrices must be equivalent to calculating the distance between two explainers created from these matrices.
+            # Similarly when matrices and explainers are mixed.
             assert score_cece == score_dd
             assert score_ced == score_dd
             assert score_dce == score_dd
