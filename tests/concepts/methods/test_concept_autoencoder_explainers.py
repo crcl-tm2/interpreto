@@ -73,21 +73,24 @@ ALL_CONCEPT_METHODS = [
 ]
 
 
-def test_cbe_fit_failure_cases(splitted_encoder_ml: ModelWithSplitPoints):
+def test_cbe_fit_failure_cases():
     """Test failure cases in matching the CBE with a ModelWithSplitPoints"""
-    initial_split_points = splitted_encoder_ml.split_points
-    splitted_encoder_ml.split_points = [
+
+    split_points = [
         "cls.predictions.transform.LayerNorm",
         "bert.encoder.layer.1",
         "bert.encoder.layer.3.attention.self.query",
     ]
 
+    multi_split_model = ModelWithSplitPoints(
+        "huawei-noah/TinyBERT_General_4L_312D",
+        split_points=split_points,  # type: ignore
+        model_autoclass=AutoModelForMaskedLM,  # type: ignore
+    )
+
     # Raise when no split is provided and the model has more than one split
     with pytest.raises(ValueError, match="If the model has more than one split point"):
-        _ = Cockatiel(splitted_encoder_ml, nb_concepts=3)
-
-    # Restore initial split points
-    splitted_encoder_ml.split_points = initial_split_points  # type: ignore
+        _ = Cockatiel(multi_split_model, nb_concepts=3)
 
 
 @pytest.mark.parametrize("method_class", ALL_CONCEPT_METHODS)
