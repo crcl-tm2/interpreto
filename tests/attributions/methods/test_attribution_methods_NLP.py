@@ -22,7 +22,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from itertools import product
 
 import pytest
 import torch
@@ -62,21 +61,22 @@ attribution_method_kwargs = {
 }
 
 
-model_loader_combinations = [
-    ("hf-internal-testing/tiny-xlm-roberta", AutoModelForSequenceClassification),
-    ("hf-internal-testing/tiny-random-DebertaV2Model", AutoModelForSequenceClassification),
-    ("hf-internal-testing/tiny-random-DistilBertModel", AutoModelForSequenceClassification),
+model_loader_combinations = {
+    "hf-internal-testing/tiny-xlm-roberta": AutoModelForSequenceClassification,
+    "hf-internal-testing/tiny-random-DebertaV2Model": AutoModelForSequenceClassification,
+    "hf-internal-testing/tiny-random-DistilBertModel": AutoModelForSequenceClassification,
     # ("textattack/bert-base-uncased-imdb", AutoModelForSequenceClassification),
     # ("gpt2", AutoModelForCausalLM),
-]
+}
 
-all_combinations = list(product(model_loader_combinations, attribution_method_kwargs.keys()))
+# all_combinations = list(product(model_loader_combinations, attribution_method_kwargs.keys()))
 
 
-@pytest.mark.parametrize("model_name_loader, attribution_explainer", all_combinations)
-def test_attribution_methods_with_text(model_name_loader, attribution_explainer):
+@pytest.mark.parametrize("model_name", model_loader_combinations.keys())
+@pytest.mark.parametrize("attribution_explainer", attribution_method_kwargs.keys())
+def test_attribution_methods_with_text(model_name, attribution_explainer):
     """Tests all combinations of models and loaders with an attribution method"""
-    model_name, model_loader = model_name_loader
+    model_loader = model_loader_combinations[model_name]
 
     model = model_loader.from_pretrained(model_name).to(DEVICE)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -160,3 +160,8 @@ def test_attribution_methods_with_text(model_name_loader, attribution_explainer)
             pytest.fail(
                 f"The test failed for input: '{input_text}', target: '{target}' and model: {model_name} with {model_loader} and method {attribution_explainer}: {str(e)}"
             )
+
+
+test_attribution_methods_with_text(
+    model_name="hf-internal-testing/tiny-random-DebertaV2Model", attribution_explainer=SmoothGrad
+)
