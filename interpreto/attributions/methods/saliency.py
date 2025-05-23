@@ -39,14 +39,13 @@ class Saliency(MultitaskExplainerMixin, AttributionExplainer):
             inference_mode (Callable[[torch.Tensor], torch.Tensor], optional): The mode used for inference.
                 It can be either one of LOGITS, SOFTMAX, or LOG_SOFTMAX. Use InferenceModes to choose the appropriate mode.
         """
-        perturbator = None
 
         super().__init__(
             model=model,
             tokenizer=tokenizer,
             batch_size=batch_size,
             device=device,
-            perturbator=perturbator,
+            perturbator=None,
             aggregator=None,
             inference_mode=inference_mode,
         )

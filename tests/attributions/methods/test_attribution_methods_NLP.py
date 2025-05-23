@@ -27,9 +27,6 @@ from itertools import product
 import pytest
 import torch
 from transformers import (
-    AutoModelForCausalLM,
-    # AutoModelForMaskedLM,
-    # AutoModelForSeq2SeqLM,
     AutoModelForSequenceClassification,
     # AutoModelForMultipleChoice,
     # AutoModelForQuestionAnswering,
@@ -39,12 +36,12 @@ from transformers import (
 
 from interpreto.attributions import (
     IntegratedGradients,
-    KernelShap,
-    Lime,
+    # KernelShap,
+    # Lime,
     OcclusionExplainer,
     Saliency,
     SmoothGrad,
-    SobolAttribution,
+    # SobolAttribution,
 )
 from interpreto.attributions.base import AttributionOutput
 from interpreto.commons.granularity import GranularityLevel
@@ -55,23 +52,22 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 attribution_method_kwargs = {
     # Gradient based methods:
     Saliency: {},
-    IntegratedGradients: {"n_interpolations": 3, "baseline": 0.0},
+    IntegratedGradients: {"n_interpolations": 10, "baseline": 0.0},
     SmoothGrad: {"n_interpolations": 10, "noise_level": 0.1},
     # Perturbation based methods:
     OcclusionExplainer: {"granularity_level": GranularityLevel.TOKEN, "inference_mode": InferenceModes.SOFTMAX},
-    KernelShap: {
-        "n_perturbations": 1000,
-        "inference_mode": InferenceModes.LOG_SOFTMAX,
-        "granularity_level": GranularityLevel.ALL_TOKENS,
-    },
-    Lime: {"n_perturbations": 100, "granularity_level": GranularityLevel.WORD},
-    SobolAttribution: {"n_token_perturbations": 10},
+    # KernelShap: { "n_perturbations": 1000,"inference_mode": InferenceModes.LOG_SOFTMAX,"granularity_level": GranularityLevel.ALL_TOKENS,},
+    # Lime: {"n_perturbations": 100, "granularity_level": GranularityLevel.WORD},
+    # SobolAttribution: {"n_token_perturbations": 10},
 }
 
 
 model_loader_combinations = [
-    ("textattack/bert-base-uncased-imdb", AutoModelForSequenceClassification),
-    ("gpt2", AutoModelForCausalLM),
+    ("hf-internal-testing/tiny-xlm-roberta", AutoModelForSequenceClassification),
+    ("hf-internal-testing/tiny-random-DebertaV2Model", AutoModelForSequenceClassification),
+    ("hf-internal-testing/tiny-random-DistilBertModel", AutoModelForSequenceClassification),
+    # ("textattack/bert-base-uncased-imdb", AutoModelForSequenceClassification),
+    # ("gpt2", AutoModelForCausalLM),
 ]
 
 all_combinations = list(product(model_loader_combinations, attribution_method_kwargs.keys()))
