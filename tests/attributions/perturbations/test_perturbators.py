@@ -75,17 +75,19 @@ def test_embeddings_perturbators(perturbator_class, sentences, model, tokenizer)
 
         assert isinstance(perturbed_inputs, MutableMapping)
 
-        assert "attention_mask" in perturbed_inputs.keys()
-        assert "offset_mapping" in perturbed_inputs.keys()
-        assert isinstance(perturbed_inputs["attention_mask"], torch.Tensor)
-        assert isinstance(perturbed_inputs["offset_mapping"], torch.Tensor)
-
         # inputs are embedded before perturbation
         assert "inputs_embeds" in perturbed_inputs.keys()
         assert isinstance(perturbed_inputs["inputs_embeds"], torch.Tensor)
         assert perturbed_inputs["inputs_embeds"].shape == (p, l, d)
 
+        assert "attention_mask" in perturbed_inputs.keys()
+        assert isinstance(perturbed_inputs["attention_mask"], torch.Tensor)
+        assert perturbed_inputs["attention_mask"].shape == (p, l)
         assert torch.all(torch.isclose(perturbed_inputs["offset_mapping"], elem["offset_mapping"], atol=1e-5))
+
+        assert "offset_mapping" in perturbed_inputs.keys()
+        assert isinstance(perturbed_inputs["offset_mapping"], torch.Tensor)
+        assert perturbed_inputs["offset_mapping"].shape == (p, l, 2)
         assert torch.all(torch.isclose(perturbed_inputs["attention_mask"], elem["attention_mask"], atol=1e-5))
 
 
@@ -128,26 +130,31 @@ def test_token_perturbators(perturbator_class, sentences, model, tokenizer):
 
         assert isinstance(perturbed_inputs, MutableMapping)
 
-        assert "attention_mask" in perturbed_inputs.keys()
-        assert "offset_mapping" in perturbed_inputs.keys()
-        assert isinstance(perturbed_inputs["attention_mask"], torch.Tensor)
-        assert isinstance(perturbed_inputs["offset_mapping"], torch.Tensor)
-
         # inputs should not have been embedded
         assert "input_ids" in perturbed_inputs.keys()
         assert isinstance(perturbed_inputs["input_ids"], torch.Tensor)
         if isinstance(perturbator, OcclusionPerturbator):
-            assert perturbed_inputs["input_ids"].shape == (l + 1, l)
+            real_p = l + 1
         elif isinstance(perturbator, SobolTokenPerturbator):
             k = 30  # default value
-            assert perturbed_inputs["input_ids"].shape == ((l + 1) * k, l)
+            real_p = (l + 1) * k
         else:
-            assert perturbed_inputs["input_ids"].shape == (p, l)
+            real_p = p
+
+        assert perturbed_inputs["input_ids"].shape == (real_p, l)
+
         assert isinstance(masks, torch.Tensor)
         assert masks.shape[0] == perturbed_inputs["input_ids"].shape[0]
 
-        assert torch.all(torch.isclose(perturbed_inputs["offset_mapping"], elem["offset_mapping"], atol=1e-5))
+        assert "attention_mask" in perturbed_inputs.keys()
+        assert isinstance(perturbed_inputs["attention_mask"], torch.Tensor)
         assert torch.all(torch.isclose(perturbed_inputs["attention_mask"], elem["attention_mask"], atol=1e-5))
+        assert perturbed_inputs["attention_mask"].shape == (real_p, l)
+
+        assert "offset_mapping" in perturbed_inputs.keys()
+        assert isinstance(perturbed_inputs["offset_mapping"], torch.Tensor)
+        assert torch.all(torch.isclose(perturbed_inputs["offset_mapping"], elem["offset_mapping"], atol=1e-5))
+        assert perturbed_inputs["offset_mapping"].shape == (real_p, l, 2)
 
 
 # TODO: test apply mask
