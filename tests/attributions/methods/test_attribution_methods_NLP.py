@@ -173,8 +173,3 @@ def test_attribution_methods_with_text(model_name, attribution_explainer):
         assert all(
             len(attribution.elements) == (attribution.attributions).shape[-1] for attribution in attributions
         ), "In the AttributionOutput class, elements and attributions must have the same length."
-
-
-model_name = "hf-internal-testing/tiny-random-DebertaV2Model"
-
-test_attribution_methods_with_text(model_name=model_name, attribution_explainer=KernelShap)

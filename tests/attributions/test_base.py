@@ -137,11 +137,3 @@ def test_process_inputs_to_explain_and_targets(model, tokenizer):
     targets = [0, 1]
     processed_inputs, processed_targets = explainer.process_inputs_to_explain_and_targets(model_inputs_masked, targets)
     assert all("special_tokens_mask" in mi for mi in processed_inputs)
-
-
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
-
-test_process_inputs_to_explain_and_targets(
-    model=AutoModelForSequenceClassification.from_pretrained("huawei-noah/TinyBERT_General_4L_312D"),
-    tokenizer=AutoTokenizer.from_pretrained("huawei-noah/TinyBERT_General_4L_312D"),
-)
