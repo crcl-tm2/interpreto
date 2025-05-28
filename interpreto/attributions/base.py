@@ -436,8 +436,14 @@ class GenerationAttributionExplainer(AttributionExplainer):
             return [self.tokenizer(targets, return_tensors="pt")["input_ids"]]  # type: ignore
         if isinstance(targets, MutableMapping):  # TensorMapping cannot be used in isinstance
             targets = targets["input_ids"]
+            if targets.dim() == 1:
+                return list(
+                    targets.unsqueeze(0)
+                )  # If there's only one sentence in the mapping, we standardize by giving it a first batch dimension of 1
             if targets.shape[0] > 1:
-                return list(targets.split(1, dim=0))
+                return list(
+                    targets.split(1, dim=0)
+                )  # If the batch dimension n is greater than 1, we cut the batch into a list of size n with mappings having a batch of 1.
             return [targets]
         if isinstance(targets, torch.Tensor):
             return [targets]
