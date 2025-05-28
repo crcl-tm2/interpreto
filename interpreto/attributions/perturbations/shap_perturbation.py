@@ -91,9 +91,13 @@ class ShapTokenPerturbator(TokenMaskBasedPerturbator):
         # Simplify typing
         p, l = self.n_perturbations, mask_dim
 
+        if l == 1:
+            return (torch.rand(p, l, dtype=torch.float) < 0.5).float()
+
         # Generate a random number of selected features k for each perturbation
         possible_k: Float[Tensor, f"{l - 1}"] = torch.arange(1, l, dtype=torch.float)
-        probability_to_select_k_elements: Float[Tensor, f"{l - 1}"] = (l - 1) / (possible_k * (l - possible_k))
+        # initially: (l - 1) / (possible_k * (l - possible_k)), but it gave a weird distribution
+        probability_to_select_k_elements: Float[Tensor, f"{l - 1}"] = (possible_k * (l - possible_k)) / (l * (l - 1))
         probability_to_select_k_elements: Float[Tensor, f"{l}"] = torch.cat(
             [torch.zeros(1), probability_to_select_k_elements]
         )
@@ -104,7 +108,6 @@ class ShapTokenPerturbator(TokenMaskBasedPerturbator):
         thresholds: Float[Tensor, f"{p}"] = torch.stack(
             [torch.kthvalue(rand_values[i], int(k[i]) + 1, dim=0).values for i in range(p)]
         )
-
         mask: Float[Tensor, "{p} {l}"] = (rand_values < thresholds.unsqueeze(1)).float()
 
         return mask
