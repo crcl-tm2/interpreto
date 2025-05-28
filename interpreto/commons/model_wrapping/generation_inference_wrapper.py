@@ -47,7 +47,7 @@ class GenerationInferenceWrapper(InferenceWrapper):
 
         Parameters:
             model_inputs: The model inputs. Can be a single MutableMapping or an Iterable
-                of MutableMappings. Each MutableMapping should contain at least "input_ids" or "input_embeds" and "attention_mask"
+                of MutableMappings. Each MutableMapping should contain at least "input_ids" or "inputs_embeds" and "attention_mask"
                 (as expected by Hugging Face models), representing one or multiple sequences.
             **generation_kwargs: Optional keyword arguments passed directly to `model.generate()`.
                 These control the decoding strategy and can include:

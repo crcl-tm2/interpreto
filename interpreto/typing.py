@@ -32,7 +32,7 @@ from collections.abc import Iterable, MutableMapping
 from typing import Generic, Protocol, TypeVar, runtime_checkable
 
 import torch
-from jaxtyping import Float
+from jaxtyping import Float, Int
 
 TokenEmbedding = Float[torch.Tensor, "n ..."]
 LatentActivations = Float[torch.Tensor, "n ..."]
@@ -60,7 +60,9 @@ TensorMappingWithWordIds = HasWordIds[TensorMapping]
 # Maybe consider NestedIterable rather that just iterable for model inputs ?
 ModelInputs = str | TensorMapping | Iterable[str] | Iterable[TensorMapping]
 GeneratedTarget = str | TensorMapping | torch.Tensor | Iterable[str | TensorMapping | torch.Tensor]
-ClassificationTarget = int | torch.Tensor | Iterable[int | torch.Tensor]
+ClassificationTarget = (
+    int | Int[torch.Tensor, "n"] | Int[torch.Tensor, "n t"] | Iterable[int] | Iterable[Int[torch.Tensor, "t"]]
+)
 TensorBaseline = torch.Tensor | float | int | None
 
 
@@ -80,3 +82,13 @@ class ConceptModelProtocol(Protocol):
     def encode(self, x):
         """Encode the given activations using the concept model."""
         ...
+
+
+class IncompatibilityError(TypeError):
+    def __init__(self):
+        message = (
+            "Gradient-based methods require the model to be able to take inputs_embeds as input."
+            + " However, it seems that the model does not support this feature."
+            + " Please check that your model is compatible with the inputs_embeds parameter."
+        )
+        super().__init__(message)

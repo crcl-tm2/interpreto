@@ -44,7 +44,7 @@ import torch.nn.functional as F
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import BaseModelOutput
 
-from interpreto.typing import ModelInputs, TensorMapping
+from interpreto.typing import IncompatibilityError, ModelInputs, TensorMapping
 
 
 class InferenceModes(Enum):
@@ -221,13 +221,19 @@ class InferenceWrapper(ABC):
         # If neither input ids nor input embeds are present, raise an error
         raise ValueError("model_inputs should contain either 'input_ids' or 'inputs_embeds'")
 
-    def call_model(self, input_embeds: torch.Tensor, attention_mask: torch.Tensor | None) -> BaseModelOutput:
+    def call_model(
+        self,
+        input_ids: torch.Tensor | None = None,
+        inputs_embeds: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+    ) -> BaseModelOutput:
         """
         Perform a call to the wrapped model with the given input embeddings and attention mask.
 
         Args:
-            input_embeds (torch.Tensor): embedded inputs
-            attention_mask (torch.Tensor): attention mask
+            input_ids (torch.Tensor | None): input ids to be passed to the model.
+            inputs_embeds (torch.Tensor | None): input embeddings to be passed to the model.
+            attention_mask (torch.Tensor | None): attention mask to be passed to the model.
 
         Returns:
             ModelOutput: The output of the model.
@@ -235,18 +241,39 @@ class InferenceWrapper(ABC):
         Note:
             If the batch size of the input embeddings exceeds the wrapper's batch size, a warning is issued.
         """
-        # Check that batch size of input_embeds is not greater than the wrapper's batch size
-        if input_embeds.shape[0] > self.batch_size:
-            warnings.warn(
-                f"Batch size of {input_embeds.shape[0]} is greater than the wrapper's batch size of {self.batch_size}. "
+        if inputs_embeds is None and input_ids is None:
+            raise ValueError("Either inputs_embeds or input_ids must be provided.")
+
+        # Check that batch size of inputs_embeds is not greater than the wrapper's batch size
+        if input_ids is not None and input_ids.shape[0] > self.batch_size:
+            warnings.warn(  # TODO: find the problem, it seems that there is no batching implemented
+                f"Batch size of {input_ids.shape[0]} is greater than the wrapper's batch size of {self.batch_size}. "
                 f"Consider adjust the batch size or the wrapper of split your data.",
                 stacklevel=1,
             )
+        if inputs_embeds is not None and inputs_embeds.shape[0] > self.batch_size:
+            warnings.warn(
+                f"Batch size of {inputs_embeds.shape[0]} is greater than the wrapper's batch size of {self.batch_size}. "
+                f"Consider adjust the batch size or the wrapper of split your data.",
+                stacklevel=1,
+            )
+
         # send input to device
+        if input_ids is not None:
+            input_ids = input_ids.to(self.device)
+        if inputs_embeds is not None:
+            inputs_embeds = inputs_embeds.to(self.device)
         if attention_mask is not None:
             attention_mask = attention_mask.to(self.device)
+
         # Call wrapped model
-        return self.model(inputs_embeds=input_embeds.to(self.device), attention_mask=attention_mask)
+        if inputs_embeds is not None:
+            try:
+                return self.model(inputs_embeds=inputs_embeds, attention_mask=attention_mask)
+            except NotImplementedError as e:
+                raise IncompatibilityError from e
+
+        return self.model(input_ids=input_ids, attention_mask=attention_mask)
 
     @overload
     def get_logits(self, model_inputs: TensorMapping) -> torch.Tensor: ...
@@ -306,32 +333,35 @@ class InferenceWrapper(ABC):
             torch.Tensor: logits associated to the input mapping.
         """
         # if embeddings has not been calculated yet, embed the inputs
-        model_inputs = self.embed(model_inputs)
+        # model_inputs = self.embed(model_inputs)  # TODO: add back if needed for gradient-based methods
+        inputs_key = "input_ids" if "input_ids" in model_inputs.keys() else "inputs_embeds"
         # depending on the number of dimensions of the input
-        match model_inputs["inputs_embeds"].dim():
+        match model_inputs[inputs_key].dim():
             case 2:  # (sequence_length, embedding_size)
-                return self.call_model(**model_inputs).logits  # type: ignore
+                return self.call_model(
+                    **{inputs_key: model_inputs[inputs_key], "attention_mask": model_inputs["attention_mask"]}
+                ).logits  # type: ignore
             case 3:  # (batch_size, sequence_length, embedding_size)
                 # If a batch dimension is given, split the inputs into chunks of batch_size
-                embeds_chunks = model_inputs["inputs_embeds"].split(self.batch_size)
+                inputs_chunks = model_inputs[inputs_key].split(self.batch_size)
                 mask_chunks = model_inputs["attention_mask"].split(self.batch_size)
 
                 # call the model on each chunk and concatenate the results
                 return torch.cat(
                     [
-                        self.call_model(embeds_chunk, mask_chunk).logits  # type: ignore
-                        for embeds_chunk, mask_chunk in zip(embeds_chunks, mask_chunks, strict=False)
+                        self.call_model(**{inputs_key: inputs_chunk, "attention_mask": mask_chunk}).logits  # type: ignore
+                        for inputs_chunk, mask_chunk in zip(inputs_chunks, mask_chunks, strict=False)
                     ],
                 )
             case _:  # (..., sequence_length, embedding_size) e.g. (batch_size, n_perturbations, sequence_length, embedding_size)
                 # flatten the first dimension to a single batch dimension
                 # then call the model on the flattened inputs and reshape the result to the original batch structure
                 flat_model_inputs = {
-                    "inputs_embeds": model_inputs["inputs_embeds"].flatten(0, -3),
+                    inputs_key: model_inputs[inputs_key].flatten(0, -3),
                     "attention_mask": model_inputs["attention_mask"].flatten(0, -2),
                 }
                 prediction = self._get_logits_from_mapping(flat_model_inputs)
-                return prediction.view(*model_inputs["inputs_embeds"].shape[:-2], -1)
+                return prediction.view(*model_inputs[inputs_key].shape[:-2], -1)
 
     @get_logits.register(Iterable)  # type: ignore
     def _get_logits_from_iterable(self, model_inputs: Iterable[TensorMapping]) -> Generator[torch.Tensor, None, None]:
@@ -402,7 +432,7 @@ class InferenceWrapper(ABC):
     #         # check if the batch of inputs is large enough to be processed (or if the last item is reached)
     #         if batch is not None and (last_item or len(batch) == self.batch_size):
     #             # Call the model
-    #             logits = self.call_model(batch, batch_mask).logits
+    #             logits = self.call_model(batch, batch_mask).logits  # line not up to date
     #             # Concatenate the results to the output buffer
 
     #             ##################### FIXME #####################
