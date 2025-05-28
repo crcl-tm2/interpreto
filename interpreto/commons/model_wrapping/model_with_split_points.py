@@ -217,7 +217,7 @@ class ModelWithSplitPoints(LanguageModel):
         | ActivationSelectionStrategy = ActivationSelectionStrategy.FLATTEN,  # TODO: discuss the default behavior, but if methods require flatten it should be the default
         select_indices: int | list[int] | tuple[int] | None = None,
         **kwargs,
-    ) -> InterventionProxy:
+    ) -> InterventionProxy:  # TODO: change to `dict[str, LatentActivations]` and test if it works well
         """Get intermediate activations for all model split points
 
         Args:
@@ -260,6 +260,8 @@ class ModelWithSplitPoints(LanguageModel):
                 # Early stopping at the last splitting layer
                 if idx == len(self.split_points) - 1:
                     getattr(curr_module, module_out_name).stop()
+
+        print(activations.keys())
 
         # Validate that activations have the expected type
         for layer, act in activations.items():

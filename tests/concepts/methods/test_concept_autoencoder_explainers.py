@@ -35,6 +35,7 @@ from interpreto.commons.model_wrapping.model_with_split_points import ModelWithS
 from interpreto.concepts import (
     BatchTopKSAEConcepts,
     Cockatiel,
+    ConceptAutoEncoderExplainer,
     ConvexNMFConcepts,
     DictionaryLearningConcepts,
     ICAConcepts,
@@ -72,78 +73,69 @@ ALL_CONCEPT_METHODS = [
 ]
 
 
-def test_cbe_fit_failure_cases(splitted_encoder_ml: ModelWithSplitPoints):
+def test_cbe_fit_failure_cases(multi_split_model: ModelWithSplitPoints):
     """Test failure cases in matching the CBE with a ModelWithSplitPoints"""
-    splitted_encoder_ml.split_points = [
-        "cls.predictions.transform.LayerNorm",
-        "bert.encoder.layer.1",
-        "bert.encoder.layer.3.attention.self.query",
-    ]
 
     # Raise when no split is provided and the model has more than one split
     with pytest.raises(ValueError, match="If the model has more than one split point"):
-        cbe = Cockatiel(splitted_encoder_ml, nb_concepts=3)
-        assert not cbe.is_fitted
+        _ = Cockatiel(multi_split_model, nb_concepts=3)
 
 
-@pytest.mark.slow
-def test_overcomplete_cbe(splitted_encoder_ml: ModelWithSplitPoints):
+@pytest.mark.parametrize("method_class", ALL_CONCEPT_METHODS)
+def test_overcomplete_cbe(
+    splitted_encoder_ml: ModelWithSplitPoints,
+    activations_dict: dict[str, torch.Tensor],
+    method_class: type[ConceptAutoEncoderExplainer],
+):
     """Test SAEExplainer and DictionaryLearningExplainer"""
-
-    latent_size = 312
-    txt = ["Hello, my dog is cute", "The cat is on the [MASK]"]
-    split = "bert.encoder.layer.1.output"
+    split, activations = next(iter(activations_dict.items()))  # dictionary with only one element
+    n = activations.shape[0]
+    d = activations.shape[1]
     nb_concepts = 3
-    splitted_encoder_ml.split_points = split
-    activations = splitted_encoder_ml.get_activations(txt, select_strategy="flatten")
-    assert activations[split].shape == (16, latent_size)
 
     # iterate over all methods from the namedtuple listing them
-    for method_class in ALL_CONCEPT_METHODS:
-        if method_class == NeuronsAsConcepts:
-            cbe = method_class(splitted_encoder_ml, split_point=split)
-        elif method_class in [Cockatiel, NMFConcepts]:
-            cbe = method_class(
-                splitted_encoder_ml,
-                nb_concepts=nb_concepts,
-                device=DEVICE,
-                force_relu=True,
-            )
-            cbe.fit(activations)
-        elif issubclass(method_class, SAEExplainer):
-            cbe = method_class(splitted_encoder_ml, nb_concepts=nb_concepts, device=DEVICE)
-            cbe.fit(activations, nb_epochs=1, batch_size=1, device=DEVICE)
-        elif issubclass(method_class, DictionaryLearningExplainer):
-            cbe = method_class(
-                splitted_encoder_ml,
-                nb_concepts=nb_concepts,
-                device=DEVICE,
-            )
-            cbe.fit(activations)
-        else:
-            raise ValueError(f"Unknown method_class {method_class}")
-        try:
-            assert hasattr(cbe, "concept_model")
-            assert hasattr(cbe.concept_model, "nb_concepts")
-            assert hasattr(cbe, "model_with_split_points")
-            assert cbe.concept_model.fitted
-            assert cbe.is_fitted
-            assert cbe.split_point == split
-            assert hasattr(cbe, "has_differentiable_concept_encoder")
-            assert hasattr(cbe, "has_differentiable_concept_decoder")
+    if method_class == NeuronsAsConcepts:
+        cbe = method_class(splitted_encoder_ml)  # type: ignore
+    elif method_class in [Cockatiel, NMFConcepts]:
+        cbe = method_class(
+            splitted_encoder_ml,
+            nb_concepts=nb_concepts,  # type: ignore
+            device=DEVICE,  # type: ignore
+            force_relu=True,  # type: ignore
+        )  # type: ignore
+        cbe.fit(activations)
+    elif issubclass(method_class, SAEExplainer):
+        cbe = method_class(splitted_encoder_ml, nb_concepts=nb_concepts, device=DEVICE)
+        cbe.fit(activations, nb_epochs=1, batch_size=1, device=DEVICE)
+    elif issubclass(method_class, DictionaryLearningExplainer):
+        cbe = method_class(
+            splitted_encoder_ml,
+            nb_concepts=nb_concepts,
+            device=DEVICE,
+        )
+        cbe.fit(activations)
+    else:
+        raise ValueError(f"Unknown method_class {method_class}")
 
-            concepts = cbe.encode_activations(activations[cbe.split_point])
-            reconstructed_activations = cbe.decode_concepts(concepts)
-            assert reconstructed_activations.shape == (16, latent_size)
+    assert hasattr(cbe, "concept_model")
+    assert hasattr(cbe.concept_model, "nb_concepts")
+    assert hasattr(cbe, "model_with_split_points")
+    assert cbe.concept_model.fitted
+    assert cbe.is_fitted
+    assert cbe.split_point == split
+    assert hasattr(cbe, "has_differentiable_concept_encoder")
+    assert hasattr(cbe, "has_differentiable_concept_decoder")
 
-            dictionary = cbe.get_dictionary()
-            if method_class == NeuronsAsConcepts:
-                assert cbe.concept_model.nb_concepts == latent_size
-                assert concepts.shape == (16, latent_size)
-                assert torch.allclose(dictionary, torch.eye(latent_size))
-            else:
-                assert cbe.concept_model.nb_concepts == nb_concepts
-                assert concepts.shape == (16, nb_concepts)
-                assert dictionary.shape == (nb_concepts, latent_size)
-        except Exception as e:
-            raise AssertionError(f"Error with {method_class}") from e
+    concepts = cbe.encode_activations(activations)
+    reconstructed_activations = cbe.decode_concepts(concepts)
+    assert reconstructed_activations.shape == (n, d)
+
+    dictionary = cbe.get_dictionary()
+    if method_class == NeuronsAsConcepts:
+        assert cbe.concept_model.nb_concepts == d
+        assert concepts.shape == (n, d)
+        assert torch.allclose(dictionary, torch.eye(d))
+    else:
+        assert cbe.concept_model.nb_concepts == nb_concepts
+        assert concepts.shape == (n, nb_concepts)
+        assert dictionary.shape == (nb_concepts, d)

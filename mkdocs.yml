@@ -13,16 +13,22 @@ nav:
   - API Reference:
     - Model Wrapping: api/commons/model_wrapping.md
     - Concept Explainers:
-      - Interpretations:
+      - Overview: api/concepts/overview.md
+      - Methods:
+        - Base Classes: api/concepts/methods/base.md
+        - Cockatiel: api/concepts/methods/cockatiel.md
+        - Neurons as Concepts: api/concepts/methods/neurons_as_concepts.md
+        - Optimization Methods: api/concepts/methods/optim.md
+        - SAEs (Sparse AutoEncoders): api/concepts/methods/sae.md
+      - Concept Interpretations:
         - Overview: api/concepts/interpretations/overview.md
         - Base Classes: api/concepts/interpretations/base.md
         - TopKInputs: api/concepts/interpretations/topk_inputs.md
-      - Overview: api/concepts/overview.md
-      - Base Classes: api/concepts/base.md
-      - Cockatiel: api/concepts/cockatiel.md
-      - Neurons as Concepts: api/concepts/neurons_as_concepts.md
-      - Optimization Methods: api/concepts/optim.md
-      - SAEs (Sparse AutoEncoders): api/concepts/sae.md
+      - Metrics:
+        - Overview: api/concepts/metrics/overview.md
+        - Dictionary Metrics: api/concepts/metrics/dictionary_metrics.md
+        - Reconstruction Metrics: api/concepts/metrics/reconstruction_metrics.md
+        - Sparsity: api/concepts/metrics/sparsity_metrics.md
     - Attribution Explainers:
       - Overview: api/attributions/overview.md
       - Methods: 
@@ -151,12 +157,12 @@ markdown_extensions:
   - def_list
 
 extra_css:
-  - css/custom.css
+  - assets/css/custom.css
 
 extra_javascript:
   - https://polyfill.io/v3/polyfill.min.js?features=es6
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
-  - js/custom.js
+  - assets/js/custom.js
 
 extra:
   social:

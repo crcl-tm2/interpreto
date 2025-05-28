@@ -117,13 +117,15 @@ class TopKInputs(BaseConceptInterpretationMethod):
         self,
         *,
         model_with_split_points: ModelWithSplitPoints,
-        split_point: str,
         concept_model: ConceptModelProtocol,
         granularity: Granularities,
         source: InterpretationSources,
+        split_point: str | None = None,
         k: int = 5,
     ):
-        super().__init__(model_with_split_points, split_point, concept_model)
+        super().__init__(
+            model_with_split_points=model_with_split_points, concept_model=concept_model, split_point=split_point
+        )
 
         if granularity is not Granularities.TOKENS:
             raise NotImplementedError("Only token granularity is currently supported for interpretation.")

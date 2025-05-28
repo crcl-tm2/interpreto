@@ -22,41 +22,42 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""
-Tests for `NeuronsAsConcepts` concept explainer
-"""
-
 from __future__ import annotations
 
-import pytest
 import torch
 
 from interpreto.commons.model_wrapping.model_with_split_points import ModelWithSplitPoints
 from interpreto.concepts import NeuronsAsConcepts
+from interpreto.concepts.metrics import Sparsity, SparsityRatio
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-def test_neurons_as_concepts(splitted_encoder_ml: ModelWithSplitPoints, activations_dict: dict[str, torch.Tensor]):
+def test_sparsity(splitted_encoder_ml: ModelWithSplitPoints):
     """
-    Test that the concept encoding and decoding of the `NeuronsAsConcepts` is the identity
+    Test that the sparsity metric measures expected sparsity
     """
-    split, activations = next(iter(activations_dict.items()))  # dictionary with only one element
-    d = activations.shape[1]
+    torch.manual_seed(0)
+    eps = 1e-5
+    n = 50
+    d = 312
+    sparsity_ratio = 0.1  # should make an integer through 1 / sparsity_ratio
+    split = "bert.encoder.layer.1.output"
+    splitted_encoder_ml.split_points = split
 
     concept_explainer = NeuronsAsConcepts(model_with_split_points=splitted_encoder_ml, split_point=split)
+    activations = torch.arange(n * d, device=DEVICE).reshape(n, d)
+    sparse_activations = activations * (activations % (1 / sparsity_ratio) == 0).float()
 
-    assert concept_explainer.is_fitted is True  # splitted_model has a single split so it is fitted
-    assert concept_explainer.split_point == split
-    assert hasattr(concept_explainer, "has_differentiable_concept_encoder")
-    assert hasattr(concept_explainer, "has_differentiable_concept_decoder")
-    assert concept_explainer.concept_model.nb_concepts == d
+    # Ensure constructed activations are sparse
+    assert torch.norm(sparse_activations, p=0, dim=1).mean() - sparsity_ratio * d < eps
 
-    concepts = concept_explainer.encode_activations(activations)
-    reconstructed_activations = concept_explainer.decode_concepts(concepts)
+    # Compare computed sparsity with specified/constructed sparsity, it should be close
+    sparsity_metric = Sparsity(concept_explainer)
+    metric = sparsity_metric.compute(sparse_activations)
+    assert metric - sparsity_ratio * d < eps
 
-    assert torch.allclose(concepts, activations)  # type: ignore
-    assert torch.allclose(reconstructed_activations, activations)  # type: ignore
-
-    with pytest.raises(NotImplementedError):
-        concept_explainer.fit(activations)
+    # Compare computed sparsity with specified/constructed sparsity, it should be close
+    sparsity_ratio_metric = SparsityRatio(concept_explainer)
+    metric = sparsity_ratio_metric.compute(sparse_activations)
+    assert metric - sparsity_ratio < eps
