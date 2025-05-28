@@ -72,15 +72,8 @@ class OcclusionExplainer(MultitaskExplainerMixin, AttributionExplainer):
             inference_mode (Callable[[torch.Tensor], torch.Tensor], optional): The mode used for inference.
                 It can be either one of LOGITS, SOFTMAX, or LOG_SOFTMAX. Use InferenceModes to choose the appropriate mode.
             device (torch.device): device on which the attribution method will be run
-            replace_token_id (int): token id to use for replacing the occluded tokens
         """
-        if replace_token_id is None:
-            # TODO : move this in upper class (MaskingExplainer or something)
-            replace_token = "[REPLACE]"
-            if replace_token not in tokenizer.get_vocab():
-                tokenizer.add_tokens([replace_token])
-                model.resize_token_embeddings(len(tokenizer))
-            replace_token_id = tokenizer.convert_tokens_to_ids(replace_token)  # type: ignore
+        model, replace_token_id = self._set_tokenizer(model, tokenizer)
 
         super().__init__(
             model=model,
