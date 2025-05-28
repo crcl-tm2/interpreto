@@ -34,7 +34,8 @@ from collections.abc import Callable, Iterable, MutableMapping
 from typing import Any
 
 import torch
-from jaxtyping import Float
+from beartype import beartype
+from jaxtyping import Float, Int, jaxtyped
 from transformers import PreTrainedModel, PreTrainedTokenizer
 
 from interpreto.attributions.aggregations.base import Aggregator
@@ -143,7 +144,8 @@ class AttributionExplainer:
             inference_mode (Callable[[torch.Tensor], torch.Tensor], optional): The mode used for inference.
                 It can be either one of LOGITS, SOFTMAX, or LOG_SOFTMAX. Use InferenceModes to choose the appropriate mode.
         """
-        self.tokenizer = tokenizer
+        if not hasattr(self, "tokenizer"):
+            model, _ = self._set_tokenizer(model, tokenizer)
         self.inference_wrapper = self._associated_inference_wrapper(
             model, batch_size=batch_size, device=device, mode=inference_mode
         )  # type: ignore
@@ -151,12 +153,27 @@ class AttributionExplainer:
         self.perturbator.to(self.device)
         self.aggregator = aggregator or Aggregator()
         self.granularity_level = granularity_level
+        self.inference_wrapper.pad_token_id = self.tokenizer.pad_token_id
 
-        # TODO : check these line, eventually move them
-        # give pad token id to the inference wrapper
+    def _set_tokenizer(self, model, tokenizer) -> tuple[PreTrainedModel, int]:
+        self.tokenizer = tokenizer
+        # replace token for perturbations
+        replace_token = "[REPLACE]"
+        if replace_token not in tokenizer.get_vocab():
+            tokenizer.add_tokens([replace_token])
+
+        # add a pad token if it does not exist
         if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-        self.inference_wrapper.pad_token_id = self.tokenizer.pad_token_id  # type: ignore
+            self.tokenizer.add_special_tokens({"pad_token": "<pad>"})
+
+        # resize model with new tokens
+        model.resize_token_embeddings(len(self.tokenizer))
+
+        replace_token_id = self.tokenizer.convert_tokens_to_ids(replace_token)
+        if isinstance(replace_token_id, list):
+            replace_token_id = replace_token_id[0]
+
+        return model, replace_token_id
 
     def get_scores(
         self,
@@ -243,7 +260,7 @@ class AttributionExplainer:
         model_inputs: Iterable[TensorMapping],
         targets: torch.Tensor | Iterable[torch.Tensor] | None = None,
         **model_kwargs: Any,
-    ) -> tuple[Iterable[TensorMapping], Iterable[torch.Tensor]]:
+    ) -> tuple[Iterable[TensorMapping], Iterable[Float[torch.Tensor, "n t"]]]:
         """
         Processes the inputs and targets for explanation.
 
@@ -302,7 +319,7 @@ class AttributionExplainer:
         # Process the inputs and targets for explanation
         # If targets are not provided, create them from model_inputs_to_explain.
         model_inputs_to_explain: Iterable[TensorMapping]
-        sanitized_targets: Iterable[torch.Tensor]
+        sanitized_targets: Iterable[Float[torch.Tensor, "n t"]]
         model_inputs_to_explain, sanitized_targets = self.process_inputs_to_explain_and_targets(
             sanitized_model_inputs, targets, **model_kwargs
         )
@@ -367,30 +384,142 @@ class ClassificationAttributionExplainer(AttributionExplainer):
     """
 
     _associated_inference_wrapper = ClassificationInferenceWrapper
+    inference_wrapper: ClassificationInferenceWrapper
 
-    def process_targets(self, targets: ClassificationTarget, batch_size: int = 1) -> Iterable[torch.Tensor]:
+    def process_targets(
+        self, targets: ClassificationTarget, expected_length: int | None = None
+    ) -> Iterable[Int[torch.Tensor, "t"]]:
+        """
+        Normalize classification targets into a list of 1D integer tensors.
+
+        Parameters
+        ----------
+        targets : int | Int[torch.Tensor, "n"] | Int[torch.Tensor, "n t"] | Iterable[int] | Iterable[Int[torch.Tensor, "t"]]
+            The classification target(s). Supported formats include:
+            - A single integer: Interpreted as a single target.
+            - A 1D or 2D integer torch.Tensor:
+                * 1D tensors are treated as a sequence of individual targets.
+                * 2D tensors must have shape (n, t), where `n` is the number of targets.
+            - An iterable of integers: Each integer is treated as a separate target.
+            - An iterable of 1D integer torch.Tensors: Each tensor must be 1D and contain integers.
+
+        expected_length : int | None, optional
+            If specified, validates that the number of targets matches this expected length.
+
+        Returns
+        -------
+        Iterable[Int[torch.Tensor, "t"]]
+            A list of 1D integer tensors, one per input instance.
+
+        Raises
+        ------
+        ValueError
+            - If the number of targets does not match `expected_length`.
+        TypeError
+            - If the type of `targets` is unsupported.
+            - If tensor targets are not 1D or 2D.
+            - If tensor values are not integers.
+        """
+        # integer
         if isinstance(targets, int):
-            targets = torch.tensor([targets])
-        if isinstance(targets, torch.Tensor):
-            return targets.view(batch_size, 1, -1).split(1, dim=0)
-        if isinstance(targets, Iterable):
-            if all(isinstance(t, int) for t in targets):
-                return self.process_targets(torch.tensor(targets), batch_size)
-            return list(itertools.chain(*[self.process_targets(item, batch_size) for item in targets]))
+            if expected_length is not None and expected_length != 1:
+                raise ValueError(
+                    "Mismatch between the inputs and targets length."
+                    + f" Target is a single integer, but the length of the inputs is {expected_length}."
+                )
+            return [torch.tensor([targets])]
 
+        # tensor
+        if isinstance(targets, torch.Tensor):
+            if targets.ndim == 1:
+                # one dimensional tensors are treated as iterable of integer targets
+                targets = targets.unsqueeze(-1)
+            if expected_length is not None and expected_length != targets.shape[0]:
+                raise ValueError(
+                    "Mismatch between the inputs and targets length."
+                    + f" Target tensor of {targets.shape[0]} elements, but the length of the inputs is {expected_length}."
+                )
+            if targets.ndim != 2:  # actually verified by jaxtyping
+                raise TypeError(
+                    "Target tensor must be one-dimensional or two-dimensional."
+                    + f" Target tensor has {targets.ndim} dimensions."
+                )
+            if torch.is_floating_point(targets):  # actually verified by jaxtyping
+                raise TypeError("Target tensor must be integers.")
+            return targets.unbind(dim=0)
+
+        # iterable
+        if isinstance(targets, Iterable):
+            if expected_length is not None and len(targets) != expected_length:  # type: ignore
+                raise ValueError(
+                    "Mismatch between the inputs and targets length."
+                    + f" Target is an iterable of {len(targets)} elements, but the length of the inputs is {expected_length}."  # type: ignore
+                )
+
+            # iterable[int]
+            if all(isinstance(t, int) for t in targets):  # actually verified by jaxtyping
+                return [torch.tensor(target) for target in targets]
+
+            # iterable[torch.Tensor]
+            iterable_targets: Iterable[torch.Tensor] = targets  # type: ignore
+            if all(isinstance(t, torch.Tensor) for t in iterable_targets):  # actually verified by jaxtyping
+                if any(target.ndim != 1 for target in iterable_targets):
+                    raise TypeError("If the targets are iterable of tensors, the tensors must be one-dimensional.")
+                if any(torch.is_floating_point(target) for target in iterable_targets):
+                    raise TypeError("If the targets are iterable of tensors, they must be integers.")
+                return iterable_targets
+
+        raise TypeError(f"Target type {type(targets)} not supported.")
+
+    @jaxtyped(typechecker=beartype)
     def process_inputs_to_explain_and_targets(
         self,
         model_inputs: Iterable[TensorMapping],
         targets: ClassificationTarget | None = None,
         **model_kwargs: Any,
     ) -> tuple[Iterable[TensorMapping], Iterable[torch.Tensor]]:
-        logits = torch.stack(
-            [a.detach() for a in self.inference_wrapper.get_logits(clone_tensor_mapping(a) for a in model_inputs)]
-        )
+        """
+        Preprocesses model inputs and classification targets for explanation.
+
+        This method ensures that:
+        - If `targets` are not provided, they are computed by performing inference on `model_inputs` and selecting the predicted class using `argmax`.
+        - The `targets` are then validated and converted using `self.process_targets`, ensuring the same length as `model_inputs`.
+        - Each input mapping includes `special_tokens_mask` (and optionally `offset_mapping`) by decoding and re-tokenizing if necessary.
+
+        Parameters
+        ----------
+        model_inputs : Iterable[TensorMapping]
+            A batch of input mappings, typically containing tokenized inputs such as "input_ids", "attention_mask", etc.
+
+        targets : int | torch.Tensor | Iterable[int] | Iterable[torch.Tensor] | None, optional
+            Classification targets for each input. If None, targets are computed using model inference
+            by selecting the index with the highest logit value for each input.
+
+        **model_kwargs : Any
+            Additional keyword arguments passed to the model during inference, if targets are inferred.
+
+        Returns
+        -------
+        tuple[Iterable[TensorMapping], Iterable[torch.Tensor]]
+            - model_inputs_to_explain: List of tokenized input mappings with required explanation metadata (e.g., special tokens mask).
+            - sanitized_targets: List of 1D integer tensors, each corresponding to a target label for an input.
+
+        Raises
+        ------
+        ValueError
+            If the provided or inferred targets do not match the number of input instances, or if their format is invalid.
+        """
         if targets is None:
-            targets = logits.argmax(dim=-1)
-        # TODO : change call to process_target
-        sanitized_targets: Iterable[torch.Tensor] = self.process_targets(targets, logits.shape[0])
+            # logits = torch.stack(
+            #     [a.detach() for a in self.inference_wrapper.get_logits(clone_tensor_mapping(a) for a in model_inputs)]
+            # )
+            # targets = logits.argmax(dim=-1)
+            # compute targets from logits if not provided
+            sanitized_targets: Iterable[torch.Tensor] = self.inference_wrapper.get_targets(model_inputs)  # type: ignore
+        else:
+            # process targets and ensure they have the same length as inputs
+            expected_targets_length = len(model_inputs)  # type: ignore
+            sanitized_targets: Iterable[torch.Tensor] = self.process_targets(targets, expected_targets_length)  # type: ignore
 
         # add special tokens mask if not already present:
         model_inputs_to_explain = []
@@ -416,7 +545,8 @@ class GenerationAttributionExplainer(AttributionExplainer):
     _associated_inference_wrapper = GenerationInferenceWrapper
     inference_wrapper: GenerationInferenceWrapper
 
-    def process_targets(self, targets: GeneratedTarget) -> list[torch.Tensor]:
+    @jaxtyped(typechecker=beartype)
+    def process_targets(self, targets: GeneratedTarget, expected_length: int | None = None) -> list[torch.Tensor]:
         """
         Processes the target inputs for generative models into a standardized format.
 
@@ -453,8 +583,12 @@ class GenerationAttributionExplainer(AttributionExplainer):
             f"type {type(targets)} not supported for method process_targets in class {self.__class__.__name__}"
         )
 
+    @jaxtyped(typechecker=beartype)
     def process_inputs_to_explain_and_targets(
-        self, model_inputs: ModelInputs, targets: GeneratedTarget | None = None, **model_kwargs: dict[str, Any]
+        self,
+        model_inputs: Iterable[TensorMapping],
+        targets: GeneratedTarget | None = None,
+        **model_kwargs: dict[str, Any],
     ) -> tuple[Iterable[TensorMapping], Iterable[torch.Tensor]]:
         """
         Processes the inputs and targets for the generative model.
@@ -472,6 +606,7 @@ class GenerationAttributionExplainer(AttributionExplainer):
         Returns:
             tuple: A tuple containing a list of processed model inputs and a list of processed targets.
         """
+        # TODO: verify that inputs and targets have the same length
         sanitized_targets: list[torch.Tensor]
         if targets is None:
             model_inputs_to_explain_basic, sanitized_targets = (

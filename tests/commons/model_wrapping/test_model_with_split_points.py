@@ -39,31 +39,31 @@ BERT_SPLIT_POINTS_SORTED = [
 ]
 
 
-def test_order_split_points(splitted_encoder_ml: ModelWithSplitPoints):
+def test_order_split_points(multi_split_model: ModelWithSplitPoints):
     """
     Test the sort_paths method upon split assignment
     """
-    splitted_encoder_ml.split_points = BERT_SPLIT_POINTS  # type: ignore
+    multi_split_model.split_points = BERT_SPLIT_POINTS  # type: ignore
     # Assert the ordered split points match expected order
-    assert splitted_encoder_ml.split_points == BERT_SPLIT_POINTS_SORTED, (
+    assert multi_split_model.split_points == BERT_SPLIT_POINTS_SORTED, (
         f"Failed for split points: {BERT_SPLIT_POINTS}\n"
         f"Expected: {BERT_SPLIT_POINTS_SORTED}\n"
-        f"Got:      {splitted_encoder_ml.split_points}"
+        f"Got:      {multi_split_model.split_points}"
     )
 
 
-def test_activation_equivalence_batched_text_token_inputs(splitted_encoder_ml: ModelWithSplitPoints):
+def test_activation_equivalence_batched_text_token_inputs(multi_split_model: ModelWithSplitPoints):
     """
     Test the equivalence of activations for text and token inputs
     """
-    splitted_encoder_ml.split_points = BERT_SPLIT_POINTS  # type: ignore
+    multi_split_model.split_points = BERT_SPLIT_POINTS  # type: ignore
     inputs_str = ["Hello, my dog is cute", "The cat is on the [MASK]"]
-    inputs_ids = splitted_encoder_ml.tokenizer(inputs_str, return_tensors="pt").input_ids
-    inputs_tensor = splitted_encoder_ml.tokenizer(inputs_str, return_tensors="pt")
+    inputs_ids = multi_split_model.tokenizer(inputs_str, return_tensors="pt").input_ids
+    inputs_tensor = multi_split_model.tokenizer(inputs_str, return_tensors="pt")
 
-    activations_str = splitted_encoder_ml.get_activations(inputs_str)
-    activations_ids = splitted_encoder_ml.get_activations(inputs_ids)
-    activations_tensor = splitted_encoder_ml.get_activations(inputs_tensor)
+    activations_str = multi_split_model.get_activations(inputs_str)
+    activations_ids = multi_split_model.get_activations(inputs_ids)
+    activations_tensor = multi_split_model.get_activations(inputs_tensor)
 
     for k in activations_str.keys():
         assert torch.allclose(activations_str[k], activations_ids[k])  # type: ignore
@@ -72,13 +72,13 @@ def test_activation_equivalence_batched_text_token_inputs(splitted_encoder_ml: M
 
 # TODO: This test was removed because we do not currently handle splitting over layers that return
 # outputs that are not tensors.
-# def test_index_by_layer_idx(splitted_encoder_ml: ModelWithSplitPoints):
+# def test_index_by_layer_idx(multi_split_model: ModelWithSplitPoints):
 #    """Test indexing by layer idx"""
 #    split_points_with_layer_idx: list[str | int] = list(BERT_SPLIT_POINTS)
 #    split_points_with_layer_idx[1] = 1  # instead of bert.encoder.layer.1
-#    splitted_encoder_ml.split_points = split_points_with_layer_idx
-#    assert splitted_encoder_ml.split_points == BERT_SPLIT_POINTS_SORTED, (
+#    multi_split_model.split_points = split_points_with_layer_idx
+#    assert multi_split_model.split_points == BERT_SPLIT_POINTS_SORTED, (
 #        f"Failed for split_points: {BERT_SPLIT_POINTS}\n"
 #        f"Expected: {BERT_SPLIT_POINTS_SORTED}\n"
-#        f"Got:      {splitted_encoder_ml.split_points}"
+#        f"Got:      {multi_split_model.split_points}"
 #    )

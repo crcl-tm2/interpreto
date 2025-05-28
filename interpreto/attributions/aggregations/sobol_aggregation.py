@@ -25,7 +25,8 @@
 from __future__ import annotations
 
 import torch
-from jaxtyping import Float
+from beartype import beartype
+from jaxtyping import Float, jaxtyped
 
 from interpreto.attributions.aggregations.base import Aggregator
 
@@ -38,7 +39,8 @@ class SobolAggregator(Aggregator):
     def __init__(self, n_token_perturbations: int):
         self.n_token_perturbations = n_token_perturbations
 
-    def aggregate(self, results: Float[torch.Tensor, "p"], mask: torch.Tensor) -> Float[torch.Tensor, "l"]:  # noqa: UP037
+    @jaxtyped(typechecker=beartype)
+    def aggregate(self, results: Float[torch.Tensor, "p t"], mask: torch.Tensor) -> Float[torch.Tensor, "t l"]:  # noqa: UP037
         """
         Compute the Sobol indices from the model outputs perturbed inputs.
 
@@ -53,13 +55,14 @@ class SobolAggregator(Aggregator):
         # simplify typing
         k = self.n_token_perturbations
         l = (results.shape[0] // k) - 1
+        t = results.shape[1]
 
         # Compute token-wise variance on the initial mask
-        initial_results: Float[torch.Tensor, k] = results[:k]
-        initial_var: Float[torch.Tensor, 1] = torch.var(initial_results)
+        initial_results: Float[torch.Tensor, t, k] = results[:k].T
+        initial_var: Float[torch.Tensor, t, 1] = torch.var(initial_results, dim=1, keepdim=True)
 
         # Compute token-wise sobol attribution indices
-        token_results: Float[torch.Tensor, l, k] = results[k:].view(-1, k)
-        difference: Float[torch.Tensor, l, k] = token_results - initial_results.unsqueeze(1)
-        token_importance: Float[torch.Tensor, l] = torch.mean(difference**2, dim=1) / (initial_var + 1e-6)
+        token_results: Float[torch.Tensor, t, l, k] = results[k:].view(t, l, k)
+        difference: Float[torch.Tensor, t, l, k] = token_results - initial_results.unsqueeze(1)
+        token_importance: Float[torch.Tensor, t, l] = torch.mean(difference**2, dim=-1) / (initial_var + 1e-6)
         return token_importance

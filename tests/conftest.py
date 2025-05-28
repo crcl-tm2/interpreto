@@ -29,7 +29,8 @@ Common fixtures for all tests
 from pytest import fixture
 from transformers import AutoModelForMaskedLM, AutoModelForSequenceClassification, AutoTokenizer
 
-from interpreto.commons import ModelWithSplitPoints
+from interpreto.commons import ActivationSelectionStrategy, ModelWithSplitPoints
+from interpreto.typing import LatentActivations
 
 
 @fixture(scope="session")
@@ -45,12 +46,30 @@ def sentences():
 
 
 @fixture(scope="session")
+def multi_split_model() -> ModelWithSplitPoints:
+    return ModelWithSplitPoints(
+        "huawei-noah/TinyBERT_General_4L_312D",
+        split_points=[
+            "cls.predictions.transform.LayerNorm",
+            "bert.encoder.layer.1.output",
+            "bert.encoder.layer.3.attention.self.query",
+        ],
+        model_autoclass=AutoModelForMaskedLM,  # type: ignore
+    )
+
+
+@fixture(scope="session")
 def splitted_encoder_ml() -> ModelWithSplitPoints:
     return ModelWithSplitPoints(
         "huawei-noah/TinyBERT_General_4L_312D",
-        split_points=[],
+        split_points=["bert.encoder.layer.1.output"],
         model_autoclass=AutoModelForMaskedLM,  # type: ignore
     )
+
+
+@fixture(scope="session")
+def activations_dict(splitted_encoder_ml: ModelWithSplitPoints, sentences: list[str]) -> dict[str, LatentActivations]:
+    return splitted_encoder_ml.get_activations(sentences, select_strategy=ActivationSelectionStrategy.FLATTEN)  # type: ignore
 
 
 @fixture(scope="session")

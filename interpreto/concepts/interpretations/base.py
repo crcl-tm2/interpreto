@@ -48,13 +48,22 @@ class BaseConceptInterpretationMethod(ABC):
     def __init__(
         self,
         model_with_split_points: ModelWithSplitPoints,
-        split_point: str,
         concept_model: ConceptModelProtocol,
+        split_point: str | None = None,
     ):
         if not hasattr(concept_model, "encode"):
             raise TypeError(
                 f"Concept model should be able to encode activations into concepts. Got: {type(concept_model)}."
             )
+
+        if split_point is None:
+            if len(model_with_split_points.split_points) > 1:
+                raise ValueError(
+                    "If the model has more than one split point, a split point for fitting the concept model should "
+                    f"be specified. Got split point: '{split_point}' with model split points: "
+                    f"{', '.join(model_with_split_points.split_points)}."
+                )
+            split_point = model_with_split_points.split_points[0]
 
         if split_point not in model_with_split_points.split_points:
             raise ValueError(
