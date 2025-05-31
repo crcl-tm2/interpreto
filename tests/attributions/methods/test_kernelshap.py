@@ -24,7 +24,6 @@
 
 import pytest
 import torch
-from transformers import DistilBertForSequenceClassification, DistilBertTokenizerFast
 
 from interpreto.attributions import KernelShap
 from interpreto.attributions.aggregations.linear_regression_aggregation import (
@@ -45,14 +44,14 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         (GranularityLevel.WORD, 100),
     ],
 )
-def test_kernel_shap_init_and_mask(model, tokenizer, granularity, n_perturbations):
+def test_kernel_shap_init_and_mask(bert_model, bert_tokenizer, granularity, n_perturbations):
     torch.manual_seed(0)
     batch_size = 2
 
     # 2) init explainer
     explainer = KernelShap(
-        model=model,
-        tokenizer=tokenizer,
+        model=bert_model,
+        tokenizer=bert_tokenizer,
         batch_size=batch_size,
         granularity_level=granularity,
         n_perturbations=n_perturbations,
@@ -60,7 +59,7 @@ def test_kernel_shap_init_and_mask(model, tokenizer, granularity, n_perturbation
     )
 
     # 3) "[REPLACE]" token must have been added
-    assert "[REPLACE]" in tokenizer.get_vocab()
+    assert "[REPLACE]" in bert_tokenizer.get_vocab()
 
     # 4) perturbator is ShapTokenPerturbator with correct params
     assert isinstance(explainer.perturbator, ShapTokenPerturbator)
@@ -68,7 +67,7 @@ def test_kernel_shap_init_and_mask(model, tokenizer, granularity, n_perturbation
     assert pert.n_perturbations == n_perturbations
     assert pert.granularity_level == granularity
     # replace_token_id matches tokenizer
-    rid = tokenizer.convert_tokens_to_ids("[REPLACE]")
+    rid = bert_tokenizer.convert_tokens_to_ids("[REPLACE]")
     expected_id = rid if isinstance(rid, int) else rid[0]
     assert pert.replace_token_id == expected_id
 

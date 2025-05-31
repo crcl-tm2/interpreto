@@ -24,7 +24,6 @@
 
 import pytest
 import torch
-from transformers import DistilBertForSequenceClassification, DistilBertTokenizerFast
 
 from interpreto.attributions import Lime
 from interpreto.attributions.aggregations.linear_regression_aggregation import (
@@ -52,14 +51,14 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     ],
 )
 def test_lime_attribution_init_and_mask(
-    model, tokenizer, granularity, n_perturbations, perturb_probability, distance_function, kernel_width
+    bert_model, bert_tokenizer, granularity, n_perturbations, perturb_probability, distance_function, kernel_width
 ):
     torch.manual_seed(0)
     batch_size = 2
 
     explainer = Lime(
-        model=model,
-        tokenizer=tokenizer,
+        model=bert_model,
+        tokenizer=bert_tokenizer,
         batch_size=batch_size,
         granularity_level=granularity,
         n_perturbations=n_perturbations,
@@ -70,7 +69,7 @@ def test_lime_attribution_init_and_mask(
     )
 
     # 1) "[REPLACE]" token must have been added
-    assert "[REPLACE]" in tokenizer.get_vocab()
+    assert "[REPLACE]" in bert_tokenizer.get_vocab()
 
     # 2) check the perturbator stored our params correctly
     assert isinstance(explainer.perturbator, RandomMaskedTokenPerturbator)
@@ -79,7 +78,7 @@ def test_lime_attribution_init_and_mask(
     assert pytest.approx(perturbator.perturb_probability, rel=1e-6) == perturb_probability
     assert perturbator.granularity_level == granularity
     # the token ID should match what we just added
-    replace_id = tokenizer.convert_tokens_to_ids("[REPLACE]")
+    replace_id = bert_tokenizer.convert_tokens_to_ids("[REPLACE]")
     assert perturbator.replace_token_id == (replace_id if isinstance(replace_id, int) else replace_id[0])
 
     # 3) check the aggregator

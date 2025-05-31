@@ -1,3 +1,27 @@
+# MIT License
+#
+# Copyright (c) 2025 IRT Antoine de Saint Exupéry et Université Paul Sabatier Toulouse III - All
+# rights reserved. DEEL and FOR are research programs operated by IVADO, IRT Saint Exupéry,
+# CRIAQ and ANITI - https://www.deel.ai/.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 import pytest
 import torch
 
@@ -12,11 +36,11 @@ class DummyInferenceWrapper:
         return [torch.tensor([1]), torch.tensor([0])]
 
 
-def test_process_targets(model, tokenizer):
+def test_process_targets(bert_model, bert_tokenizer):
     """
     Test the process_targets method for different input types.
     """
-    explainer = ClassificationAttributionExplainer(model, tokenizer, batch_size=2, device=DEVICE)
+    explainer = ClassificationAttributionExplainer(bert_model, bert_tokenizer, batch_size=2, device=DEVICE)
 
     # Single integer
     result = explainer.process_targets(3, expected_length=1)
@@ -77,8 +101,8 @@ def test_process_targets(model, tokenizer):
         explainer.process_targets("invalid_input")  # type: ignore
 
 
-def test_process_inputs_to_explain_and_targets(model, tokenizer):
-    explainer = ClassificationAttributionExplainer(model, tokenizer=tokenizer, batch_size=2, device=DEVICE)
+def test_process_inputs_to_explain_and_targets(bert_model, bert_tokenizer):
+    explainer = ClassificationAttributionExplainer(bert_model, tokenizer=bert_tokenizer, batch_size=2, device=DEVICE)
     explainer.inference_wrapper = DummyInferenceWrapper()  # type: ignore
 
     # Model input example without special_tokens_mask

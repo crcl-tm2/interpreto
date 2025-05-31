@@ -55,18 +55,18 @@ DEVICE = torch.device("cuda") if torch.cuda.is_available() else torch.device("cp
 
 
 @pytest.mark.parametrize("perturbator_class", embeddings_perturbators)
-def test_embeddings_perturbators(perturbator_class, sentences, model, tokenizer):
+def test_embeddings_perturbators(perturbator_class, sentences, bert_model, bert_tokenizer):
     """test all perturbators respect the API"""
     assert not issubclass(perturbator_class, TokenMaskBasedPerturbator)
     p = 10
     d = 312
-    inputs_embedder = model.get_input_embeddings()
+    inputs_embedder = bert_model.get_input_embeddings()
 
     perturbator = perturbator_class(inputs_embedder=inputs_embedder, n_perturbations=p)
     perturbator.to(DEVICE)
 
     for sent in sentences:
-        elem = tokenizer(sent, return_tensors="pt", return_offsets_mapping=True, return_special_tokens_mask=True)
+        elem = bert_tokenizer(sent, return_tensors="pt", return_offsets_mapping=True, return_special_tokens_mask=True)
         elem.to(DEVICE)
         assert isinstance(elem, MutableMapping)
         l = elem["input_ids"].shape[1]
@@ -92,17 +92,17 @@ def test_embeddings_perturbators(perturbator_class, sentences, model, tokenizer)
 
 
 @pytest.mark.parametrize("perturbator_class", tokens_perturbators)
-def test_token_perturbators(perturbator_class, sentences, model, tokenizer):
+def test_token_perturbators(perturbator_class, sentences, bert_model, bert_tokenizer):
     """test all perturbators respect the API"""
     assert issubclass(perturbator_class, TokenMaskBasedPerturbator)
     p = 10
-    inputs_embedder = model.get_input_embeddings()
+    inputs_embedder = bert_model.get_input_embeddings()
 
     replace_token = "[REPLACE]"
-    if replace_token not in tokenizer.get_vocab():
-        tokenizer.add_tokens([replace_token])
-        model.resize_token_embeddings(len(tokenizer))
-    replace_token_id = tokenizer.convert_tokens_to_ids(replace_token)  # type: ignore
+    if replace_token not in bert_tokenizer.get_vocab():
+        bert_tokenizer.add_tokens([replace_token])
+        bert_model.resize_token_embeddings(len(bert_tokenizer))
+    replace_token_id = bert_tokenizer.convert_tokens_to_ids(replace_token)  # type: ignore
 
     if perturbator_class in [OcclusionPerturbator, SobolTokenPerturbator]:
         # the number of perturbations depends on the sequence length
@@ -121,7 +121,7 @@ def test_token_perturbators(perturbator_class, sentences, model, tokenizer):
     perturbator.to(DEVICE)
 
     for sent in sentences:
-        elem = tokenizer(sent, return_tensors="pt", return_offsets_mapping=True, return_special_tokens_mask=True)
+        elem = bert_tokenizer(sent, return_tensors="pt", return_offsets_mapping=True, return_special_tokens_mask=True)
         elem.to(DEVICE)
         assert isinstance(elem, MutableMapping)
         l = elem["input_ids"].shape[1]

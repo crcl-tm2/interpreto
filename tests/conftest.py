@@ -27,7 +27,7 @@ Common fixtures for all tests
 """
 
 from pytest import fixture
-from transformers import AutoModelForMaskedLM, AutoModelForSequenceClassification, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoModelForMaskedLM, AutoModelForSequenceClassification, AutoTokenizer
 
 from interpreto.commons import ActivationSelectionStrategy, ModelWithSplitPoints
 from interpreto.typing import LatentActivations
@@ -73,10 +73,20 @@ def activations_dict(splitted_encoder_ml: ModelWithSplitPoints, sentences: list[
 
 
 @fixture(scope="session")
-def model():
+def bert_model():
     return AutoModelForSequenceClassification.from_pretrained("huawei-noah/TinyBERT_General_4L_312D")
 
 
 @fixture(scope="session")
-def tokenizer():
+def bert_tokenizer():
     return AutoTokenizer.from_pretrained("huawei-noah/TinyBERT_General_4L_312D")
+
+
+@fixture(scope="session")
+def gpt2_model():
+    return AutoModelForCausalLM.from_pretrained("hf-internal-testing/tiny-random-gpt2")
+
+
+@fixture(scope="session")
+def gpt2_tokenizer():
+    return AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-gpt2")

@@ -1,3 +1,27 @@
+# MIT License
+#
+# Copyright (c) 2025 IRT Antoine de Saint Exupéry et Université Paul Sabatier Toulouse III - All
+# rights reserved. DEEL and FOR are research programs operated by IVADO, IRT Saint Exupéry,
+# CRIAQ and ANITI - https://www.deel.ai/.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 from collections.abc import Mapping
 
 import torch
@@ -46,12 +70,12 @@ def create_targets_test(tokenizer):
     ]
 
 
-def test_process_targets(model, tokenizer):
+def test_process_targets(gpt2_model, gpt2_tokenizer):
     """
     Test the process_targets method for different input types.
     """
-    explainer = GenerationAttributionExplainer(model, tokenizer, batch_size=2)
-    list_targets = create_targets_test(tokenizer)
+    explainer = GenerationAttributionExplainer(gpt2_model, gpt2_tokenizer, batch_size=2)
+    list_targets = create_targets_test(gpt2_tokenizer)
 
     for target in list_targets:
         results = explainer.process_targets(target)
@@ -65,14 +89,14 @@ def test_process_targets(model, tokenizer):
         )
 
 
-def test_process_inputs_to_explain_and_targets(model, tokenizer):
-    explainer = GenerationAttributionExplainer(model, tokenizer, batch_size=2)  # type: ignore
-    list_targets = create_targets_test(tokenizer)
+def test_process_inputs_to_explain_and_targets(gpt2_model, gpt2_tokenizer):
+    explainer = GenerationAttributionExplainer(gpt2_model, gpt2_tokenizer, batch_size=2)  # type: ignore
+    list_targets = create_targets_test(gpt2_tokenizer)
     list_targets.append(None)  # Add None to the list of targets for testing
 
     # Model input example without special_tokens_mask
-    model_input1 = tokenizer(["I like kittens and I like dogs."], return_tensors="pt")
-    model_input2 = tokenizer(["Interpreto is incredible."], return_tensors="pt")
+    model_input1 = gpt2_tokenizer(["I like kittens and I like dogs."], return_tensors="pt")
+    model_input2 = gpt2_tokenizer(["Interpreto is incredible."], return_tensors="pt")
 
     model_input1element = [model_input1]
     model_input2elements = [model_input1, model_input2]
@@ -110,13 +134,3 @@ def test_process_inputs_to_explain_and_targets(model, tokenizer):
         assert all(processed_target.shape[0] == 1 for processed_target in processed_targets), (
             "The first dimension of the elements of the processed_targets list must be 1."
         )
-
-
-from transformers import AutoModelForCausalLM, AutoTokenizer
-
-model_name = "gpt2"
-model = AutoModelForCausalLM.from_pretrained(model_name)
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-
-test_process_targets(model, tokenizer)
-test_process_inputs_to_explain_and_targets(model, tokenizer)
