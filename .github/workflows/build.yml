@@ -18,6 +18,11 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
+    # Test connectivity to huggingface, TODO: remove this if it works
+    name: Test connectivity to huggingface
+    run: |
+      curl -I https://huggingface.co | head -n 1
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4.3.0
       with:
