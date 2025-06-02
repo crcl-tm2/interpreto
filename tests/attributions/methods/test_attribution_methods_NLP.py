@@ -192,3 +192,10 @@ def test_attribution_methods_with_text(model_name, attribution_explainer):
         assert all(
             len(attribution.elements) == (attribution.attributions).shape[-1] for attribution in attributions
         ), "In the AttributionOutput class, elements and attributions must have the same length."
+
+
+if __name__ == "__main__":
+    test_attribution_methods_with_text(
+        model_name="hf-internal-testing/tiny-random-bert",
+        attribution_explainer=SmoothGrad,
+    )

@@ -132,46 +132,62 @@ class GranularityLevel(Enum):
 
     @staticmethod
     def get_decomposition(tokens_ids: TensorMapping, granularity_level: GranularityLevel | None = None):
+        """Return the token decomposition at the requested granularity level.
+
+        This method groups token ids according to the chosen granularity. It can
+        either keep every token, ignore special tokens or merge tokens that
+        belong to the same word.
+
+        Args:
+            tokens_ids (TensorMapping): Tokenized inputs to decompose.
+            granularity_level (GranularityLevel | None, optional): Desired granularity level. Defaults to
+                :attr:`DEFAULT`.
+
+        Returns:
+            list[list[list[Number]]]: A nested list where the first level
+            indexes the batch elements, the second level corresponds to groups of
+            tokens and the last level contains the token ids inside each group.
+        """
         match granularity_level or GranularityLevel.DEFAULT:
             case GranularityLevel.ALL_TOKENS:
-                return [
-                    [
-                        [
-                            id.item(),
-                        ]
-                        for id in elem
-                    ]
-                    for elem in tokens_ids["input_ids"]
-                ]
+                return GranularityLevel.__all_tokens_decomposition(tokens_ids)
             case GranularityLevel.TOKEN:
-                return [
-                    [
-                        [
-                            id.item(),
-                        ]
-                        for id, mask in zip(elem, spe_tok_mask, strict=True)
-                        if mask == 0
-                    ]
-                    for elem, spe_tok_mask in zip(
-                        tokens_ids["input_ids"], tokens_ids["special_tokens_mask"], strict=True
-                    )
-                ]
+                return GranularityLevel.__token_decomposition(tokens_ids)
             case GranularityLevel.WORD:
-                if not isinstance(tokens_ids, HasWordIds):
-                    raise NoWordIdsError()
-                # TODO : refaire ça
-                res: list[list[list[Number]]] = []
-                for index, token_ids in enumerate(tokens_ids["input_ids"]):
-                    word_ids = tokens_ids.word_ids(index)
-                    res.append([[] for _ in range(max(a for a in word_ids if a is not None) + 1)])
-                    for tok, word_id in zip(token_ids, word_ids, strict=True):
-                        if word_id is not None:
-                            res[-1][word_id] += [tok.item()]
-                return res
+                return GranularityLevel.__word_decomposition(tokens_ids)
             case _:
                 raise NotImplementedError(
                     f"Granularity level {granularity_level} not implemented in decompose function"
                 )
+
+    @staticmethod
+    def __all_tokens_decomposition(tokens_ids: TensorMapping) -> list[list[list[Number]]]:
+        return [[[tok.item()] for tok in seq] for seq in tokens_ids["input_ids"]]
+
+    @staticmethod
+    def __token_decomposition(tokens_ids: TensorMapping) -> list[list[list[Number]]]:
+        if "special_tokens_mask" not in tokens_ids.keys():
+            raise ValueError(
+                "Cannot decompose tokens without `'special_tokens_mask'`."
+                + "Try to tokenize the input with `return_special_tokens_mask=True`."
+            )
+        return [
+            [[tok.item()] for tok, mask in zip(seq, mask_seq, strict=True) if mask == 0]
+            for seq, mask_seq in zip(tokens_ids["input_ids"], tokens_ids["special_tokens_mask"], strict=True)
+        ]
+
+    @staticmethod
+    def __word_decomposition(tokens_ids: TensorMapping) -> list[list[list[Number]]]:
+        if not isinstance(tokens_ids, HasWordIds):
+            raise NoWordIdsError()
+        res: list[list[list[Number]]] = []
+        for index, token_ids in enumerate(tokens_ids["input_ids"]):
+            word_ids = tokens_ids.word_ids(index)
+            res.append([[] for _ in range(max(a for a in word_ids if a is not None) + 1)])
+            for tok, word_id in zip(token_ids, word_ids, strict=True):
+                if word_id is not None:
+                    res[-1][word_id] += [tok.item()]
+        return res
 
     @staticmethod
     def get_association_matrix(

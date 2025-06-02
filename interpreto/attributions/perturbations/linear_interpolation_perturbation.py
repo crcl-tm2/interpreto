@@ -25,6 +25,8 @@
 from __future__ import annotations
 
 import torch
+from beartype import beartype
+from jaxtyping import jaxtyped
 
 from interpreto.attributions.perturbations.base import Perturbator
 from interpreto.typing import TensorBaseline, TensorMapping
@@ -57,6 +59,7 @@ class LinearInterpolationPerturbator(Perturbator):
         self.baseline = baseline
 
     @staticmethod
+    @jaxtyped(typechecker=beartype)
     def adjust_baseline(baseline: TensorBaseline, inputs: torch.Tensor) -> torch.Tensor:
         """
         Ensures the 'baseline' argument is correctly adjusted based on the shape of 'inputs' (PyTorch tensor).
@@ -88,7 +91,8 @@ class LinearInterpolationPerturbator(Perturbator):
             raise ValueError(f"Baseline dtype {baseline.dtype} does not match expected dtype {inputs.dtype}.")
         return baseline
 
-    def perturb_embeds(self, model_inputs: TensorMapping) -> tuple[TensorMapping, torch.Tensor | None]:
+    @jaxtyped(typechecker=beartype)
+    def perturb_embeds(self, model_inputs: TensorMapping) -> tuple[TensorMapping, None]:
         embeddings = model_inputs["inputs_embeds"]
 
         baseline = self.adjust_baseline(self.baseline, embeddings)

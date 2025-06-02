@@ -25,6 +25,8 @@
 from __future__ import annotations
 
 import torch
+from beartype import beartype
+from jaxtyping import Float, jaxtyped
 
 from interpreto.attributions.perturbations.base import Perturbator
 from interpreto.typing import TensorMapping
@@ -56,7 +58,8 @@ class GaussianNoisePerturbator(Perturbator):
         self.n_perturbations = n_perturbations
         self.std = std
 
-    def perturb_embeds(self, model_inputs: TensorMapping) -> tuple[TensorMapping, torch.Tensor | None]:
+    @jaxtyped(typechecker=beartype)
+    def perturb_embeds(self, model_inputs: TensorMapping) -> tuple[TensorMapping, None]:
         """Apply Gaussian noise perturbations on ``inputs_embeds``.
 
         Args:
@@ -67,7 +70,8 @@ class GaussianNoisePerturbator(Perturbator):
             tuple: The perturbed mapping and ``None`` as no mask is produced.
         """
 
-        model_inputs["inputs_embeds"] = model_inputs["inputs_embeds"].repeat(self.n_perturbations, 1, 1)
+        embeddings: Float[torch.Tensor, "b l d"] = model_inputs["inputs_embeds"]
+        model_inputs["inputs_embeds"] = embeddings.repeat(self.n_perturbations, 1, 1)
         model_inputs["attention_mask"] = model_inputs["attention_mask"].repeat(self.n_perturbations, 1)
         if "offset_mapping" in model_inputs:
             model_inputs["offset_mapping"] = model_inputs["offset_mapping"].repeat(self.n_perturbations, 1, 1)
@@ -76,4 +80,4 @@ class GaussianNoisePerturbator(Perturbator):
         # TODO: check if we should not limit this to relevant tokens (not padding, end of sequence, etc.)
         model_inputs["inputs_embeds"] += torch.randn_like(model_inputs["inputs_embeds"]) * self.std
 
-        return model_inputs, None  # return noise ? noise.bool().long() ?
+        return model_inputs, None

@@ -25,6 +25,8 @@
 from __future__ import annotations
 
 import torch
+from beartype import beartype
+from jaxtyping import Float, jaxtyped
 
 from interpreto.attributions.perturbations.base import TokenMaskBasedPerturbator
 from interpreto.commons.granularity import GranularityLevel
@@ -58,7 +60,8 @@ class OcclusionPerturbator(TokenMaskBasedPerturbator):
             granularity_level=granularity_level,
         )
 
-    def get_mask(self, mask_dim: int) -> torch.Tensor:
+    @jaxtyped(typechecker=beartype)
+    def get_mask(self, mask_dim: int) -> Float[torch.Tensor, "p l"]:
         """Return a mask performing single-token occlusions.
 
         Args:
@@ -70,4 +73,8 @@ class OcclusionPerturbator(TokenMaskBasedPerturbator):
                 identity matrix.
         """
 
-        return torch.cat([torch.zeros(1, mask_dim), torch.eye(mask_dim)], dim=0)
+        l = mask_dim
+        p = l + 1
+        mask: Float[torch.Tensor, "{p} {l}"] = torch.cat([torch.zeros(1, l), torch.eye(l)], dim=0)
+        assert mask.shape[0] == p
+        return mask

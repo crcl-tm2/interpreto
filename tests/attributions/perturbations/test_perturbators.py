@@ -283,3 +283,22 @@ def test_occlusion_masks():
     for l in range(2, 20, 3):
         mask = perturbator.get_mask(l)
         assert torch.equal(mask, torch.cat([torch.zeros(1, l), torch.eye(l)], dim=0))
+
+
+if __name__ == "__main__":
+    from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
+    sentences = [
+        "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+        "Interpreto is magical",
+        "Testing interpreto",
+    ]
+    bert_model = AutoModelForSequenceClassification.from_pretrained("hf-internal-testing/tiny-random-bert")
+    bert_tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-bert")
+
+    test_token_perturbators(
+        OcclusionPerturbator,
+        sentences=sentences,
+        bert_model=bert_model,
+        bert_tokenizer=bert_tokenizer,
+    )
