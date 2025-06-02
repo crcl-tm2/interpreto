@@ -48,6 +48,9 @@ jobs:
         make install-ci
         source .venv/bin/activate
 
+    - name: Export HF_HUB_TOKEN
+      run: echo "HF_HUB_TOKEN=${{ secrets.HUGGINGFACE_TOKEN }}" >> $GITHUB_ENV
+
     # Try downloading a small public model directly in the github actions runner, TODO: remove this if it works
     - name: Try downloading a small public model
       run: |
