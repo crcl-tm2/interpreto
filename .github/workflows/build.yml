@@ -105,6 +105,13 @@ jobs:
         print("All models cached successfully.")
         EOF
 
+    - name: Check memory before fast tests
+      run: |
+        free -h
+        df -h /
+        # (Optional) Show any recent OOM logs
+        dmesg | grep -i -E "out of memory|oom"
+
     - name: Run style checks
       run: |
         make lint
