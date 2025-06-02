@@ -22,7 +22,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import pytest
 import torch
 
 from interpreto.commons.model_wrapping.classification_inference_wrapper import ClassificationInferenceWrapper

@@ -73,6 +73,7 @@ attribution_method_kwargs = {
 ALL_MODEL_LOADERS = {
     "hf-internal-testing/tiny-random-albert": AutoModelForSequenceClassification,
     "hf-internal-testing/tiny-random-bart": AutoModelForSequenceClassification,
+    "hf-internal-testing/tiny-random-bert": AutoModelForSequenceClassification,
     "hf-internal-testing/tiny-random-DebertaV2Model": AutoModelForSequenceClassification,
     "hf-internal-testing/tiny-random-distilbert": AutoModelForSequenceClassification,
     "hf-internal-testing/tiny-random-ElectraModel": AutoModelForSequenceClassification,
@@ -91,7 +92,7 @@ ALL_MODEL_LOADERS = {
 
 # A small subset to run on CI:
 CI_MODEL_LOADERS = [
-    "hf-internal-testing/tiny-random-distilbert",
+    "hf-internal-testing/tiny-random-bert",
     "hf-internal-testing/tiny-random-gpt2",
     "hf-internal-testing/tiny-random-roberta",
     "hf-internal-testing/tiny-random-t5",

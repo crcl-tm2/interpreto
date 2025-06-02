@@ -71,12 +71,12 @@ def activations_dict(splitted_encoder_ml: ModelWithSplitPoints, sentences: list[
 
 @fixture(scope="session")
 def bert_model():
-    return AutoModelForSequenceClassification.from_pretrained("hf-internal-testing/tiny-random-distilbert")
+    return AutoModelForSequenceClassification.from_pretrained("hf-internal-testing/tiny-random-bert")
 
 
 @fixture(scope="session")
 def bert_tokenizer():
-    return AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-distilbert")
+    return AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-bert")
 
 
 @fixture(scope="session")

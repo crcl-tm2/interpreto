@@ -56,27 +56,10 @@ jobs:
 
         # List all of the hf-internal-testing model IDs that your tests need:
         model_ids = [
-            # conftest.py:
             "hf-internal-testing/tiny-random-bert",
-            "hf-internal-testing/tiny-random-distilbert",
             "hf-internal-testing/tiny-random-gpt2",
-            # parametrized test:
-            "hf-internal-testing/tiny-random-albert",
-            "hf-internal-testing/tiny-random-bart",
-            "hf-internal-testing/tiny-random-DebertaV2Model",
-            "hf-internal-testing/tiny-random-distilbert",   # duplicate allowed
-            "hf-internal-testing/tiny-random-ElectraModel",
             "hf-internal-testing/tiny-random-roberta",
             "hf-internal-testing/tiny-random-t5",
-            "hf-internal-testing/tiny-xlm-roberta",
-            "hf-internal-testing/tiny-random-gpt2",
-            "hf-internal-testing/tiny-random-gpt_neo",
-            "hf-internal-testing/tiny-random-gptj",
-            "hf-internal-testing/tiny-random-CodeGenForCausalLM",
-            "hf-internal-testing/tiny-random-FalconModel",
-            "hf-internal-testing/tiny-random-LlamaForCausalLM",
-            "hf-internal-testing/tiny-random-MistralForCausalLM",
-            "hf-internal-testing/tiny-random-Starcoder2ForCausalLM",
         ]
 
         # We will call .from_pretrained(...) once per model_id, 
