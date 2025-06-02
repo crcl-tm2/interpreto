@@ -23,6 +23,11 @@ jobs:
       run: |
         curl -I https://huggingface.co | head -n 1
 
+    # Check that hf is not offline, TODO: remove this if it works
+    - name: Check for offline‐mode
+      run: |
+        echo "HUGGINGFACE_HUB_OFFLINE is → $HUGGINGFACE_HUB_OFFLINE"
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4.3.0
       with:
