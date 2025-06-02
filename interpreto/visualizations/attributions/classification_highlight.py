@@ -29,8 +29,8 @@ class SingleClassAttributionVisualization(AttributionVisualization):
 
         Args:
             attribution_output: AttributionOutput: The attribution method outputs
-            positive_color (str, optional): A color to use for the positive activations. Defaults to red
-            negative_color (str, optional): A color to use for the negative activations. Defaults to blue
+            positive_color (str, optional): A hexadecimal color code in RGB format for positive activations. The default color is red (#ff0000)
+            negative_color (str, optional): A hexadecimal color code in RGB format for negative activations. The default color is blue (#0000ff)
             normalize (bool, optional): Whether to normalize the attributions. If False, then the attributions values range will be assumed to be [-1, 1]. Defaults to True
             highlight_border (bool, optional): Whether to highlight the border of the words. Defaults to False
             css: (str, optional): A custom css. Defaults to None
@@ -132,8 +132,8 @@ class MultiClassAttributionVisualization(AttributionVisualization):
 
         Args:
             attribution_output: AttributionOutput: The attribution method output
-            positive_color (str, optional): A color to use for the positive activations. Defaults to red
-            negative_color (str, optional): A color to use for the negative activations. Defaults to blue
+            positive_color (str, optional): A hexadecimal color code in RGB format for positive activations. The default color is red (#ff0000)
+            negative_color (str, optional): A hexadecimal color code in RGB format for negative activations. The default color is blue (#0000ff)
             class_names (List[str], optional): A list of names for each class. Defaults to None
             normalize (bool, optional): Whether to normalize the attributions. If False, then the attributions values range will be assumed to be [-1, 1]. Defaults to True
             highlight_border (bool, optional): Whether to highlight the border of the words. Defaults to False
@@ -184,8 +184,8 @@ class MultiClassAttributionVisualization(AttributionVisualization):
         Create a structure describing the classes
 
         Args:
-            positive_color (str): A color to use for the positive activations. Defaults to red.
-            negative_color (str): A color to use for the negative activations. Defaults to blue.
+            positive_color (str): A hexadecimal color code in RGB format for positive activations
+            negative_color (str): A hexadecimal color code in RGB format for negative activations
             class_names (List[str]): A list of names for each class
             min_value (List): The minimum values for the attributions
             max_value (List): The maximum values for the attributions
@@ -242,8 +242,8 @@ class GenerationAttributionVisualization(AttributionVisualization):
 
         Args:
             attribution_output: AttributionOutput: The attribution outputs to visualize
-            positive_color (str, optional): A color to use for the positive activations. Defaults to red.
-            negative_color (str, optional): A color to use for the negative activations. Defaults to blue.
+            positive_color (str, optional): A hexadecimal color code in RGB format for positive activations. The default color is red (#ff0000)
+            negative_color (str, optional): A hexadecimal color code in RGB format for negative activations. The default color is blue (#0000ff)
             normalize (bool, optional): Whether to normalize the attributions. If False, then the attributions values range will be assumed to be [-1, 1]. Defaults to True
             highlight_border (bool, optional): Whether to highlight the border of the words. Defaults to False
             css: (str, optional): A custom css. Defaults to None
@@ -308,8 +308,8 @@ class GenerationAttributionVisualization(AttributionVisualization):
         Create a structure describing the classes
 
         Args:
-            positive_color (str): A color to use for the positive activations. Defaults to red.
-            negative_color (str): A color to use for the negative activations. Defaults to blue.
+            positive_color (str): A hexadecimal color code in RGB format for positive activations
+            negative_color (str): A hexadecimal color code in RGB format for negative activations
             name (str, optional): The name of the class. Defaults to "None".
             min_value (float): The minimum value for the attributions. Defaults to -1.0.
             max_value (float): The maximum value for the attributions. Defaults to 1.0.
