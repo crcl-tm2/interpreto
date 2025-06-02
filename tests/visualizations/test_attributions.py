@@ -34,7 +34,9 @@ def test_attribution_monoclass():
     viz.save(output_file_path)
 
     # assert that the file has been created
-    assert os.remove(output_file_path)
+    assert os.path.exists(output_file_path)
+
+    os.remove(output_file_path)
 
 
 def test_attribution_multiclass():
@@ -62,7 +64,9 @@ def test_attribution_multiclass():
     viz.save(output_file_path)
 
     # assert that the file has been created
-    assert os.remove(output_file_path)
+    assert os.path.exists(output_file_path)
+
+    os.remove(output_file_path)
 
 
 def test_attribution_generation():
@@ -88,7 +92,9 @@ def test_attribution_generation():
     viz.save(output_file_path)
 
     # assert that the file has been created
-    assert os.remove(output_file_path)
+    assert os.path.exists(output_file_path)
+
+    os.remove(output_file_path)
 
 
 def test_concepts():
@@ -118,4 +124,6 @@ def test_concepts():
     viz.save(output_file_path)
 
     # assert that the file has been created
-    assert os.remove(output_file_path)
+    assert os.path.exists(output_file_path)
+
+    os.remove(output_file_path)
