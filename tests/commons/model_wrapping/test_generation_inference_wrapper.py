@@ -171,7 +171,7 @@ def test_generation_inference_wrapper_multiple_mappings(model_name, sentences):
         tokenizer.pad_token = tokenizer.eos_token
     inference_wrapper.pad_token_id = tokenizer.pad_token_id
     n_sentences = len(sentences)
-    nb_split = 3
+    nb_split = 2
     if nb_split >= n_sentences:
         raise ValueError("nb_split must be less than the number of sentences (n_sentences).")
 
