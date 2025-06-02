@@ -26,8 +26,8 @@ class AttributionVisualization(ABC):
 
     def __init__(self):
         self.custom_css = None
-        self.js_file_path = "visualisation_attribution.js"
-        self.css_file_path = "visualisation.css"
+        self.js_file_path = "visualization_attribution.js"
+        self.css_file_path = "visualization.css"
 
         # Generate unique ids for the divs so that we can have multiple visualizations on the same page
         self.unique_id_classes = f"classes-{uuid.uuid4()}"
@@ -176,11 +176,11 @@ class ConceptAttributionVisualization(ABC):
 
         # Load the JS and CSS files
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        js_file_path = os.path.join(current_dir, "visualisation.js")
+        js_file_path = os.path.join(current_dir, "visualization.js")
         with open(js_file_path, encoding="utf-8") as file:
             js_content = file.read()
 
-        css_file_path = os.path.join(current_dir, "visualisation.css")
+        css_file_path = os.path.join(current_dir, "visualization.css")
         with open(css_file_path, encoding="utf-8") as file:
             css = file.read()
 

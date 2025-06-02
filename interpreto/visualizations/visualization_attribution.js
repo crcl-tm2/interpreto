@@ -1,12 +1,12 @@
 (function () {
   /**
-   * DataVisualisationAttribution class (IIFE)
+   * DataVisualizationAttribution class (IIFE)
    * @param {string} uniqueIdInputs - The unique id of the div containing the inputs
    * @param {string} uniqueIdOutputs - The unique id of the div containing the outputs
    * @param {boolean} highlightBorder - Wether to highlight the border of the words or not
    * @param {string} jsonData - The JSON data containing the classes, inputs and outputs
    */
-  window.DataVisualisationAttribution = class DataVisualisationAttribution {
+  window.DataVisualizationAttribution = class DataVisualizationAttribution {
     static DisplayType = {
       SINGLE_CLASS_ATTRIBUTION: 1, // simple attribution, only display the attribution for the input words
       MULTI_CLASS_ATTRIBUTION: 2, // multi-class attribution, display the attributions for the input words per class
@@ -20,7 +20,7 @@
       highlightBorder,
       jsonData
     ) {
-      console.log("Creating DataVisualisationAttribution");
+      console.log("Creating DataVisualizationAttribution");
       console.log("uniqueIdClasses: " + uniqueIdClasses);
       console.log("uniqueIdInputs: " + uniqueIdInputs);
       console.log("uniqueIdOutputs: " + uniqueIdOutputs);
@@ -34,12 +34,12 @@
       this.highlightBorder = highlightBorder === "True";
       this.jsonData = JSON.parse(jsonData);
 
-      this.displayType = DataVisualisationAttribution.DisplayType.SINGLE_CLASS_ATTRIBUTION;
+      this.displayType = DataVisualizationAttribution.DisplayType.SINGLE_CLASS_ATTRIBUTION;
       if (this.uniqueIdClasses != null) {
-        this.displayType = DataVisualisationAttribution.DisplayType.MULTI_CLASS_ATTRIBUTION;
+        this.displayType = DataVisualizationAttribution.DisplayType.MULTI_CLASS_ATTRIBUTION;
       }
       if (this.uniqueIdOutputs != null) {
-        this.displayType = DataVisualisationAttribution.DisplayType.GENERATION_ATTRIBUTION;
+        this.displayType = DataVisualizationAttribution.DisplayType.GENERATION_ATTRIBUTION;
       }
 
       // Classes, Inputs, Outputs creation (style is applied when selecting different elements)
@@ -48,7 +48,7 @@
       // multi class     many         0      many
       // generation      many      many         0
       switch (this.displayType) {
-        case DataVisualisationAttribution.DisplayType.GENERATION_ATTRIBUTION:
+        case DataVisualizationAttribution.DisplayType.GENERATION_ATTRIBUTION:
           console.log("GENERATION_ATTRIBUTION");
           this.currentOutputId = null;
           this.activatedClassId = 0;
@@ -56,14 +56,14 @@
           this.createInputs();
           this.createOutputs();
           break;
-        case DataVisualisationAttribution.DisplayType.MULTI_CLASS_ATTRIBUTION:
+        case DataVisualizationAttribution.DisplayType.MULTI_CLASS_ATTRIBUTION:
           console.log("MULTI_CLASS_ATTRIBUTION");
           this.currentOutputId = 0;
           this.activatedClassId = null;
           this.createClasses();
           this.createInputs();
           break;
-        case DataVisualisationAttribution.DisplayType.SINGLE_CLASS_ATTRIBUTION:
+        case DataVisualizationAttribution.DisplayType.SINGLE_CLASS_ATTRIBUTION:
         default:
           console.log("SINGLE_CLASS_ATTRIBUTION");
           // Select by default the only class available
@@ -376,7 +376,7 @@
       // When changing output, we reset the selected class
       if (
         this.displayType ===
-        DataVisualisationAttribution.DisplayType.GENERATION_ATTRIBUTION
+        DataVisualizationAttribution.DisplayType.GENERATION_ATTRIBUTION
       ) {
         // GENERATION_ATTRIBUTION -> 1 class
         this.activatedClassId = 0;
@@ -447,7 +447,7 @@
       // by default (the null step is needed to refresh the display)
       if (
         this.displayType ===
-        DataVisualisationAttribution.DisplayType.GENERATION_ATTRIBUTION
+        DataVisualizationAttribution.DisplayType.GENERATION_ATTRIBUTION
       ) {
         this.selectedClassId = 0;
         this.traceIds("selectOutput");

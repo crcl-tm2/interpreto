@@ -104,7 +104,7 @@ class SingleClassAttributionVisualization(AttributionVisualization):
         html += f"<h3>Inputs</h3><div id='{self.unique_id_inputs}'></div>\n"
         html += f"""
         <script>
-            var viz = new DataVisualisationAttribution(null, '{self.unique_id_inputs}', null, '{self.highlight_border}', {json.dumps(json_data)});
+            var viz = new DataVisualizationAttribution(null, '{self.unique_id_inputs}', null, '{self.highlight_border}', {json.dumps(json_data)});
             window.viz = viz;
         </script>
         </body></html>
@@ -215,7 +215,7 @@ class MultiClassAttributionVisualization(AttributionVisualization):
         html += f"<h3>Inputs</h3><div id='{self.unique_id_inputs}'></div>\n"
         html += f"""
         <script>
-            var viz = new DataVisualisationAttribution('{self.unique_id_classes}', '{self.unique_id_inputs}', null, '{self.highlight_border}', {json.dumps(json_data)});
+            var viz = new DataVisualizationAttribution('{self.unique_id_classes}', '{self.unique_id_inputs}', null, '{self.highlight_border}', {json.dumps(json_data)});
             window.viz = viz;
         </script>
         </body></html>
@@ -338,7 +338,7 @@ class GenerationAttributionVisualization(AttributionVisualization):
         html += f"<h3>Outputs</h3><div class='line-style'><div id='{self.unique_id_outputs}'></div></div>\n"
         html += f"""
         <script>
-            var viz = new DataVisualisationAttribution(null, '{self.unique_id_inputs}', '{self.unique_id_outputs}', '{self.highlight_border}', {json.dumps(json_data)});
+            var viz = new DataVisualizationAttribution(null, '{self.unique_id_inputs}', '{self.unique_id_outputs}', '{self.highlight_border}', {json.dumps(json_data)});
             window.viz = viz;
         </script>
         </body></html>

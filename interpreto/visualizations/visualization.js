@@ -1,6 +1,6 @@
 (function () {
   /**
-   * DataVisualisation class (IIFE)
+   * DataVisualization class (IIFE)
    * @param {string} uniqueIdConcepts - The unique id of the div containing the concepts
    * @param {string} uniqueIdInputs - The unique id of the div containing the inputs
    * @param {string} uniqueIdOutputs - The unique id of the div containing the outputs
@@ -8,7 +8,7 @@
    * @param {boolean} highlightBorder - Wether to highlight the border of the words or not
    * @param {string} jsonData - The JSON data containing the concepts, inputs and outputs
    */
-  window.DataVisualisation = class DataVisualisation {
+  window.DataVisualization = class DataVisualization {
     static DisplayType = {
       SINGLE_CLASS_ATTRIBUTION: 1, // simple attribution, only display the attribution for the input words
       MULTI_CLASS_ATTRIBUTION: 2, // multi-class attribution, display the attributions for the input words per class
@@ -24,7 +24,7 @@
       highlightBorder,
       jsonData
     ) {
-      console.log("Creating DataVisualisation");
+      console.log("Creating DataVisualization");
       console.log("uniqueIdConcepts: " + uniqueIdConcepts);
       console.log("uniqueIdInputs: " + uniqueIdInputs);
       console.log("uniqueIdOutputs: " + uniqueIdOutputs);
@@ -39,16 +39,16 @@
       this.jsonData = JSON.parse(jsonData);
       this.topk = topk;
 
-      this.displayType = DataVisualisation.DisplayType.SINGLE_CLASS_ATTRIBUTION;
+      this.displayType = DataVisualization.DisplayType.SINGLE_CLASS_ATTRIBUTION;
       if (this.uniqueIdConcepts != null) {
         if (this.uniqueIdOutputs != null) {
-          this.displayType = DataVisualisation.DisplayType.CONCEPTS;
+          this.displayType = DataVisualization.DisplayType.CONCEPTS;
         } else {
           this.displayType =
-            DataVisualisation.DisplayType.MULTI_CLASS_ATTRIBUTION;
+            DataVisualization.DisplayType.MULTI_CLASS_ATTRIBUTION;
         }
       } else if (this.uniqueIdOutputs != null) {
-        this.displayType = DataVisualisation.DisplayType.GENERATION_ATTRIBUTION;
+        this.displayType = DataVisualization.DisplayType.GENERATION_ATTRIBUTION;
       }
 
       // Concepts, Inputs, Outputs creation (style is applied when selecting different elements)
@@ -58,7 +58,7 @@
       // generation      many      many         0
       // concepts        many      many      many
       switch (this.displayType) {
-        case DataVisualisation.DisplayType.CONCEPTS:
+        case DataVisualization.DisplayType.CONCEPTS:
           console.log("CONCEPTS");
           this.currentOutputId = null;
           this.currentConceptId = null;
@@ -66,7 +66,7 @@
           this.createInputs();
           this.createOutputs();
           break;
-        case DataVisualisation.DisplayType.GENERATION_ATTRIBUTION:
+        case DataVisualization.DisplayType.GENERATION_ATTRIBUTION:
           console.log("GENERATION_ATTRIBUTION");
           this.currentOutputId = null;
           this.currentConceptId = 0;
@@ -74,14 +74,14 @@
           this.createInputs();
           this.createOutputs();
           break;
-        case DataVisualisation.DisplayType.MULTI_CLASS_ATTRIBUTION:
+        case DataVisualization.DisplayType.MULTI_CLASS_ATTRIBUTION:
           console.log("MULTI_CLASS_ATTRIBUTION");
           this.currentOutputId = 0;
           this.currentConceptId = null;
           this.createConcepts();
           this.createInputs();
           break;
-        case DataVisualisation.DisplayType.SINGLE_CLASS_ATTRIBUTION:
+        case DataVisualization.DisplayType.SINGLE_CLASS_ATTRIBUTION:
         default:
           console.log("SINGLE_CLASS_ATTRIBUTION");
           // Select by default the only class available
@@ -406,7 +406,7 @@
       // When changing output, we reset the selected concept
       if (
         this.displayType ===
-        DataVisualisation.DisplayType.GENERATION_ATTRIBUTION
+        DataVisualization.DisplayType.GENERATION_ATTRIBUTION
       ) {
         // GENERATION_ATTRIBUTION -> 1 concept
         this.currentConceptId = 0;
@@ -477,7 +477,7 @@
       // by default (the null step is needed to refresh the display)
       if (
         this.displayType ===
-        DataVisualisation.DisplayType.GENERATION_ATTRIBUTION
+        DataVisualization.DisplayType.GENERATION_ATTRIBUTION
       ) {
         this.selectedConceptId = 0;
         this.traceIds("selectOutput");
