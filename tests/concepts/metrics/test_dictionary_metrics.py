@@ -72,11 +72,11 @@ def test_dictionary_metrics_with_dict_and_ce(splitted_encoder_ml: ModelWithSplit
     split = "bert.encoder.layer.1.output"
     splitted_encoder_ml.split_points = split
 
-    rand1 = torch.rand(312, 312)
+    rand1 = torch.rand(32, 32)
     concept_explainer1 = NeuronsAsConcepts(model_with_split_points=splitted_encoder_ml, split_point=split)
     concept_explainer1.get_dictionary = lambda: rand1
 
-    rand2 = torch.rand(312, 312)
+    rand2 = torch.rand(32, 32)
     concept_explainer2 = NeuronsAsConcepts(model_with_split_points=splitted_encoder_ml, split_point=split)
     concept_explainer2.get_dictionary = lambda: rand2
 
@@ -112,10 +112,10 @@ def test_stability_error_raising():
 
     # not a 2D tensor
     with pytest.raises(ValueError):
-        Stability(torch.rand(312, 312, 1))
+        Stability(torch.rand(32, 32, 1))
     with pytest.raises(ValueError):
-        Stability(torch.rand(312, 312), torch.rand(312, 312, 1))
+        Stability(torch.rand(32, 32), torch.rand(32, 32, 1))
 
     # not matching shapes
     with pytest.raises(ValueError):
-        Stability(torch.rand(312, 312), torch.rand(312, 5))
+        Stability(torch.rand(32, 32), torch.rand(32, 5))

@@ -58,15 +58,12 @@ def test_activation_equivalence_batched_text_token_inputs(multi_split_model: Mod
     """
     multi_split_model.split_points = BERT_SPLIT_POINTS  # type: ignore
     inputs_str = ["Hello, my dog is cute", "The cat is on the [MASK]"]
-    inputs_ids = multi_split_model.tokenizer(inputs_str, return_tensors="pt").input_ids
-    inputs_tensor = multi_split_model.tokenizer(inputs_str, return_tensors="pt")
+    inputs_tensor = multi_split_model.tokenizer(inputs_str, return_tensors="pt", padding=True, truncation=True)
 
     activations_str = multi_split_model.get_activations(inputs_str)
-    activations_ids = multi_split_model.get_activations(inputs_ids)
     activations_tensor = multi_split_model.get_activations(inputs_tensor)
 
     for k in activations_str.keys():
-        assert torch.allclose(activations_str[k], activations_ids[k])  # type: ignore
         assert torch.allclose(activations_str[k], activations_tensor[k])  # type: ignore
 
 

@@ -48,7 +48,7 @@ def sentences():
 @fixture(scope="session")
 def multi_split_model() -> ModelWithSplitPoints:
     return ModelWithSplitPoints(
-        "huawei-noah/TinyBERT_General_4L_312D",
+        "hf-internal-testing/tiny-random-bert",
         split_points=[
             "cls.predictions.transform.LayerNorm",
             "bert.encoder.layer.1.output",
@@ -61,7 +61,7 @@ def multi_split_model() -> ModelWithSplitPoints:
 @fixture(scope="session")
 def splitted_encoder_ml() -> ModelWithSplitPoints:
     return ModelWithSplitPoints(
-        "huawei-noah/TinyBERT_General_4L_312D",
+        "hf-internal-testing/tiny-random-bert",
         split_points=["bert.encoder.layer.1.output"],
         model_autoclass=AutoModelForMaskedLM,  # type: ignore
     )
@@ -74,12 +74,12 @@ def activations_dict(splitted_encoder_ml: ModelWithSplitPoints, sentences: list[
 
 @fixture(scope="session")
 def bert_model():
-    return AutoModelForSequenceClassification.from_pretrained("huawei-noah/TinyBERT_General_4L_312D")
+    return AutoModelForSequenceClassification.from_pretrained("hf-internal-testing/tiny-random-distilbert")
 
 
 @fixture(scope="session")
 def bert_tokenizer():
-    return AutoTokenizer.from_pretrained("huawei-noah/TinyBERT_General_4L_312D")
+    return AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-distilbert")
 
 
 @fixture(scope="session")

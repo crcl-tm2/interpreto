@@ -40,7 +40,7 @@ def test_sparsity(splitted_encoder_ml: ModelWithSplitPoints):
     torch.manual_seed(0)
     eps = 1e-5
     n = 50
-    d = 312
+    d = 32
     sparsity_ratio = 0.1  # should make an integer through 1 / sparsity_ratio
     split = "bert.encoder.layer.1.output"
     splitted_encoder_ml.split_points = split

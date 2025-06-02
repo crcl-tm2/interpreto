@@ -59,7 +59,7 @@ def test_embeddings_perturbators(perturbator_class, sentences, bert_model, bert_
     """test all perturbators respect the API"""
     assert not issubclass(perturbator_class, TokenMaskBasedPerturbator)
     p = 10
-    d = 312
+    d = 32
     inputs_embedder = bert_model.get_input_embeddings()
 
     perturbator = perturbator_class(inputs_embedder=inputs_embedder, n_perturbations=p)

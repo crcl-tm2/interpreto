@@ -122,7 +122,7 @@ def test_interpret_via_topk_inputs(splitted_encoder_ml: ModelWithSplitPoints):
     Test that the `top_k_tokens_for_concept` method works as expected
     Fake activations are given to the `NeuronsAsConcepts` explainer
     """
-    hidden_size = 312
+    hidden_size = 32
     n_tokens = 6
     k = 3
     n_samples = k * 5
@@ -193,7 +193,7 @@ def test_topk_inputs_sources(splitted_encoder_ml: ModelWithSplitPoints):
     """
     Test that different sources give the same results
     """
-    hidden_size = 312
+    hidden_size = 32
     n_tokens = 6
     k = 3
     n_samples = k * 5
@@ -258,7 +258,7 @@ def test_topk_inputs_from_vocabulary(splitted_encoder_ml: ModelWithSplitPoints):
     Test that interpretations can be obtained from the vocabulary
     """
     k = 2
-    hidden_size = 312
+    hidden_size = 32
     nb_concepts = 3
 
     # initializing the explainer
