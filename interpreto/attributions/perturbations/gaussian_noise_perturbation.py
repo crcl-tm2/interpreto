@@ -37,12 +37,36 @@ class GaussianNoisePerturbator(Perturbator):
 
     __slots__ = ("n_perturbations", "std")
 
-    def __init__(self, inputs_embedder: torch.nn.Module | None = None, n_perturbations: int = 10, *, std: float = 0.1):
+    def __init__(
+        self,
+        inputs_embedder: torch.nn.Module | None = None,
+        n_perturbations: int = 10,
+        *,
+        std: float = 0.1,
+    ) -> None:
+        """Instantiate the perturbator.
+
+        Args:
+            inputs_embedder (torch.nn.Module | None): Optional embedder used to obtain input embeddings from input IDs.
+            n_perturbations (int): Number of noisy samples to generate.
+            std (float): Standard deviation of the Gaussian noise.
+        """
+
         super().__init__(inputs_embedder)
         self.n_perturbations = n_perturbations
         self.std = std
 
     def perturb_embeds(self, model_inputs: TensorMapping) -> tuple[TensorMapping, torch.Tensor | None]:
+        """Apply Gaussian noise perturbations on ``inputs_embeds``.
+
+        Args:
+            model_inputs (TensorMapping): Mapping containing the ``inputs_embeds`` tensor and
+                associated masks.
+
+        Returns:
+            tuple: The perturbed mapping and ``None`` as no mask is produced.
+        """
+
         model_inputs["inputs_embeds"] = model_inputs["inputs_embeds"].repeat(self.n_perturbations, 1, 1)
         model_inputs["attention_mask"] = model_inputs["attention_mask"].repeat(self.n_perturbations, 1)
         if "offset_mapping" in model_inputs:

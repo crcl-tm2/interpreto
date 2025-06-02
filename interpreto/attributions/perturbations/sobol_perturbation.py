@@ -94,10 +94,10 @@ class SobolTokenPerturbator(TokenMaskBasedPerturbator):
         Generates a binary mask for each token in the sequence.
 
         Args:
-            mask_dim (int): The length of the sequence. Called 'l' in shapes.
+            mask_dim (int): Length of the input sequence.
 
         Returns:
-            masks (torch.Tensor): A tensor of shape ((l + 1) * k, l).
+            masks (torch.Tensor): A tensor of shape ``((mask_dim + 1) * k, mask_dim)``.
         """
         # Simplify typing
         l, k = mask_dim, self.n_token_perturbations

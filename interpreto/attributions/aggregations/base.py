@@ -102,8 +102,12 @@ class VarianceAggregator(TorchAggregator):
 
 
 class MaskwiseMeanAggregator(Aggregator):
-    """
-    TODO : add docstring
+    """Average scores for each target weighted by their perturbation mask.
+
+    This aggregator assumes that ``results`` contains one score per
+    perturbation and target and that ``mask`` indicates which input elements were
+    perturbed. The returned tensor has one importance score per target and input
+    element.
     """
 
     @jaxtyped(typechecker=beartype)
@@ -116,8 +120,12 @@ class MaskwiseMeanAggregator(Aggregator):
 
 
 class OcclusionAggregator(Aggregator):
-    """
-    TODO : add docstring
+    """Aggregate occlusion scores using a reference prediction.
+
+    The first row in ``results`` must correspond to the unperturbed prediction.
+    Subsequent rows represent the prediction for each perturbation. The returned
+    tensor contains the mean difference between the reference and each
+    perturbation weighted by the corresponding mask.
     """
 
     @jaxtyped(typechecker=beartype)

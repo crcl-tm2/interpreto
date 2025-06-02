@@ -83,10 +83,10 @@ class ShapTokenPerturbator(TokenMaskBasedPerturbator):
         This trick is the one used in the Captum library: https://github.com/pytorch/captum
 
         Args:
-            l (int): The length of the sequence.
+            mask_dim (int): Length of the input sequence.
 
         Returns:
-            masks (torch.Tensor): A tensor of shape ((l + 1) * k, l).
+            masks (torch.Tensor): A tensor of shape ``((mask_dim + 1) * k, mask_dim)``.
         """
         # Simplify typing
         p, l = self.n_perturbations, mask_dim

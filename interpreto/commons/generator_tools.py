@@ -1,3 +1,27 @@
+# MIT License
+#
+# Copyright (c) 2025 IRT Antoine de Saint Exupéry et Université Paul Sabatier Toulouse III - All
+# rights reserved. DEEL and FOR are research programs operated by IVADO, IRT Saint Exupéry,
+# CRIAQ and ANITI - https://www.deel.ai/.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 """
 Tools for working with generators
 """
@@ -11,6 +35,19 @@ from typing import Any
 
 
 class IteratorSplit(Iterable["SubIterator"]):
+    """Split an iterator of collections into independent iterators.
+
+    Each element yielded by ``iterator`` must be a collection with the same
+    length. ``IteratorSplit`` will expose one ``SubIterator`` per element of the
+    collection, effectively allowing iteration over each column separately.
+
+    Args:
+        iterator: Iterator that yields collections of equal length.
+
+    Raises:
+        ValueError: If the provided ``iterator`` is empty.
+    """
+
     # TODO : eventually allow split size != 1, sections or custom indexations (useless for now)
     def __init__(self, iterator: Iterator[Collection[Any]]):
         self.iterator = iterator
@@ -47,7 +84,16 @@ class IteratorSplit(Iterable["SubIterator"]):
 
 
 class SubIterator(Iterator[Any]):
+    """Iterator over a single column of an :class:`IteratorSplit`."""
+
     def __init__(self, main_iterator: IteratorSplit, position: int):
+        """Instantiate a sub iterator.
+
+        Args:
+            main_iterator: The :class:`IteratorSplit` that manages the buffers.
+            position: Index of the column to iterate over.
+        """
+
         self.main_iterator = main_iterator
         self.position = position
 
@@ -58,11 +104,36 @@ class SubIterator(Iterator[Any]):
         return self.main_iterator.sub_iterator_next(self.position)
 
 
-def split_iterator(iterator: Iterator[Collection[Any]]):
+def split_iterator(iterator: Iterator[Collection[Any]]) -> IteratorSplit:
+    """Create an :class:`IteratorSplit` from ``iterator``.
+
+    Args:
+        iterator: Iterator yielding collections of equal length.
+
+    Returns:
+        IteratorSplit: The split iterator exposing as many sub-iterators as
+        elements in the yielded collections.
+    """
+
     return IteratorSplit(iterator)
 
 
 def allow_nested_iterables_of(*types: type | EllipsisType) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Decorator to support nested iterables of specific types.
+
+    The returned decorator will dispatch calls to ``func`` based on the type of
+    the first argument. If the argument is an ``Iterable`` or ``Generator``, the
+    function will be applied recursively to each element while preserving the
+    container type when possible.
+
+    Args:
+        *types: Accepted types for dispatch. If empty or containing ``Ellipsis``
+            or :class:`Any`, every type is accepted.
+
+    Returns:
+        Callable: A decorator adding the dispatch logic to ``func``.
+    """
+
     # TODO : check if Iterable or Generator in types
     # TODO : check Unions in types
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -92,6 +163,6 @@ def allow_nested_iterables_of(*types: type | EllipsisType) -> Callable[[Callable
                 return list(result_generator)
 
         res.register(Iterable, iterable_func)
-        return res
+        return res  # type: ignore
 
     return decorator

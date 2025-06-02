@@ -50,6 +50,13 @@ class Perturbator:
     __slots__ = ("inputs_embedder",)
 
     def __init__(self, inputs_embedder: torch.nn.Module | None = None):
+        """Create a perturbator.
+
+        Args:
+            inputs_embedder: Optional module used to embed input IDs when only
+                ``input_ids`` are provided.
+        """
+
         # Embedders is optional
         self.inputs_embedder = inputs_embedder
 
