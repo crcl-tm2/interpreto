@@ -24,41 +24,20 @@
 
 import pytest
 import torch
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 from interpreto.commons.model_wrapping.classification_inference_wrapper import ClassificationInferenceWrapper
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# classification_models = [
-#     "distilbert-base-uncased-finetuned-sst-2-english",
-# ]
-classification_models = [
-    "hf-internal-testing/tiny-random-DebertaV2Model",
-    "hf-internal-testing/tiny-xlm-roberta",
-    "hf-internal-testing/tiny-random-DistilBertModel",
-]
 
-
-def prepare_model_and_tokenizer(model_name: str):
-    """
-    Helper function to prepare the tokenizer and model.
-    """
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForSequenceClassification.from_pretrained(model_name)
-    inference_wrapper = ClassificationInferenceWrapper(model, batch_size=5, device=DEVICE)
-    return tokenizer, model, inference_wrapper
-
-
-@pytest.mark.parametrize("model_name", classification_models)
-def test_classification_inference_wrapper_single_sentence(model_name, sentences):
+def test_classification_inference_wrapper_single_sentence(bert_model, bert_tokenizer, sentences):
     # Model preparation
-    tokenizer, model, inference_wrapper = prepare_model_and_tokenizer(model_name)
+    inference_wrapper = ClassificationInferenceWrapper(bert_model, batch_size=5, device=DEVICE)
 
     # Reference values
-    tokens = tokenizer(sentences[0], return_tensors="pt", padding=True, truncation=True)
+    tokens = bert_tokenizer(sentences[0], return_tensors="pt", padding=True, truncation=True)
     tokens.to(DEVICE)
-    logits = model(**tokens).logits
+    logits = bert_model(**tokens).logits
     target = logits.argmax(dim=-1)
     predefined_targets = torch.randperm(logits.shape[-1]).to(DEVICE)
     scores = logits.index_select(dim=-1, index=predefined_targets)
@@ -72,15 +51,14 @@ def test_classification_inference_wrapper_single_sentence(model_name, sentences)
     assert torch.equal(scores, next(inference_wrapper.get_targeted_logits([tokens.copy()], [predefined_targets])))  # type: ignore
 
 
-@pytest.mark.parametrize("model_name", classification_models)
-def test_classification_inference_wrapper_multiple_sentences(model_name, sentences):
-    ### Model preparation
-    tokenizer, model, inference_wrapper = prepare_model_and_tokenizer(model_name)
+def test_classification_inference_wrapper_multiple_sentences(bert_model, bert_tokenizer, sentences):
+    # Model preparation
+    inference_wrapper = ClassificationInferenceWrapper(bert_model, batch_size=5, device=DEVICE)
 
     ### Reference values
-    tokens = tokenizer(sentences, return_tensors="pt", padding=True, truncation=True)
+    tokens = bert_tokenizer(sentences, return_tensors="pt", padding=True, truncation=True)
     tokens.to(DEVICE)
-    logits = model(**tokens).logits
+    logits = bert_model(**tokens).logits
     targets = logits.argmax(dim=-1)
     predefined_targets = torch.randperm(logits.shape[-1]).to(DEVICE)
     target_logits = torch.gather(logits, dim=-1, index=predefined_targets.unsqueeze(0).expand(logits.shape[0], -1))
