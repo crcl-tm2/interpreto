@@ -18,16 +18,6 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    # Test connectivity to huggingface, TODO: remove this if it works
-    - name: Test connectivity to huggingface
-      run: |
-        curl -I https://huggingface.co | head -n 1
-
-    # Check that hf is not offline, TODO: remove this if it works
-    - name: Check for offline‐mode
-      run: |
-        echo "HUGGINGFACE_HUB_OFFLINE is → $HUGGINGFACE_HUB_OFFLINE"
-
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4.3.0
       with:
@@ -51,19 +41,67 @@ jobs:
     - name: Export HF_HUB_TOKEN
       run: echo "HF_HUB_TOKEN=${{ secrets.HUGGINGFACE_TOKEN }}" >> $GITHUB_ENV
 
-    # Try downloading a small public model directly in the github actions runner, TODO: remove this if it works
-    - name: Try downloading a small public model
-      run: |
-        source .venv/bin/activate
-        python - <<EOF
-        from transformers import AutoTokenizer
-        try:
-            AutoTokenizer.from_pretrained("bert-base-uncased")
-            print("✔ downloaded bert-base-uncased")
-        except Exception as e:
-            print("❌ failed to download bert-base-uncased:", e)
-            exit(1)
-        EOF
+    # Cache all tiny-random models in the github actions runner
+    - name: Pre-cache all tiny-random models
+        run: |
+          source .venv/bin/activate
+          python - <<'EOF'
+          from transformers import (
+              AutoModelForSequenceClassification,
+              AutoModelForCausalLM,
+              AutoModelForMaskedLM,
+              AutoTokenizer,
+          )
+
+          # List all of the hf-internal-testing model IDs that your tests need:
+          model_ids = [
+              # conftest.py:
+              "hf-internal-testing/tiny-random-bert",
+              "hf-internal-testing/tiny-random-distilbert",
+              "hf-internal-testing/tiny-random-gpt2",
+              # parametrized test:
+              "hf-internal-testing/tiny-random-albert",
+              "hf-internal-testing/tiny-random-bart",
+              "hf-internal-testing/tiny-random-DebertaV2Model",
+              "hf-internal-testing/tiny-random-distilbert",   # duplicate allowed
+              "hf-internal-testing/tiny-random-ElectraModel",
+              "hf-internal-testing/tiny-random-roberta",
+              "hf-internal-testing/tiny-random-t5",
+              "hf-internal-testing/tiny-xlm-roberta",
+              "hf-internal-testing/tiny-random-gpt2",
+              "hf-internal-testing/tiny-random-gpt_neo",
+              "hf-internal-testing/tiny-random-gptj",
+              "hf-internal-testing/tiny-random-CodeGenForCausalLM",
+              "hf-internal-testing/tiny-random-FalconModel",
+              "hf-internal-testing/tiny-random-LlamaForCausalLM",
+              "hf-internal-testing/tiny-random-MistralForCausalLM",
+              "hf-internal-testing/tiny-random-Starcoder2ForCausalLM",
+          ]
+
+          # We will call .from_pretrained(...) once per model_id, 
+          # and also download its tokenizer.  Because HF_HUB_TOKEN 
+          # is set in the environment, these calls are authenticated 
+          # and will not exhaust the low unauthenticated rate limit.
+          for m in set(model_ids):  
+              # Sequence classification or masked-LM vs causal-LM 
+              # is determined by your conftest/test code. 
+              # We can try all possible AutoModel types here, but 
+              # since your conftest already splits them out, we just do:
+              try:
+                  AutoModelForSequenceClassification.from_pretrained(m)
+              except Exception:
+                  try:
+                      AutoModelForMaskedLM.from_pretrained(m)
+                  except Exception:
+                      try:
+                          AutoModelForCausalLM.from_pretrained(m)
+                      except Exception as ee:
+                          print(f"‐‐ failed to load model {m}: {ee}")
+                          exit(1)
+              # In any case, also grab the tokenizer:
+              AutoTokenizer.from_pretrained(m)
+              print(f"✔ cached {m}")
+          EOF
 
     - name: Run style checks
       run: |
