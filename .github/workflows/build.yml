@@ -28,19 +28,6 @@ jobs:
       run: |
         echo "HUGGINGFACE_HUB_OFFLINE is → $HUGGINGFACE_HUB_OFFLINE"
 
-    # Try downloading a small public model directly in the github actions runner, TODO: remove this if it works
-    - name: Try downloading a small public model
-      run: |
-        python - <<EOF
-        from transformers import AutoTokenizer
-        try:
-            AutoTokenizer.from_pretrained("bert-base-uncased")
-            print("✔ downloaded bert-base-uncased")
-        except Exception as e:
-            print("❌ failed to download bert-base-uncased:", e)
-            exit(1)
-        EOF
-
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4.3.0
       with:
@@ -58,6 +45,19 @@ jobs:
       run: |
         make install-ci
         source .venv/bin/activate
+
+    # Try downloading a small public model directly in the github actions runner, TODO: remove this if it works
+    - name: Try downloading a small public model
+      run: |
+        python - <<EOF
+        from transformers import AutoTokenizer
+        try:
+            AutoTokenizer.from_pretrained("bert-base-uncased")
+            print("✔ downloaded bert-base-uncased")
+        except Exception as e:
+            print("❌ failed to download bert-base-uncased:", e)
+            exit(1)
+        EOF
 
     - name: Run style checks
       run: |
