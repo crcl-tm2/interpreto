@@ -22,6 +22,7 @@ class SingleClassAttributionVisualization(AttributionVisualization):
         negative_color: str = "#0000ff",
         normalize: bool = True,
         highlight_border: bool = False,
+        margin_right: str = "0.2em",
         css: str = None,
     ):
         """
@@ -33,7 +34,8 @@ class SingleClassAttributionVisualization(AttributionVisualization):
             negative_color (str, optional): A hexadecimal color code in RGB format for negative activations. The default color is blue (#0000ff)
             normalize (bool, optional): Whether to normalize the attributions. If False, then the attributions values range will be assumed to be [-1, 1]. Defaults to True
             highlight_border (bool, optional): Whether to highlight the border of the words. Defaults to False
-            css: (str, optional): A custom css. Defaults to None
+            margin_right (str, optional): A custom CSS margin property to set the spacing between words. Defaults to '0.2em'
+            css: (str, optional): A custom CSS to replace the default Interpreto CSS. Note: This CSS will be applied globally across the entire notebook. Defaults to None
         """
         super().__init__()
         inputs_sentence = attribution_output.elements
@@ -53,7 +55,9 @@ class SingleClassAttributionVisualization(AttributionVisualization):
         assert min_value <= max_value, "The min value should be less than the max value"
 
         self.highlight_border = highlight_border
+        self.custom_style = {"margin-right": margin_right} if margin_right else {}
         self.custom_css = css
+
         self.data = self.adapt_data(
             input_words=inputs_sentence,
             input_attributions=inputs_attribution,
@@ -62,6 +66,7 @@ class SingleClassAttributionVisualization(AttributionVisualization):
             classes_descriptions=self.make_classes_descriptions(
                 positive_color, negative_color, min_value=min_value, max_value=max_value
             ),
+            custom_style=self.custom_style,
         )
 
     def make_classes_descriptions(
@@ -125,6 +130,7 @@ class MultiClassAttributionVisualization(AttributionVisualization):
         class_names: list[str] = None,
         normalize: bool = True,
         highlight_border: bool = False,
+        margin_right: str = "0.2em",
         css: str = None,
     ):
         """
@@ -137,7 +143,8 @@ class MultiClassAttributionVisualization(AttributionVisualization):
             class_names (List[str], optional): A list of names for each class. Defaults to None
             normalize (bool, optional): Whether to normalize the attributions. If False, then the attributions values range will be assumed to be [-1, 1]. Defaults to True
             highlight_border (bool, optional): Whether to highlight the border of the words. Defaults to False
-            css: (str, optional): A custom css. Defaults to None
+            margin_right (str, optional): A custom CSS margin property to set the spacing between words. Defaults to '0.2em'
+            css: (str, optional): A custom CSS to replace the default Interpreto CSS. Note: This CSS will be applied globally across the entire notebook. Defaults to None
         """
         super().__init__()
 
@@ -161,6 +168,7 @@ class MultiClassAttributionVisualization(AttributionVisualization):
             max_values = [1.0] * nb_classes
 
         self.highlight_border = highlight_border
+        self.custom_style = {"margin-right": margin_right} if margin_right else {}
         self.custom_css = css
         self.data = self.adapt_data(
             input_words=inputs_sentence,
@@ -170,6 +178,7 @@ class MultiClassAttributionVisualization(AttributionVisualization):
             classes_descriptions=self.make_classes_descriptions(
                 positive_color, negative_color, class_names, min_values=min_values, max_values=max_values
             ),
+            custom_style=self.custom_style,
         )
 
     def make_classes_descriptions(
@@ -235,6 +244,7 @@ class GenerationAttributionVisualization(AttributionVisualization):
         negative_color: str = "#0000ff",
         normalize: bool = True,
         highlight_border: bool = False,
+        margin_right: str = "0.2em",
         css: str = None,
     ):
         """
@@ -246,7 +256,8 @@ class GenerationAttributionVisualization(AttributionVisualization):
             negative_color (str, optional): A hexadecimal color code in RGB format for negative activations. The default color is blue (#0000ff)
             normalize (bool, optional): Whether to normalize the attributions. If False, then the attributions values range will be assumed to be [-1, 1]. Defaults to True
             highlight_border (bool, optional): Whether to highlight the border of the words. Defaults to False
-            css: (str, optional): A custom css. Defaults to None
+            margin_right (str, optional): A custom CSS margin property to set the spacing between words. Defaults to '0.2em'
+            css: (str, optional): A custom CSS to replace the default Interpreto CSS. Note: This CSS will be applied globally across the entire notebook. Defaults to None
         """
         super().__init__()
         nb_outputs, nb_inputs_outputs = attribution_output.attributions.shape
@@ -285,6 +296,7 @@ class GenerationAttributionVisualization(AttributionVisualization):
             max_value = 1.0
 
         self.highlight_border = highlight_border
+        self.custom_style = {"margin-right": margin_right} if margin_right else {}
         self.custom_css = css
         self.data = self.adapt_data(
             input_words=inputs_words,
@@ -294,6 +306,7 @@ class GenerationAttributionVisualization(AttributionVisualization):
             classes_descriptions=self.make_classes_descriptions(
                 positive_color=positive_color, negative_color=negative_color, min_value=min_value, max_value=max_value
             ),
+            custom_style=self.custom_style,
         )
 
     def make_classes_descriptions(
