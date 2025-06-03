@@ -46,6 +46,8 @@ from transformers.modeling_outputs import BaseModelOutput
 
 from interpreto.typing import IncompatibilityError, ModelInputs, TensorMapping
 
+# TODO: make jaxtyping in the whole file!!
+
 
 class InferenceModes(Enum):
     """
@@ -87,6 +89,8 @@ def concat_and_pad(
         ValueError: if the tensors have different number of dimensions.
         TypeError: If the `tensors` argument is not a valid sequence of tensors or if
             `pad_dims` contains invalid dimensions.
+        ValueError: If the concatenation dimension is in the padding dimensions.
+        ValueError: If the tensors have different shapes along the dimensions not in the padding dimensions.
 
     Example:
         >>> t1 = torch.randn(2, 3, 4)
@@ -101,8 +105,17 @@ def concat_and_pad(
         raise ValueError("No tensors provided for concatenation.")
     if any(t.dim() != _tensors[0].dim() for t in _tensors[1:]):
         raise ValueError("All tensors must have the same number of dimensions.")
+
     tensors_dim = _tensors[0].dim()
     pad_dims = pad_dims or []
+    if dim is not None and dim in pad_dims:
+        raise ValueError(f"`pad_dims`: {pad_dims} should not contain the dimension to pad, `dim`: {dim}")
+    for t_dim in range(tensors_dim):
+        if t_dim not in pad_dims:
+            if any(t.shape[t_dim] != _tensors[0].shape[t_dim] for t in _tensors):
+                raise ValueError(
+                    f"All tensors must have the same shape along the dimensions not in the padding dimensions {pad_dims}, but got {[t.shape for t in _tensors]}"
+                )
     max_length_per_dim = [max(t.shape[d] for t in _tensors) for d in pad_dims]
 
     padded_tensors: list[torch.Tensor] = []
@@ -501,11 +514,11 @@ class InferenceWrapper(ABC):
         assert tensor.dim() >= non_batch_dims, "The given tensor have less dimensions than non_batch_dims parameter"
         if tensor.dim() == non_batch_dims:
             return tensor.unsqueeze(0)
-        if tensor.dim() == non_batch_dims + 1:
-            return tensor
         assert tensor.shape[0] == 1, (
             "When passing a sequence or a generator of inputs to the inference wrapper, please consider giving sequence of perturbations of single elements instead of batches (shape should be (1, n_perturbations, ...))"
         )
+        if tensor.dim() == non_batch_dims + 1:
+            return tensor
         return self._reshape_inputs(tensor[0], non_batch_dims=non_batch_dims)
 
     @singledispatchmethod
@@ -563,7 +576,9 @@ class InferenceWrapper(ABC):
         )
 
     @get_gradients.register(MutableMapping)  # type: ignore
-    def _get_gradients_from_mapping(self, model_inputs: TensorMapping, targets: torch.Tensor) -> torch.Tensor:
+    def _get_gradients_from_mapping(
+        self, model_inputs: TensorMapping, targets: torch.Tensor
+    ) -> torch.Tensor:  # TODO: add jaxtyping
         model_inputs = self.embed(model_inputs)
         inputs_embeds = model_inputs["inputs_embeds"]
 
@@ -574,7 +589,9 @@ class InferenceWrapper(ABC):
 
         # Compute gradient of the selected logits:
         grad_matrix = torch.autograd.functional.jacobian(get_score, inputs_embeds)  # (n, lt, n, l, d)
-        grad_matrix = grad_matrix.abs().mean(dim=-1)  # (n, lt, n, l)  # average over the embedding dimension
+        grad_matrix = grad_matrix.abs().mean(
+            dim=-1
+        )  # (n, lt, n, l)  # average over the embedding dimension  # TODO: discuss if th average should be forced or an argument
         return grad_matrix[torch.arange(grad_matrix.shape[0]), :, torch.arange(grad_matrix.shape[0]), :]
 
     @get_gradients.register(Iterable)  # type: ignore

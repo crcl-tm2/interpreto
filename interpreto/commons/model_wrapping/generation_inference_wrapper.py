@@ -30,6 +30,7 @@ from functools import singledispatchmethod
 import torch
 
 from interpreto.commons.model_wrapping.inference_wrapper import InferenceWrapper
+from interpreto.typing import TensorMapping
 
 
 class GenerationInferenceWrapper(InferenceWrapper):
@@ -64,9 +65,7 @@ class GenerationInferenceWrapper(InferenceWrapper):
         )
 
     @get_inputs_to_explain_and_targets.register(MutableMapping)
-    def _(
-        self, model_inputs: MutableMapping[str, torch.Tensor], **generation_kwargs
-    ) -> tuple[MutableMapping[str, torch.Tensor], torch.Tensor]:
+    def _(self, model_inputs: TensorMapping, **generation_kwargs) -> tuple[TensorMapping, torch.Tensor]:
         """
         Given a batch of input sequences (as a single MutableMapping), this method generates continuations
         using the model and returns:
@@ -109,8 +108,8 @@ class GenerationInferenceWrapper(InferenceWrapper):
 
     @get_inputs_to_explain_and_targets.register(Iterable)
     def _(
-        self, model_inputs: Iterable[MutableMapping[str, torch.Tensor]], **generation_kwargs
-    ) -> tuple[Iterable[MutableMapping[str, torch.Tensor]], Iterable[torch.Tensor]]:
+        self, model_inputs: Iterable[TensorMapping], **generation_kwargs
+    ) -> tuple[Iterable[TensorMapping], Iterable[torch.Tensor]]:
         """
         Applies get_inputs_to_explain_and_targets to each MutableMapping in an iterable (e.g., a list of batched inputs).
 
@@ -137,7 +136,7 @@ class GenerationInferenceWrapper(InferenceWrapper):
     @get_targeted_logits.register(MutableMapping)
     def _(
         self,
-        model_inputs: MutableMapping[str, torch.Tensor],
+        model_inputs: TensorMapping,
         targets: torch.Tensor,
     ):
         """
@@ -197,7 +196,7 @@ class GenerationInferenceWrapper(InferenceWrapper):
     @get_targeted_logits.register(Iterable)
     def _(
         self,
-        model_inputs: Iterable[MutableMapping[str, torch.Tensor]],
+        model_inputs: Iterable[TensorMapping],
         targets: Iterable[torch.Tensor],
     ):
         """

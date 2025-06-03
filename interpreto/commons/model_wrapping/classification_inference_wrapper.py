@@ -46,7 +46,9 @@ class ClassificationInferenceWrapper(InferenceWrapper):
     PAD_LEFT = False
 
     @staticmethod
-    def process_target(target: torch.Tensor, batch_dims: tuple[int] | torch.Size) -> torch.Tensor:
+    def process_target(
+        target: torch.Tensor, batch_dims: tuple[int] | torch.Size
+    ) -> torch.Tensor:  # TODO: find another name, this one is used in base attribution explainer
         """
         Process the target tensor to match the shape of the logits tensor.
 
