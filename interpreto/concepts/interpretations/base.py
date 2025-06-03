@@ -32,7 +32,11 @@ from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from typing import Any
 
-from interpreto.commons import ModelWithSplitPoints
+import torch
+from jaxtyping import Float
+from nnsight.intervention.graph import InterventionProxy
+
+from interpreto.commons import ActivationSelectionStrategy, ModelWithSplitPoints
 from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentActivations, ModelInput
 
 
@@ -73,6 +77,7 @@ class BaseConceptInterpretationMethod(ABC):
         inputs: ModelInput | None = None,
         latent_activations: LatentActivations | None = None,
         concepts_activations: ConceptsActivations | None = None,
+        use_vocab: bool = False,
     ) -> Mapping[int, Any]:
         """
         Interpret the concepts dimensions in the latent space into a human-readable format.
@@ -82,14 +87,91 @@ class BaseConceptInterpretationMethod(ABC):
         Args:
             concepts_indices (int | list[int]): The indices of the concepts to interpret.
             inputs (ModelInput | None): The inputs to use for the interpretation.
-                Necessary if the source is not `VOCABULARY`, as examples are extracted from the inputs.
             latent_activations (LatentActivations | None): The latent activations to use for the interpretation.
-                Necessary if the source is `LATENT_ACTIVATIONS`.
-                Otherwise, it is computed from the inputs or ignored if the source is `CONCEPT_ACTIVATIONS`.
             concepts_activations (ConceptsActivations | None): The concepts activations to use for the interpretation.
-                Necessary if the source is not `CONCEPT_ACTIVATIONS`. Otherwise, it is computed from the latent activations.
+            use_vocab (bool): Whether to use the vocabulary for the interpretation.
 
         Returns:
             Mapping[int, Any]: The interpretation of each of the specified concepts.
         """
         raise NotImplementedError
+
+    def concepts_activations_from_source(
+        self,
+        *,
+        inputs: list[str] | None = None,
+        latent_activations: Float[torch.Tensor, "nl d"] | None = None,
+        concepts_activations: Float[torch.Tensor, "nl cpt"] | None = None,
+        use_vocab: bool = False,
+    ) -> tuple[list[str], Float[torch.Tensor, "nl cpt"]]:
+        if use_vocab:
+            return self._concepts_activations_from_vocab()
+
+        if inputs is None:
+            raise ValueError("Inputs are required to compute concept activations.")
+
+        if concepts_activations is not None:
+            return inputs, concepts_activations
+
+        if latent_activations is not None:
+            concepts_activations = concept_model.encode(latent_activations)
+            return inputs, concepts_activations
+
+        activations_dict: InterventionProxy = self.model_with_split_points.get_activations(
+            inputs, select_strategy=ActivationSelectionStrategy.FLATTEN
+        )
+        latent_activations = self.model_with_split_points.get_split_activations(
+            activations_dict, split_point=self.split_point
+        )
+        concepts_activations = self.concept_model.encode(latent_activations)
+        return inputs, concepts_activations
+
+    def _concepts_activations_from_vocab(
+        self,
+    ) -> tuple[list[str], Float[torch.Tensor, "nl cpt"]]:
+        """
+        Computes the concepts activations for each token of the vocabulary
+
+        Args:
+            model_with_split_points (ModelWithSplitPoints):
+            split_point (str):
+            concept_model (ConceptModelProtocol):
+
+        Returns:
+            tuple[list[str], Float[torch.Tensor, "nl cpt"]]:
+                - The list of tokens in the vocabulary
+                - The concept activations for each token
+        """
+        # extract and sort the vocabulary
+        vocab_dict: dict[str, int] = self.model_with_split_points.tokenizer.get_vocab()
+        input_ids: list[int]
+        inputs, input_ids = zip(*vocab_dict.items(), strict=True)  # type: ignore
+
+        input_tensor: Float[torch.Tensor, "v 1"] = torch.tensor(input_ids).unsqueeze(1)
+        activations_dict: InterventionProxy = self.model_with_split_points.get_activations(
+            input_tensor, select_strategy=ActivationSelectionStrategy.FLATTEN
+        )  # TODO: verify `ModelWithSplitPoints.get_activations()` can take in ids
+        latent_activations = self.model_with_split_points.get_split_activations(
+            activations_dict, split_point=split_point
+        )
+        concepts_activations = self.concept_model.encode(latent_activations)
+        return inputs, concepts_activations  # type: ignore
+
+
+def verify_concepts_indices(
+    concepts_activations: ConceptsActivations,
+    concepts_indices: int | list[int],
+) -> list[int]:
+    # take subset of concepts as specified by the user
+    if isinstance(concepts_indices, int):
+        concepts_indices = [concepts_indices]
+
+    if not isinstance(concepts_indices, list) or not all(isinstance(c, int) for c in concepts_indices):
+        raise ValueError(f"`concepts_indices` should be 'all', an int, or a list of int. Received {concepts_indices}.")
+
+    if max(concepts_indices) >= concepts_activations.shape[1] or min(concepts_indices) < 0:
+        raise ValueError(
+            f"At least one concept index out of bounds. `max(concepts_indices)`: {max(concepts_indices)} >= {concepts_activations.shape[1]}."
+        )
+
+    return concepts_indices
