@@ -108,7 +108,7 @@ class NeuronsAsConcepts(ConceptAutoEncoderExplainer):
     def __init__(
         self,
         model_with_split_points: ModelWithSplitPoints,
-        split_point: str | None,
+        split_point: str | None = None,
     ):
         """
         Initializes the concept explainer with a given splitted model.

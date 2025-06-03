@@ -44,7 +44,6 @@ def _cosine_hungarian_distance(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tens
     Args:
         x1 (torch.Tensor): The first tensor.
         x2 (torch.Tensor): The second tensor.
-        dim (int | tuple[int, ...] | None, optional): Dimensions to reduce. Defaults to None.
 
     Returns:
         torch.Tensor: The cosine hungarian distance.
@@ -92,9 +91,7 @@ class ConceptMatchingAlgorithm(Enum):
     """
 
     COSINE_HUNGARIAN = staticmethod(_cosine_hungarian_distance)
-    COSINE_MAXIMUM = staticmethod(
-        _cosine_max_distance
-    )  # TODO: create a class with this forced and expecting a single dictionary (use at least by the Matryoshka paper)
+    COSINE_MAXIMUM = staticmethod(_cosine_max_distance)
 
 
 class Stability:

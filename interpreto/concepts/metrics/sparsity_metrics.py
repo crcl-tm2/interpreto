@@ -39,6 +39,7 @@ class Sparsity:
 
     The sparsity is defined as:
     $$ \sum_{x}^{X} \sum_{i=1}^{cpt} \mathbb{1} ( | t(h(x))_i | > \epsilon ) $$
+    TODO: make the formula work
 
     Attributes:
         concept_explainer (ConceptEncoderExplainer): The explainer used to compute concepts.
@@ -73,6 +74,7 @@ class SparsityRatio(Sparsity):
 
     With $A$ latent activations obtained through $A = h(X)$, the sparsity ratio is defined as:
     $$ (1 / cpt) * \sum_{a}^{A} \sum_{i=1}^{cpt} \mathbb{1} ( | t(a)_i | > \epsilon ) $$
+    TODO: make the formula work
 
     Attributes:
         concept_explainer (ConceptEncoderExplainer): The explainer used to compute concepts.

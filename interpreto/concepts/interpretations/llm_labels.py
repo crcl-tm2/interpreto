@@ -67,15 +67,17 @@ class LLMLabels(BaseConceptInterpretationMethod):
         self,
         *,
         model_with_split_points: ModelWithSplitPoints,
-        split_point: str,
         concept_model: ConceptModelProtocol,
+        split_point: str | None = None,
         granularity: Granularities,
         llm_interface: LLMInterface,
         sampling_method: SAMPLING_METHOD,
         k_examples: int = 30,
         k_context: int = 10,
     ):
-        super().__init__(model_with_split_points, split_point, concept_model)
+        super().__init__(
+            model_with_split_points=model_with_split_points, split_point=split_point, concept_model=concept_model
+        )
 
         if granularity is not Granularities.TOKENS:
             raise NotImplementedError("Only token granularity is currently supported for interpretation.")

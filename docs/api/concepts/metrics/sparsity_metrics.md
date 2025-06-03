@@ -14,8 +14,6 @@ metric = MetricClass(concept_explainer)
 score = metric.compute(activations)
 ```
 
-
-
 ## Sparsity
 
 ::: interpreto.concepts.metrics.Sparsity
@@ -24,8 +22,6 @@ score = metric.compute(activations)
       show_root_heading: true
       show_source: true
       inherited_members: true
-
-
 
 ## Sparsity Ratio
 
