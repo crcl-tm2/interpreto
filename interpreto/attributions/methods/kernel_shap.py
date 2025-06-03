@@ -87,6 +87,7 @@ class KernelShap(MultitaskExplainerMixin, AttributionExplainer):
         )
 
         aggregator = LinearRegressionAggregator(
+            distance_function=None,  # Kernel SHAP does not use distance function
             similarity_kernel=Kernels.ONES,
         )
 

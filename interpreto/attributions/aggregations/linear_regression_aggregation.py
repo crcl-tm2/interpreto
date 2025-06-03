@@ -135,6 +135,7 @@ class LinearRegressionAggregator(Aggregator):
     ) -> Float[Tensor, "t l"]:
         """
         Aggregate the results of the perturbations using a linear model.
+        We use the closed form solution for the weighted least squares problem.
 
         Args:
             results (torch.Tensor): The results of the perturbations. Shape: (p, t).
@@ -147,11 +148,18 @@ class LinearRegressionAggregator(Aggregator):
         """
         # Simplify typing
         p, l = mask.shape
+        t = results.shape[1]
+
+        if results.shape[0] != p:
+            raise ValueError(
+                "The number of perturbations must match the number of results."
+                + f"Got {results.shape} perturbations and {results.shape} results."
+            )
 
         # Define the weights for the linear model
         if self.distance_function is not None:  # LIME
             # Compute distance between perturbations and original input using the mask
-            distances: Float[Tensor, "{p}"] = self.distance_function(mask)
+            distances: Float[Tensor, p] = self.distance_function(mask)
 
             # Compute the similarities between perturbations and original input using the distances
             if isinstance(self.kernel_width, Callable):
@@ -159,22 +167,28 @@ class LinearRegressionAggregator(Aggregator):
             else:
                 assert isinstance(self.kernel_width, float) or isinstance(self.kernel_width, int)
                 kernel_width: float = self.kernel_width
-            weights: Float[Tensor, "{p}"] = self.similarity_kernel(distances, kernel_width)
+            weights: Float[Tensor, p] = self.similarity_kernel(distances, kernel_width)
         else:  # Kernel SHAP
-            weights: Float[Tensor, "{p}"] = self.similarity_kernel(mask[:, 0], 1.0)
+            weights: Float[Tensor, p] = self.similarity_kernel(mask[:, 0], 1.0)
+
+        # We take the opposite of the mask
+        # Otherwise the linear treat the perturbation of a feature as passing from 0 to 1 for this feature
+        # We want exactly the opposite
+        mask = 1 - mask
 
         # Compute closed form solution for the linear model
         # Add a constant column for the bias term
-        X: Float[Tensor, "{p} l+1"] = torch.cat([torch.ones(results.shape[0], 1, device=mask.device), mask], dim=1)
+        X: Float[Tensor, p, l + 1] = torch.cat([torch.ones(results.shape[0], 1, device=mask.device), mask], dim=1)
 
+        # formula from wikipedia: https://en.wikipedia.org/wiki/Weighted_least_squares
         # \theta =(X^T W X)^{-1} (X^T W y)
-        XT_W: Float[Tensor, "l+1 {p}"] = X.T * weights
-        epsilon: Float[Tensor, "l+1 l+1"] = (
+        XT_W: Float[Tensor, l + 1, p] = X.T * weights
+        epsilon: Float[Tensor, l + 1, l + 1] = (
             torch.eye(XT_W.shape[0], device=XT_W.device) * 1e-6
         )  # To prevent inversion errors
-        theta: Float[Tensor, "l+1 t"] = torch.inverse(XT_W @ X + epsilon) @ (XT_W @ results)
+        theta: Float[Tensor, l + 1, t] = torch.inverse(XT_W @ X + epsilon) @ (XT_W @ results)
 
         # exclude the bias term
-        token_importance: Float[Tensor, "t {l}"] = theta[1:].T
+        token_importance: Float[Tensor, t, l] = theta[1:].T
 
         return token_importance
