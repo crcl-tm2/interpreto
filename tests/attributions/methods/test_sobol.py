@@ -26,11 +26,10 @@ import pytest
 import torch
 
 from interpreto.attributions import SobolAttribution
-from interpreto.attributions.aggregations.sobol_aggregation import SobolAggregator
+from interpreto.attributions.aggregations.sobol_aggregation import SobolAggregator, SobolIndicesOrders
 from interpreto.attributions.base import AttributionOutput
 from interpreto.attributions.perturbations.sobol_perturbation import (
     SequenceSamplers,
-    SobolIndicesOrders,
     SobolTokenPerturbator,
 )
 from interpreto.commons.granularity import GranularityLevel
@@ -71,15 +70,14 @@ def test_sobol_attribution_init_and_mask(
     # 2) check the perturbator stored our enums correctly
     assert isinstance(explainer.perturbator, SobolTokenPerturbator)
     assert isinstance(explainer.aggregator, SobolAggregator)
-    perturbator = explainer.perturbator
-    assert perturbator.sampler_class == sampler.value
-    assert perturbator.sobol_indices_order == order.value
+    assert explainer.perturbator.sampler_class == sampler.value
+    assert explainer.aggregator.sobol_indices_order == order.value
 
     # 3) get_mask returns a float32 tensor of shape (n_perturbations, seq_len)   # TODO: put this in a common perturbator test
     seq_len = 8
-    mask = perturbator.get_mask(seq_len)
+    mask = explainer.perturbator.get_mask(seq_len)
     assert isinstance(mask, torch.Tensor)
-    assert mask.shape == ((seq_len + 1) * n_token_perturbations, seq_len)
+    assert mask.shape == ((seq_len + 2) * n_token_perturbations, seq_len)
     assert mask.dtype == torch.float32
 
     # 4) check explanations TODO add this to the main test

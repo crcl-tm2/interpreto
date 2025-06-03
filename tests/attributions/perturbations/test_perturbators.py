@@ -36,7 +36,7 @@ from interpreto.attributions.perturbations import (
     SobolTokenPerturbator,
 )
 from interpreto.attributions.perturbations.base import TokenMaskBasedPerturbator
-from interpreto.attributions.perturbations.sobol_perturbation import SequenceSamplers, SobolIndicesOrders
+from interpreto.attributions.perturbations.sobol_perturbation import SequenceSamplers
 from interpreto.commons.granularity import GranularityLevel
 
 embeddings_perturbators = [
@@ -137,7 +137,7 @@ def test_token_perturbators(perturbator_class, sentences, bert_model, bert_token
             real_p = l + 1
         elif isinstance(perturbator, SobolTokenPerturbator):
             k = 30  # default value
-            real_p = (l + 1) * k
+            real_p = (l + 2) * k
         else:
             real_p = p
 
@@ -237,45 +237,31 @@ def test_linear_interpolation_perturbation_adjust_baseline_invalid():
 
 
 @pytest.mark.parametrize(
-    "sobol_indices_order, sampler",
-    [
-        (SobolIndicesOrders.FIRST_ORDER, SequenceSamplers.SOBOL),
-        (SobolIndicesOrders.TOTAL_ORDER, SequenceSamplers.SOBOL),
-        (SobolIndicesOrders.FIRST_ORDER, SequenceSamplers.HALTON),
-        (SobolIndicesOrders.TOTAL_ORDER, SequenceSamplers.HALTON),
-        (SobolIndicesOrders.FIRST_ORDER, SequenceSamplers.LatinHypercube),
-        (SobolIndicesOrders.TOTAL_ORDER, SequenceSamplers.LatinHypercube),
-    ],
+    "sampler",
+    [SequenceSamplers.SOBOL, SequenceSamplers.HALTON, SequenceSamplers.LatinHypercube],
 )
-def test_sobol_masks(sobol_indices_order, sampler):
+def test_sobol_masks(sampler):
     k = 10
     perturbator = SobolTokenPerturbator(
         inputs_embedder=None,
         n_token_perturbations=k,
-        sobol_indices_order=sobol_indices_order,
         sampler=sampler,
     )
 
     for l in range(2, 20, 3):
         mask = perturbator.get_mask(l)
-        assert mask.shape == ((l + 1) * k, l)
-        initial_mask = mask[:k]
+        assert mask.shape == ((l + 2) * k, l)
+        A = mask[:k]
+        B = mask[k : 2 * k]
+        C = mask[2 * k :].view(l, k, l)
 
         # verify token-wise mask compared to the initial mask
         for i in range(l):
-            token_mask_i = mask[(i + 1) * k : (i + 2) * k]
-            if sobol_indices_order == SobolIndicesOrders.FIRST_ORDER:
-                assert torch.all(torch.isclose(token_mask_i[:, i], 1 - initial_mask[:, i], atol=1e-5))
-                if i != 0:
-                    assert torch.all(torch.isclose(token_mask_i[:, :i], initial_mask[:, :i], atol=1e-5))
-                if i != l - 1:
-                    assert torch.all(torch.isclose(token_mask_i[:, i + 1 :], initial_mask[:, i + 1 :], atol=1e-5))
-            else:
-                assert torch.all(torch.isclose(token_mask_i[:, i], initial_mask[:, i], atol=1e-5))
-                if i != 0:
-                    assert torch.all(torch.isclose(token_mask_i[:, :i], 1 - initial_mask[:, :i], atol=1e-5))
-                if i != l - 1:
-                    assert torch.all(torch.isclose(token_mask_i[:, i + 1 :], 1 - initial_mask[:, i + 1 :], atol=1e-5))
+            assert torch.all(torch.isclose(C[i, :, i], B[:, i], atol=1e-5))
+            if i != 0:
+                assert torch.all(torch.isclose(C[i, :, :i], A[:, :i], atol=1e-5))
+            if i != l - 1:
+                assert torch.all(torch.isclose(C[i, :, i + 1 :], A[:, i + 1 :], atol=1e-5))
 
 
 def test_occlusion_masks():
@@ -297,7 +283,7 @@ if __name__ == "__main__":
     bert_tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-bert")
 
     test_token_perturbators(
-        OcclusionPerturbator,
+        SobolTokenPerturbator,
         sentences=sentences,
         bert_model=bert_model,
         bert_tokenizer=bert_tokenizer,

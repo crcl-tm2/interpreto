@@ -33,11 +33,10 @@ from collections.abc import Callable
 import torch
 from transformers import PreTrainedModel, PreTrainedTokenizer
 
-from interpreto.attributions.aggregations.sobol_aggregation import SobolAggregator
+from interpreto.attributions.aggregations.sobol_aggregation import SobolAggregator, SobolIndicesOrders
 from interpreto.attributions.base import AttributionExplainer, MultitaskExplainerMixin
 from interpreto.attributions.perturbations.sobol_perturbation import (
     SequenceSamplers,
-    SobolIndicesOrders,
     SobolTokenPerturbator,
 )
 from interpreto.commons.granularity import GranularityLevel
@@ -46,7 +45,9 @@ from interpreto.commons.model_wrapping.inference_wrapper import InferenceModes
 
 class SobolAttribution(MultitaskExplainerMixin, AttributionExplainer):
     """
-    Sobol Attribution method
+    Sobol Attribution method.
+
+
     """
 
     use_gradient = False
@@ -85,15 +86,19 @@ class SobolAttribution(MultitaskExplainerMixin, AttributionExplainer):
             granularity_level=granularity_level,
             replace_token_id=replace_token_id,
             n_token_perturbations=n_token_perturbations,
-            sobol_indices_order=sobol_indices_order,
             sampler=sampler,
+        )
+
+        aggregator = SobolAggregator(
+            n_token_perturbations=n_token_perturbations,
+            sobol_indices_order=sobol_indices_order,
         )
 
         super().__init__(
             model=model,
             tokenizer=tokenizer,
             perturbator=perturbator,
-            aggregator=SobolAggregator(n_token_perturbations=n_token_perturbations),
+            aggregator=aggregator,
             batch_size=batch_size,
             granularity_level=granularity_level,
             inference_mode=inference_mode,
