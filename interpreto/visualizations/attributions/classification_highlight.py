@@ -47,8 +47,8 @@ class SingleClassAttributionVisualization(AttributionVisualization):
 
         # compute the min and max values for the attributions to be used for normalization
         if normalize:
-            min_value = inputs_attribution.min()
-            max_value = inputs_attribution.max()
+            min_value = min(inputs_attribution.min(), -inputs_attribution.max())
+            max_value = max(inputs_attribution.max(), -inputs_attribution.min())
         else:
             min_value = -1.0
             max_value = 1.0
@@ -161,8 +161,10 @@ class MultiClassAttributionVisualization(AttributionVisualization):
 
         # compute the min and max values for the attributions to be used for normalization
         if normalize:
-            min_values = attribution_output.attributions.min(axis=1).values
-            max_values = attribution_output.attributions.max(axis=1).values
+            mins_list = attribution_output.attributions.min(axis=1).values
+            maxs_list = attribution_output.attributions.max(axis=1).values
+            min_values = [min(min_value, -max_value) for min_value, max_value in zip(mins_list, maxs_list)]
+            max_values = [max(max_value, -min_value) for min_value, max_value in zip(mins_list, maxs_list)]
         else:
             min_values = [-1.0] * nb_classes
             max_values = [1.0] * nb_classes
@@ -288,8 +290,8 @@ class GenerationAttributionVisualization(AttributionVisualization):
 
         # compute the min and max values for the attributions to be used for normalization
         if normalize:
-            min_value = attribution_output.attributions.min()
-            max_value = attribution_output.attributions.max()
+            min_value = min(attribution_output.attributions.min(), -attribution_output.attributions.max())
+            max_value = max(attribution_output.attributions.max(), -attribution_output.attributions.min())
             assert min_value <= max_value, "The min value should be less than the max value"
         else:
             min_value = -1.0
