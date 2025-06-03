@@ -41,6 +41,7 @@ class AttributionVisualization(ABC):
         output_words: list[str],
         output_attributions: torch.Tensor,
         classes_descriptions: list[dict],
+        custom_style: dict = None,
     ):
         """
         Adapt the data to the expected format for the visualization
@@ -52,6 +53,7 @@ class AttributionVisualization(ABC):
             output_words (List[str]): List of output words (1 sentence)
             output_attributions (torch.Tensor): Attributions for the output (same dimension)
             classes_descriptsion (List[dict]): Description of the classes.
+            custom_style (dict): Custom style to apply to the visualization
 
         Returns:
             dict: The adapted data
@@ -60,6 +62,7 @@ class AttributionVisualization(ABC):
             "classes": classes_descriptions,
             "inputs": {"words": input_words, "attributions": input_attributions},
             "outputs": {"words": output_words, "attributions": output_attributions},
+            "custom_style": custom_style,
         }
         return data_struct
 

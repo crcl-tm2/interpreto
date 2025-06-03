@@ -72,6 +72,7 @@
           this.createInputs();
       }
       this.refreshInputsStyles();
+      this.refreshOutputsStyles();
     }
 
     /**
@@ -133,6 +134,7 @@
       } else {
         style += "outline-color: transparent;";
       }
+      
       console.log("\t getStyleForWord() style: " + style);
       return style;
     }
@@ -282,6 +284,15 @@
       var mainInputsDiv = document.getElementById(this.uniqueIdInputs);
       var sentenceElements = mainInputsDiv.children;
 
+      // Get potential custom style from the user
+      let customStyle = "";
+      if (this.jsonData.custom_style) {
+        console.log("\t refreshInputsStyles() custom style: ", this.jsonData.custom_style);
+        for (const [key, value] of Object.entries(this.jsonData.custom_style)) {
+          customStyle += `${key}: ${value};`;
+        }
+      }
+
       // iterate on sentences
       for (let i = 0; i < sentenceElements.length; i++) {
         var sentenceElement = sentenceElements[i];
@@ -291,7 +302,10 @@
         for (let j = 0; j < wordElements.length; j++) {
           var wordElement = wordElements[j];
           if (this.activatedClassId == null || this.currentOutputId == null) {
-            wordElement.style = ""; // reset the style & tooltip
+            // Reset the style
+            wordElement.style = customStyle;
+
+            // Remove the tooltip if existing
             var previousTooltip = wordElement.getElementsByClassName("tooltiptext");
             if (previousTooltip.length > 0) {
               previousTooltip[0].remove();
@@ -314,7 +328,7 @@
               this.activatedClassId,
               true
             );
-            wordElement.style = style;
+            wordElement.style = style + customStyle;
 
             // Tooltip:
             // - Remove the previous tooltip if existing
@@ -521,6 +535,16 @@
         "refreshOutputsStyles(), selected output: ",
         this.selectedOutputId
       );
+
+      // Get potential custom style from the user
+      let customStyle = "";
+      if (this.jsonData.custom_style) {
+        console.log("\t refreshInputsStyles() custom style: ", this.jsonData.custom_style);
+        for (const [key, value] of Object.entries(this.jsonData.custom_style)) {
+          customStyle += `${key}: ${value};`;
+        }
+      }
+
       for (let i = 0; i < mainOutputsDiv.children.length; i++) {
         // Update the style of each output word, based on its position relative to the current selected output
         var child = mainOutputsDiv.children[i];
@@ -545,9 +569,9 @@
             this.activatedClassId,
             true
           );
-          child.style = style;
+          child.style = style + customStyle;
         } else {
-          child.style = ""; // reset the style
+          child.style = customStyle; // reset the style
         }
 
         // Tooltip for the output word
