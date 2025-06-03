@@ -19,7 +19,107 @@ def tensor_to_list(obj):
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 
-class WordHighlightVisualization(ABC):
+class AttributionVisualization(ABC):
+    """
+    Abstract class for words highlighting visualization
+    """
+
+    def __init__(self):
+        self.custom_css = None
+        self.js_file_path = "visualization_attribution.js"
+        self.css_file_path = "visualization.css"
+
+        # Generate unique ids for the divs so that we can have multiple visualizations on the same page
+        self.unique_id_classes = f"classes-{uuid.uuid4()}"
+        self.unique_id_inputs = f"inputs-{uuid.uuid4()}"
+        self.unique_id_outputs = f"outputs-{uuid.uuid4()}"
+
+    def adapt_data(
+        self,
+        input_words: list[str],
+        input_attributions: torch.Tensor,
+        output_words: list[str],
+        output_attributions: torch.Tensor,
+        classes_descriptions: list[dict],
+    ):
+        """
+        Adapt the data to the expected format for the visualization
+
+        Args:
+            input_words (List[str]]): list of input words (1 sentence)
+            input_attributions (torch.Tensor): Attributions for the input words
+                (same dimension)
+            output_words (List[str]): List of output words (1 sentence)
+            output_attributions (torch.Tensor): Attributions for the output (same dimension)
+            classes_descriptsion (List[dict]): Description of the classes.
+
+        Returns:
+            dict: The adapted data
+        """
+        data_struct = {
+            "classes": classes_descriptions,
+            "inputs": {"words": input_words, "attributions": input_attributions},
+            "outputs": {"words": output_words, "attributions": output_attributions},
+        }
+        return data_struct
+
+    def build_html_header(self) -> str:
+        """
+        Build the html header for the visualization
+
+        Returns:
+            str: The html header
+        """
+        # Load the JS and CSS files
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        js_file_path = os.path.join(current_dir, self.js_file_path)
+        with open(js_file_path, encoding="utf-8") as file:
+            js_content = file.read()
+
+        css_file_path = os.path.join(current_dir, self.css_file_path)
+        with open(css_file_path, encoding="utf-8") as file:
+            css = file.read()
+
+        html = f"""
+            <head>
+                <style>
+                    {css}
+                    {self.custom_css if self.custom_css else ""}
+                </style>
+                <script>
+                    {js_content}
+                </script>
+                <script>
+                </script>
+            </head>
+            <body class="body-visualization">
+        """
+        return html
+
+    @abstractmethod
+    def build_html(self) -> str:
+        """
+        Build the html for the visualization
+        """
+        raise NotImplementedError
+
+    def display(self) -> None:
+        """
+        Display the visualization in the notebook
+        """
+        html = self.build_html()
+        display(HTML(html))
+
+    def save(self, path: str) -> None:
+        """
+        Save the visualization to a file
+        """
+        html = self.build_html()
+        with open(path, "w", encoding="utf-8") as file:
+            file.write(html)
+
+
+class ConceptAttributionVisualization(ABC):
     """
     Abstract class for words highlighting visualization
     """
@@ -76,11 +176,11 @@ class WordHighlightVisualization(ABC):
 
         # Load the JS and CSS files
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        js_file_path = os.path.join(current_dir, "visualisation.js")
+        js_file_path = os.path.join(current_dir, "visualization.js")
         with open(js_file_path, encoding="utf-8") as file:
             js_content = file.read()
 
-        css_file_path = os.path.join(current_dir, "visualisation.css")
+        css_file_path = os.path.join(current_dir, "visualization.css")
         with open(css_file_path, encoding="utf-8") as file:
             css = file.read()
 

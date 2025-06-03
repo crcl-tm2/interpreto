@@ -8,10 +8,10 @@ import json
 
 from interpreto.attributions.base import AttributionOutput
 
-from ..base import WordHighlightVisualization, tensor_to_list
+from ..base import ConceptAttributionVisualization, tensor_to_list
 
 
-class ConceptHighlightVisualization(WordHighlightVisualization):
+class ConceptHighlightVisualization(ConceptAttributionVisualization):
     """
     Class for concepts visualization
     """
@@ -168,7 +168,7 @@ class ConceptHighlightVisualization(WordHighlightVisualization):
         html += f"<h3>Outputs</h3><div class='line-style'><div id='{self.unique_id_outputs}'></div></div>\n"
         html += f"""
         <script>
-            var viz = new DataVisualisation('{self.unique_id_concepts}', '{self.unique_id_inputs}', '{self.unique_id_outputs}', {self.topk}, '{self.highlight_border}', {json.dumps(json_data)});
+            var viz = new DataVisualization('{self.unique_id_concepts}', '{self.unique_id_inputs}', '{self.unique_id_outputs}', {self.topk}, '{self.highlight_border}', {json.dumps(json_data)});
             window.viz = viz;
         </script>
         </body></html>
