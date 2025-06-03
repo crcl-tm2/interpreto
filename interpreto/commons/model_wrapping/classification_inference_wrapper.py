@@ -109,7 +109,7 @@ class ClassificationInferenceWrapper(InferenceWrapper):
             f"type {type(model_inputs)} not supported for method get_targets in class {self.__class__.__name__}"
         )
 
-    @get_targets.register(MutableMapping)
+    @get_targets.register(MutableMapping)  # TODO: remove single dispatch, `_get_targets_from_mapping` never called
     def _get_targets_from_mapping(self, model_inputs: TensorMapping) -> torch.Tensor:
         """
         Get the target from the model for the given inputs.
@@ -137,7 +137,7 @@ class ClassificationInferenceWrapper(InferenceWrapper):
         """
         yield from (prediction.argmax(dim=-1) for prediction in self._get_logits_from_iterable(model_inputs))
 
-    @singledispatchmethod
+    @singledispatchmethod  # TODO: evaluate necessity of single dispacth, always `Iterable` in the explainers and `MutableMapping` for gradients
     def get_targeted_logits(
         self,
         model_inputs: Any,
