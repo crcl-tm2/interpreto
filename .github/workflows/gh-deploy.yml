@@ -9,9 +9,9 @@ jobs:
 
   build-and-deploy:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: "3.10"
+    # strategy:
+    #   matrix:
+    #     python-version: "3.10"
 
     steps:
       - uses: actions/checkout@v3
