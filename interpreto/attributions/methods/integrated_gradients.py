@@ -44,6 +44,7 @@ class IntegratedGradients(MultitaskExplainerMixin, AttributionExplainer):
     Integrated Gradients method
 
     # TODO: add paper link
+    # TODO: add example
     """
 
     use_gradient = True

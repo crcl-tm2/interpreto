@@ -49,6 +49,7 @@ class Occlusion(MultitaskExplainerMixin, AttributionExplainer):
     Occlusion method
 
     # TODO: add paper link
+    # TODO: add example
     """
 
     use_gradient = False

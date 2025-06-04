@@ -48,6 +48,7 @@ class KernelShap(MultitaskExplainerMixin, AttributionExplainer):
     Kernel SHAP attribution method.
 
     # TODO: add paper link
+    # TODO: add example
     """
 
     use_gradient = False
