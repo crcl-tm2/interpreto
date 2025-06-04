@@ -28,13 +28,13 @@ jobs:
         run: |
           make uv-download
           make uv-activate
-          uv pip install '.[docs]'
-          uv pip list
+          pip install '.[docs]'
+          pip list
 
       - name: "Build Mkdocs"
         run: |
           make uv-activate
-          uv pip list
+          pip list
           mkdocs build
 
       - name: "Deploy Github Pages"
