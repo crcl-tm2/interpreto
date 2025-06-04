@@ -103,9 +103,20 @@ def is_ci() -> bool:
     return os.getenv("GITHUB_ACTIONS", "").lower() == "true"
 
 
-@pytest.mark.parametrize("model_name", ALL_MODEL_LOADERS.keys())
+@pytest.mark.parametrize("model_name", CI_MODEL_LOADERS)
 @pytest.mark.parametrize("attribution_explainer", attribution_method_kwargs.keys())
-def test_attribution_methods_with_text(model_name, attribution_explainer):
+def test_attribution_methods_with_text_short(model_name, attribution_explainer):
+    evaluate_attribution_methods_with_text(model_name, attribution_explainer)
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("model_name", [k for k in ALL_MODEL_LOADERS.keys() if k not in CI_MODEL_LOADERS])
+@pytest.mark.parametrize("attribution_explainer", attribution_method_kwargs.keys())
+def test_attribution_methods_with_text_long(model_name, attribution_explainer):
+    evaluate_attribution_methods_with_text(model_name, attribution_explainer)
+
+
+def evaluate_attribution_methods_with_text(model_name, attribution_explainer):
     """Tests all combinations of models and loaders with an attribution method"""
 
     # Test are too memory heavy for the CI, hence we only run them on a subset of models:
@@ -210,7 +221,7 @@ def test_attribution_methods_with_text(model_name, attribution_explainer):
 #       There should be a counter wrapped around a model to verify that the number of calls to the model is correct.
 
 if __name__ == "__main__":
-    test_attribution_methods_with_text(
-        model_name="hf-internal-testing/tiny-random-bert",
-        attribution_explainer=SmoothGrad,
+    test_attribution_methods_with_text_short(
+        model_name="hf-internal-testing/tiny-random-gpt2",
+        attribution_explainer=OcclusionExplainer,
     )

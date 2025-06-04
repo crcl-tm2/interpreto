@@ -32,6 +32,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def test_classification_inference_wrapper_single_sentence(bert_model, bert_tokenizer, sentences):
     # Model preparation
     inference_wrapper = ClassificationInferenceWrapper(bert_model, batch_size=5, device=DEVICE)
+    inference_wrapper.pad_token_id = bert_tokenizer.pad_token_id
 
     # Reference values
     tokens = bert_tokenizer(sentences[0], return_tensors="pt", padding=True, truncation=True)
@@ -70,3 +71,13 @@ def test_classification_inference_wrapper_multiple_sentences(bert_model, bert_to
     assert torch.all(torch.isclose(logits, test_logits, atol=1e-5))
     assert torch.all(torch.isclose(targets, test_targets, atol=1e-5))
     assert torch.all(torch.isclose(target_logits, test_target_logits, atol=1e-5))
+
+
+if __name__ == "__main__":
+    from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
+    bert_model = AutoModelForSequenceClassification.from_pretrained("hf-internal-testing/tiny-random-bert")
+    bert_tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-bert")
+    sentences = ["Hello, my dog is cute", "Hello, my cat is cute"]
+    test_classification_inference_wrapper_single_sentence(bert_model, bert_tokenizer, sentences)
+    test_classification_inference_wrapper_multiple_sentences(bert_model, bert_tokenizer, sentences)

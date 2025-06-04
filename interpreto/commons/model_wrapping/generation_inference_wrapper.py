@@ -200,7 +200,11 @@ class GenerationInferenceWrapper(InferenceWrapper):
             for elem in model_inputs
         ]
         all_logits = self._get_logits_from_iterable(model_inputs)
-        for logits, target in zip(all_logits, targets, strict=True):
+        # TODO: remove debug lists
+        logits_debug_list = list(all_logits)
+        targets_debug_list = list(targets)
+        for logits, target in zip(logits_debug_list, targets_debug_list, strict=True):
+            # for logits, target in zip(all_logits, targets, strict=True):
             target_length = target.shape[-1]
             targeted_logits = logits[..., -target_length:, :]
 
