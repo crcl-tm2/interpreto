@@ -9,6 +9,9 @@ template: home.html
 [![Python Version](https://img.shields.io/pypi/pyversions/interpreto.svg?color=blue)](https://pypi.org/project/interpreto/)
 [![Downloads](https://static.pepy.tech/badge/interpreto)](https://pepy.tech/project/interpreto)
 [![License](https://img.shields.io/github/license/FOR-sight-ai/interpreto)](https://github.com/FOR-sight-ai/interpreto/blob/main/LICENSE)
+> **Warning**
+>
+> This library is currently in beta and many functions may not work. If you use it anyway, we welcome your comments; please open an issue!
 
 ## 📚 Table of contents
 
