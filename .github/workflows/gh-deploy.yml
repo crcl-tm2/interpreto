@@ -30,7 +30,8 @@ jobs:
       - name: Create environment
         run: |
           make uv-download
-          make install-ci
+          make uv-activate
+          pip install '.[docs]'
           pip list
 
       - name: Debug mkdocs building

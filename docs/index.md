@@ -3,7 +3,7 @@ template: home.html
 
 TODO: make the banner fit in the page
 
-![Interpreto: Interpretability Toolkit for LLMs](assets/img/interpreto_banner.png)
+<img src="assets/img/interpreto_banner.png" alt="Interpreto: Interpretability Toolkit for LLMs" style="max-width:100%; height:auto;" />
 
 [![Build status](https://img.shields.io/github/actions/workflow/status/FOR-sight-ai/interpreto/build.yml?branch=main)](https://github.com/FOR-sight-ai/interpreto/actions?query=workflow%3Abuild)
 [![Docs status](https://img.shields.io/readthedocs/interpreto)](TODO)
