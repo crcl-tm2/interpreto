@@ -29,9 +29,12 @@ jobs:
           make uv-download
           make uv-activate
           uv pip install '.[docs]'
+          uv pip list
 
       - name: "Build Mkdocs"
-        run: make build-docs
+        run: |
+          make uv-activate
+          uv mkdocs build
 
       - name: "Deploy Github Pages"
         uses: JamesIves/github-pages-deploy-action@v4
