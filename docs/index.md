@@ -1,18 +1,14 @@
 template: home.html
 ---
 
-TODO: make the banner fit in the page
-
 <img src="assets/img/interpreto_banner.png" alt="Interpreto: Interpretability Toolkit for LLMs" style="max-width:100%; height:auto;" />
 
 [![Build status](https://img.shields.io/github/actions/workflow/status/FOR-sight-ai/interpreto/build.yml?branch=main)](https://github.com/FOR-sight-ai/interpreto/actions?query=workflow%3Abuild)
-[![Docs status](https://img.shields.io/readthedocs/interpreto)](TODO)
+[![Docs status](https://img.shields.io/readthedocs/interpreto)]([TODO](https://interpreto.readthedocs.io/))
 [![Version](https://img.shields.io/pypi/v/interpreto?color=blue)](https://pypi.org/project/interpreto/)
 [![Python Version](https://img.shields.io/pypi/pyversions/interpreto.svg?color=blue)](https://pypi.org/project/interpreto/)
 [![Downloads](https://static.pepy.tech/badge/interpreto)](https://pepy.tech/project/interpreto)
 [![License](https://img.shields.io/github/license/FOR-sight-ai/interpreto)](https://github.com/FOR-sight-ai/interpreto/blob/main/LICENSE)
-
-</div>
 
 ## 📚 Table of contents
 
@@ -162,10 +158,10 @@ Interpreto 🪄 is a project of the FOR and the [DEEL](https://www.deel.ai) team
 
 ## 🗞️ Citation
 
-If you use Interpreto 🪄 as part of your workflow in a scientific publication, please consider citing 🗞️ [our paper](TODO):
+If you use Interpreto 🪄 as part of your workflow in a scientific publication, please consider citing 🗞️ our paper (coming soon):
 
-```
-TODO bibtex
+```bibtex
+BibTeX entry coming soon
 ```
 
 ## 📝 License
