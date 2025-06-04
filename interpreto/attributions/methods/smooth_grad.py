@@ -55,7 +55,7 @@ class SmoothGrad(MultitaskExplainerMixin, AttributionExplainer):
         batch_size: int,
         device: torch.device | None = None,
         inference_mode: Callable[[torch.Tensor], torch.Tensor] = InferenceModes.LOGITS,
-        n_interpolations: int = 10,
+        n_interpolations: int = 10,  # TODO: find better name
         noise_level: float = 0.1,
     ):
         """
