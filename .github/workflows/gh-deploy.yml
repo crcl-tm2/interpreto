@@ -9,9 +9,9 @@ jobs:
 
   build-and-deploy:
     runs-on: ubuntu-latest
-    # strategy:
-    #   matrix:
-    #     python-version: "3.10"
+    strategy:
+      matrix:
+        python-version: "3.10"
 
     steps:
       - uses: actions/checkout@v3
@@ -31,14 +31,7 @@ jobs:
         run: |
           make uv-download
           make uv-activate
-          pip install '.[docs]'
-          pip list
-
-      - name: Debug mkdocs building
-        run: |
-          make uv-activate
-          pip list
-          mkdocs build
+          uv pip install '.[docs]'
 
       - name: "Build Mkdocs"
         run: make build-docs
@@ -48,4 +41,4 @@ jobs:
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: gh-pages
-          FOLDER: docs/site
+          FOLDER: site
