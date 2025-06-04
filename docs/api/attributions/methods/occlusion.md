@@ -8,12 +8,14 @@ The principle is simple: by systematically occluding (i.e., masking, deleting, o
 ## Example
 
 ```python
-from interpreto.attributions import Occlusion
-from interpreto.commons.granularity import Granularity
+from interpreto import Granularity, Occlusion
+from interpreto.attributions import InferenceModes
 
 # load model, tokenizer and text
-method = Occlusion(model, tokenizer, batch_size=4, granularity=Granularity.WORD)
-explanations = method.explain(text)
+method = Occlusion(model, tokenizer, batch_size=4,
+    inference_mode=InferenceModes.SOFTMAX,
+    granularity=Granularity.WORD)
+explanations = method(text)
 ```
 
 ## Parameters
