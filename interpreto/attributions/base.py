@@ -81,6 +81,11 @@ class AttributionOutput:
         """
         Initializes an AttributionOutput instance.
 
+        # TODO: Harmonize even more, all attributions could be of the shape (t, l),
+        # with t being either a number of class or of generated tokens.
+        # It should not be a problem if some values are None or zero for generation.
+        # This should be thoroughly tested.
+
         Args:
             attributions (Iterable[SingleAttribution]): A list (n elements, with n the number of samples) of attribution score tensors:
                 - `l` represents the number of elements for which attribution is computed (for NLP tasks: can be the total sequence length).

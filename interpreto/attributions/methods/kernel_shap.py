@@ -46,6 +46,8 @@ from interpreto.commons.model_wrapping.inference_wrapper import InferenceModes
 class KernelShap(MultitaskExplainerMixin, AttributionExplainer):
     """
     Kernel SHAP attribution method.
+
+    # TODO: add paper link
     """
 
     use_gradient = False

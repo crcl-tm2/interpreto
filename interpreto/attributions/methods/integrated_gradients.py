@@ -42,6 +42,8 @@ from interpreto.commons.model_wrapping.inference_wrapper import InferenceModes
 class IntegratedGradients(MultitaskExplainerMixin, AttributionExplainer):
     """
     Integrated Gradients method
+
+    # TODO: add paper link
     """
 
     use_gradient = True

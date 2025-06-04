@@ -47,7 +47,7 @@ class SobolAttribution(MultitaskExplainerMixin, AttributionExplainer):
     """
     Sobol Attribution method.
 
-
+    # TODO: add paper link
     """
 
     use_gradient = False

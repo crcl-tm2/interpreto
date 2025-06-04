@@ -48,6 +48,8 @@ from interpreto.commons.model_wrapping.inference_wrapper import InferenceModes
 class Lime(MultitaskExplainerMixin, AttributionExplainer):
     """
     Lime Attribution method
+
+    # TODO: add paper link
     """
 
     use_gradient = False

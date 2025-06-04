@@ -2,7 +2,7 @@
 
 📰 [Paper](https://link.springer.com/chapter/10.1007/978-3-319-10590-1_53)
 
-The Occlusion method is a perturbation-based approach to interpret model behavior by analyzing the impact of removing or masking parts of the input text. 
+The Occlusion method is a perturbation-based approach to interpret model behavior by analyzing the impact of removing or masking parts of the input text.
 The principle is simple: by systematically occluding (i.e., masking, deleting, or replacing) specific tokens or spans in the input and observing how the model's output changes, one can infer the relative importance of each part of the input to the model's behavior.
 
 ## Example
@@ -17,6 +17,8 @@ explanations = method.explain(text)
 ```
 
 ## Parameters
+
+TODO: use mkdocs built in functionalities to generate the table and put example in the docstring
 
 - model (PreTrainedModel): Hugging Face model to explain
 - tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
