@@ -30,6 +30,12 @@ jobs:
       - name: Install docs dependencies
         run: make install-ci
 
+      - name: Debug mkdocs building
+        run: |
+          make uv-activate
+          pip list
+          mkdocs build
+
       - name: "Build Mkdocs"
         run: make build-docs
 
