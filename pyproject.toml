@@ -70,6 +70,7 @@ dependencies = [
   "overcomplete>=0.2.3",
   "nnsight>=0.4.0",
   "jaxtyping<=0.2.36",
+  "beartype",
   "nvidia-cublas-cu11>=11.10.3.66; sys_platform=='Linux'",
   "nvidia-cuda-cupti-cu11>=11.7.101; sys_platform=='Linux'",
   "nvidia-cuda-nvrtc-cu11>=11.7.99; sys_platform=='Linux'",
@@ -209,6 +210,7 @@ ignore = [
   "PLR2004", # unnamed numerical constants used
   "PLR0913", # too many arguments
   "PLR0915", # too many statements
+  "UP037", # invalid type annotation (incompatible with single dimension jaxtyping)
   "W191", # indentation contains tabs (handled by format)
 ]
 select = [

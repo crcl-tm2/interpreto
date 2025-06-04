@@ -2,7 +2,7 @@
 icon: material/code-json
 ---
 
-::: interpreto.commons.model_wrapping.ModelWithSplitPoints
+::: interpreto.model_wrapping.ModelWithSplitPoints
     handler: python
     options:
       show_root_heading: true

@@ -42,13 +42,13 @@ from transformers import (
 )
 from transformers.models.auto import modeling_auto
 
-from ...typing import LatentActivations
-from .splitting_utils import get_layer_by_idx, sort_paths, validate_path, walk_modules
-from .transformers_classes import (
+from interpreto.model_wrapping.splitting_utils import get_layer_by_idx, sort_paths, validate_path, walk_modules
+from interpreto.model_wrapping.transformers_classes import (
     get_supported_hf_transformer_autoclasses,
     get_supported_hf_transformer_generation_autoclasses,
     get_supported_hf_transformer_generation_classes,
 )
+from interpreto.typing import LatentActivations
 
 
 class InitializationError(ValueError):
@@ -94,6 +94,7 @@ class ModelWithSplitPoints(LanguageModel):
     """
 
     _example_input = "hello"
+    activation_strategies = ActivationSelectionStrategy
 
     def __init__(
         self,

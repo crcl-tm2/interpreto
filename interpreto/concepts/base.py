@@ -39,9 +39,9 @@ from nnsight.intervention.graph import InterventionProxy
 from overcomplete.base import BaseDictionaryLearning
 
 from interpreto.attributions.base import AttributionExplainer
-from interpreto.commons.model_wrapping.model_with_split_points import ModelWithSplitPoints
 from interpreto.concepts.interpretations.base import BaseConceptInterpretationMethod
-from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentActivations, ModelInput
+from interpreto.model_wrapping.model_with_split_points import ModelWithSplitPoints
+from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentActivations, ModelInputs
 
 ConceptModel = TypeVar("ConceptModel", bound=ConceptModelProtocol)
 BDL = TypeVar("BDL", bound=BaseDictionaryLearning)
@@ -186,7 +186,7 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
         assert len(split_activations.shape) == 2, (
             f"Input activations should be a 2D tensor of shape (batch_size, n_features) but got {split_activations.shape}. "
             + "If you use `ModelWithSplitPoints.get_activations()`, "
-            + "make sure to set `select_strategy=ActivationSelectionStrategy.FLATTEN` to get a 2D activation tensor."
+            + "make sure to set `select_strategy=ModelWithSplitPoints.activation_strategies.FLATTEN` to get a 2D activation tensor."
         )
         return split_activations
 
@@ -254,7 +254,7 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
     @check_fitted
     def input_concept_attribution(
         self,
-        inputs: ModelInput,
+        inputs: ModelInputs,
         concept: int,
         attribution_method: type[AttributionExplainer],
         **attribution_kwargs,
@@ -262,7 +262,7 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
         """Attributes model inputs for a selected concept.
 
         Args:
-            inputs (ModelInput): The input data, which can be a string, a list of tokens/words/clauses/sentences
+            inputs (ModelInputs): The input data, which can be a string, a list of tokens/words/clauses/sentences
                 or a dataset.
             concept (int): Index identifying the position of the concept of interest (score in the
                 `ConceptsActivations` tensor) for which relevant input elements should be retrieved.
@@ -369,7 +369,7 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
     @check_fitted
     def concept_output_attribution(
         self,
-        inputs: ModelInput,
+        inputs: ModelInputs,
         concepts: ConceptsActivations,
         target: int,
         attribution_method: type[AttributionExplainer],
@@ -378,7 +378,7 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
         """Computes the attribution of each concept for the logit of a target output element.
 
         Args:
-            inputs (ModelInput): An input data-point for the model.
+            inputs (ModelInputs): An input data-point for the model.
             concepts (torch.Tensor): Concept activation tensor.
             target (int): The target class for which the concept output attribution should be computed.
             attribution_method: The attribution method to obtain importance scores for input elements.

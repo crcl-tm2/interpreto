@@ -37,7 +37,7 @@ import torch
 from jaxtyping import Float
 from nnsight.intervention.graph import InterventionProxy
 
-from interpreto.commons import ActivationSelectionStrategy, ModelWithSplitPoints
+from interpreto import ModelWithSplitPoints
 from interpreto.concepts.interpretations.base import BaseConceptInterpretationMethod
 from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentActivations
 
@@ -165,7 +165,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
             # compute the vocabulary's latent activations
             input_tensor: Float[torch.Tensor, "v 1"] = torch.tensor(input_ids).unsqueeze(1)
             activations_dict: InterventionProxy = self.model_with_split_points.get_activations(
-                input_tensor, select_strategy=ActivationSelectionStrategy.FLATTEN
+                input_tensor, select_strategy=ModelWithSplitPoints.activation_strategies.FLATTEN
             )  # TODO: verify `ModelWithSplitPoints.get_activations()` can take in ids
             latent_activations = self.model_with_split_points.get_split_activations(
                 activations_dict, split_point=self.split_point
@@ -178,7 +178,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
         # inputs source: compute the latent activations from the inputs
         if source is InterpretationSources.INPUTS:
             activations_dict: InterventionProxy = self.model_with_split_points.get_activations(
-                inputs, select_strategy=ActivationSelectionStrategy.FLATTEN
+                inputs, select_strategy=ModelWithSplitPoints.activation_strategies.FLATTEN
             )
             latent_activations = self.model_with_split_points.get_split_activations(
                 activations_dict, split_point=self.split_point

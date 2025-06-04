@@ -31,7 +31,6 @@ from __future__ import annotations
 import pytest
 import torch
 
-from interpreto.commons.model_wrapping.model_with_split_points import ModelWithSplitPoints
 from interpreto.concepts import (
     BatchTopKSAEConcepts,
     Cockatiel,
@@ -51,6 +50,7 @@ from interpreto.concepts import (
     VanillaSAEConcepts,
 )
 from interpreto.concepts.methods.overcomplete import DictionaryLearningExplainer, SAEExplainer
+from interpreto.model_wrapping.model_with_split_points import ModelWithSplitPoints
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -139,3 +139,28 @@ def test_overcomplete_cbe(
         assert cbe.concept_model.nb_concepts == nb_concepts
         assert concepts.shape == (n, nb_concepts)
         assert dictionary.shape == (nb_concepts, d)
+
+
+if __name__ == "__main__":
+    from transformers import AutoModelForMaskedLM
+
+    from interpreto import ModelWithSplitPoints
+
+    sentences: list[str] = [
+        "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+        "Interpreto is magical",
+        "Testing interpreto",
+    ]
+    splitted_encoder_ml: ModelWithSplitPoints = ModelWithSplitPoints(
+        "hf-internal-testing/tiny-random-bert",
+        split_points=["bert.encoder.layer.1.output"],
+        model_autoclass=AutoModelForMaskedLM,  # type: ignore
+    )
+    activations_dict: dict[str, torch.Tensor] = splitted_encoder_ml.get_activations(
+        sentences, select_strategy=ModelWithSplitPoints.activation_strategies.FLATTEN
+    )  # type: ignore
+    test_overcomplete_cbe(
+        splitted_encoder_ml=splitted_encoder_ml,
+        activations_dict=activations_dict,
+        method_class=VanillaSAEConcepts,
+    )

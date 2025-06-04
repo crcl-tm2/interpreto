@@ -27,9 +27,23 @@
 # CRIAQ and ANITI - https://www.deel.ai/
 # =====================================================================================
 
+from .attributions import (
+    IntegratedGradients,
+    KernelShap,
+    Lime,
+    Occlusion,
+    Saliency,
+    SmoothGrad,
+    Sobol,
+)
+from .commons import (
+    Granularity,
+)
+from .model_wrapping import ModelWithSplitPoints
+
 
 def get_version() -> str:
-    """Returns the current version of the Inseq library."""
+    """Returns the current version of the Intepreto library."""
     import pkg_resources
 
     try:

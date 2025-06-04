@@ -31,7 +31,13 @@ nav:
         - Sparsity: api/concepts/metrics/sparsity_metrics.md
     - Attribution Explainers:
       - Overview: api/attributions/overview.md
-      - Raw Gradients: api/attributions/raw_gradients.md
+      - Methods: 
+        - Integrated Gradients: api/attributions/methods/integrated_gradients.md
+        - Occlusion: api/attributions/methods/occlusion.md
+        - Saliency: api/attributions/methods/saliency.md
+        - SmoothGrad: api/attributions/methods/smoothgrad.md
+    - Evaluation Metrics:
+      - Overview: api/evaluation_metrics/overview.md
   - Roadmap: roadmap.md
   - Contributing: contributing.md
   - About: about.md

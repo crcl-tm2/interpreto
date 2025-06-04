@@ -39,8 +39,8 @@ from overcomplete import sae as oc_sae
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from interpreto.commons.model_wrapping.model_with_split_points import ModelWithSplitPoints
 from interpreto.concepts.base import ConceptAutoEncoderExplainer, check_fitted
+from interpreto.model_wrapping.model_with_split_points import ModelWithSplitPoints
 from interpreto.typing import LatentActivations
 
 # Type variables for covariant generics

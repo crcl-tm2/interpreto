@@ -32,8 +32,8 @@ from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from typing import Any
 
-from interpreto.commons import ModelWithSplitPoints
-from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentActivations, ModelInput
+from interpreto import ModelWithSplitPoints
+from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentActivations, ModelInputs
 
 
 class BaseConceptInterpretationMethod(ABC):
@@ -79,7 +79,7 @@ class BaseConceptInterpretationMethod(ABC):
     def interpret(
         self,
         concepts_indices: int | list[int],
-        inputs: ModelInput | None = None,
+        inputs: ModelInputs | None = None,
         latent_activations: LatentActivations | None = None,
         concepts_activations: ConceptsActivations | None = None,
     ) -> Mapping[int, Any]:
@@ -90,7 +90,7 @@ class BaseConceptInterpretationMethod(ABC):
 
         Args:
             concepts_indices (int | list[int]): The indices of the concepts to interpret.
-            inputs (ModelInput | None): The inputs to use for the interpretation.
+            inputs (ModelInputs | None): The inputs to use for the interpretation.
                 Necessary if the source is not `VOCABULARY`, as examples are extracted from the inputs.
             latent_activations (LatentActivations | None): The latent activations to use for the interpretation.
                 Necessary if the source is `LATENT_ACTIVATIONS`.
