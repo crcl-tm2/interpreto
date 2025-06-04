@@ -31,8 +31,8 @@ from __future__ import annotations
 import torch
 from overcomplete.base import BaseDictionaryLearning
 
-from interpreto.model_wrapping.model_with_split_points import ModelWithSplitPoints
 from interpreto.concepts.base import ConceptAutoEncoderExplainer
+from interpreto.model_wrapping.model_with_split_points import ModelWithSplitPoints
 from interpreto.typing import ConceptsActivations, LatentActivations
 
 

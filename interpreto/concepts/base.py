@@ -39,8 +39,8 @@ from nnsight.intervention.graph import InterventionProxy
 from overcomplete.base import BaseDictionaryLearning
 
 from interpreto.attributions.base import AttributionExplainer
-from interpreto.model_wrapping.model_with_split_points import ModelWithSplitPoints
 from interpreto.concepts.interpretations.base import BaseConceptInterpretationMethod
+from interpreto.model_wrapping.model_with_split_points import ModelWithSplitPoints
 from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentActivations, ModelInputs
 
 ConceptModel = TypeVar("ConceptModel", bound=ConceptModelProtocol)

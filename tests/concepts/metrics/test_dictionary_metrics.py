@@ -27,9 +27,9 @@ from __future__ import annotations
 import pytest
 import torch
 
-from interpreto.model_wrapping.model_with_split_points import ModelWithSplitPoints
 from interpreto.concepts import NeuronsAsConcepts
 from interpreto.concepts.metrics import ConceptMatchingAlgorithm, Stability
+from interpreto.model_wrapping.model_with_split_points import ModelWithSplitPoints
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
