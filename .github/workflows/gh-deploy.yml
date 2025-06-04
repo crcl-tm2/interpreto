@@ -27,6 +27,9 @@ jobs:
       - name: Install uv
         run: make uv-download
 
+      - name: Install docs dependencies
+        run: make install-ci
+
       - name: "Build Mkdocs"
         run: make build-docs
 
