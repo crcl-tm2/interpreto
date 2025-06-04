@@ -39,8 +39,8 @@ from interpreto.attributions.aggregations.linear_regression_aggregation import (
 )
 from interpreto.attributions.base import AttributionExplainer, MultitaskExplainerMixin
 from interpreto.attributions.perturbations.shap_perturbation import ShapTokenPerturbator
-from interpreto.commons.granularity import GranularityLevel
-from interpreto.commons.model_wrapping.inference_wrapper import InferenceModes
+from interpreto.commons.granularity import Granularity
+from interpreto.model_wrapping.inference_wrapper import InferenceModes
 
 
 class KernelShap(MultitaskExplainerMixin, AttributionExplainer):
@@ -56,8 +56,8 @@ class KernelShap(MultitaskExplainerMixin, AttributionExplainer):
         self,
         model: PreTrainedModel,
         tokenizer: PreTrainedTokenizer,
-        batch_size: int,
-        granularity_level: GranularityLevel = GranularityLevel.WORD,
+        batch_size: int = 4,
+        granularity: Granularity = Granularity.WORD,
         inference_mode: Callable[[torch.Tensor], torch.Tensor] = InferenceModes.LOGITS,
         n_perturbations: int = 1000,
         device: torch.device | None = None,
@@ -69,7 +69,7 @@ class KernelShap(MultitaskExplainerMixin, AttributionExplainer):
             model (PreTrainedModel): model to explain
             tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
             batch_size (int): batch size for the attribution method
-            granularity_level (GranularityLevel): granularity level of the perturbations (token, word, sentence, etc.)
+            granularity (Granularity): granularity level of the perturbations (token, word, sentence, etc.)
             inference_mode (Callable[[torch.Tensor], torch.Tensor], optional): The mode used for inference.
                 It can be either one of LOGITS, SOFTMAX, or LOG_SOFTMAX. Use InferenceModes to choose the appropriate mode.
             n_perturbations (int): the number of perturbations to generate
@@ -82,7 +82,7 @@ class KernelShap(MultitaskExplainerMixin, AttributionExplainer):
 
         perturbator = ShapTokenPerturbator(
             inputs_embedder=model.get_input_embeddings(),
-            granularity_level=granularity_level,
+            granularity=granularity,
             replace_token_id=replace_token_id,
             n_perturbations=n_perturbations,
             device=device,
@@ -99,7 +99,7 @@ class KernelShap(MultitaskExplainerMixin, AttributionExplainer):
             perturbator=perturbator,
             aggregator=aggregator,
             batch_size=batch_size,
-            granularity_level=granularity_level,
+            granularity=granularity,
             inference_mode=inference_mode,
             device=device,
         )

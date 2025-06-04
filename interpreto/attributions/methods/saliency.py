@@ -34,7 +34,7 @@ import torch
 from transformers import PreTrainedModel, PreTrainedTokenizer
 
 from interpreto.attributions.base import AttributionExplainer, MultitaskExplainerMixin
-from interpreto.commons.model_wrapping.inference_wrapper import InferenceModes
+from interpreto.model_wrapping.inference_wrapper import InferenceModes
 
 
 class Saliency(MultitaskExplainerMixin, AttributionExplainer):
@@ -50,7 +50,7 @@ class Saliency(MultitaskExplainerMixin, AttributionExplainer):
         self,
         model: PreTrainedModel,
         tokenizer: PreTrainedTokenizer,
-        batch_size: int,
+        batch_size: int = 4,
         device: torch.device | None = None,
         inference_mode: Callable[[torch.Tensor], torch.Tensor] = InferenceModes.LOGITS,
     ):

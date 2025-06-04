@@ -33,7 +33,7 @@ from typing import Any
 
 import torch
 
-from interpreto.commons.model_wrapping.inference_wrapper import InferenceWrapper
+from interpreto.model_wrapping.inference_wrapper import InferenceWrapper
 from interpreto.typing import TensorMapping
 
 

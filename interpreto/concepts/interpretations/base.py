@@ -32,7 +32,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from typing import Any
 
-from interpreto.commons import ModelWithSplitPoints
+from interpreto import ModelWithSplitPoints
 from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentActivations, ModelInputs
 
 

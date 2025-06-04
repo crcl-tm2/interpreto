@@ -39,7 +39,7 @@ from nnsight.intervention.graph import InterventionProxy
 from overcomplete.base import BaseDictionaryLearning
 
 from interpreto.attributions.base import AttributionExplainer
-from interpreto.commons.model_wrapping.model_with_split_points import ModelWithSplitPoints
+from interpreto.model_wrapping.model_with_split_points import ModelWithSplitPoints
 from interpreto.concepts.interpretations.base import BaseConceptInterpretationMethod
 from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentActivations, ModelInputs
 
@@ -186,7 +186,7 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
         assert len(split_activations.shape) == 2, (
             f"Input activations should be a 2D tensor of shape (batch_size, n_features) but got {split_activations.shape}. "
             + "If you use `ModelWithSplitPoints.get_activations()`, "
-            + "make sure to set `select_strategy=ActivationSelectionStrategy.FLATTEN` to get a 2D activation tensor."
+            + "make sure to set `select_strategy=ModelWithSplitPoints.activation_strategies.FLATTEN` to get a 2D activation tensor."
         )
         return split_activations
 

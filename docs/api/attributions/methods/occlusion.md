@@ -8,11 +8,11 @@ The principle is simple: by systematically occluding (i.e., masking, deleting, o
 ## Example
 
 ```python
-from interpreto.attributions import OcclusionExplainer
-from interpreto.commons.granularity import GranularityLevel
+from interpreto.attributions import Occlusion
+from interpreto.commons.granularity import Granularity
 
 # load model, tokenizer and text
-method = OcclusionExplainer(model, tokenizer, batch_size=4, granularity_level=GranularityLevel.WORD)
+method = Occlusion(model, tokenizer, batch_size=4, granularity=Granularity.WORD)
 explanations = method.explain(text)
 ```
 
@@ -23,6 +23,6 @@ TODO: use mkdocs built in functionalities to generate the table and put example 
 - model (PreTrainedModel): Hugging Face model to explain
 - tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
 - batch_size (int): batch size for the attribution method
-- granularity_level (GranularityLevel): granularity level of the perturbations (token, word, sentence, etc.)
+- granularity (Granularity): granularity level of the perturbations (token, word, sentence, etc.)
 - device (torch.device): device on which the attribution method will be run
 - replace_token_id (int): token id to use for replacing the occluded tokens

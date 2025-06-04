@@ -31,7 +31,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from interpreto.commons.model_wrapping.model_with_split_points import ModelWithSplitPoints
+from interpreto.model_wrapping.model_with_split_points import ModelWithSplitPoints
 from interpreto.concepts import (
     BatchTopKSAEConcepts,
     Cockatiel,
@@ -144,7 +144,7 @@ def test_overcomplete_cbe(
 if __name__ == "__main__":
     from transformers import AutoModelForMaskedLM
 
-    from interpreto.commons import ActivationSelectionStrategy, ModelWithSplitPoints
+    from interpreto import ModelWithSplitPoints
 
     sentences: list[str] = [
         "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
@@ -157,7 +157,7 @@ if __name__ == "__main__":
         model_autoclass=AutoModelForMaskedLM,  # type: ignore
     )
     activations_dict: dict[str, torch.Tensor] = splitted_encoder_ml.get_activations(
-        sentences, select_strategy=ActivationSelectionStrategy.FLATTEN
+        sentences, select_strategy=ModelWithSplitPoints.activation_strategies.FLATTEN
     )  # type: ignore
     test_overcomplete_cbe(
         splitted_encoder_ml=splitted_encoder_ml,

@@ -29,7 +29,7 @@ Common fixtures for all tests
 from pytest import fixture
 from transformers import AutoModelForCausalLM, AutoModelForMaskedLM, AutoModelForSequenceClassification, AutoTokenizer
 
-from interpreto.commons import ActivationSelectionStrategy, ModelWithSplitPoints
+from interpreto import ModelWithSplitPoints
 from interpreto.typing import LatentActivations
 
 
@@ -66,7 +66,9 @@ def splitted_encoder_ml() -> ModelWithSplitPoints:
 
 @fixture(scope="session")
 def activations_dict(splitted_encoder_ml: ModelWithSplitPoints, sentences: list[str]) -> dict[str, LatentActivations]:
-    return splitted_encoder_ml.get_activations(sentences, select_strategy=ActivationSelectionStrategy.FLATTEN)  # type: ignore
+    return splitted_encoder_ml.get_activations(
+        sentences, select_strategy=ModelWithSplitPoints.activation_strategies.FLATTEN
+    )  # type: ignore
 
 
 @fixture(scope="session")

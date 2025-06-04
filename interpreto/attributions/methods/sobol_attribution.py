@@ -29,37 +29,40 @@ Sobol attribution method
 from __future__ import annotations
 
 from collections.abc import Callable
+from enum import Enum
 
 import torch
 from transformers import PreTrainedModel, PreTrainedTokenizer
 
 from interpreto.attributions.aggregations.sobol_aggregation import SobolAggregator, SobolIndicesOrders
-from interpreto.attributions.base import AttributionExplainer, MultitaskExplainerMixin
+from interpreto.attributions.base import AttributionExplainer, InferenceModes, MultitaskExplainerMixin
 from interpreto.attributions.perturbations.sobol_perturbation import (
     SequenceSamplers,
     SobolTokenPerturbator,
 )
-from interpreto.commons.granularity import GranularityLevel
-from interpreto.commons.model_wrapping.inference_wrapper import InferenceModes
+from interpreto.commons.granularity import Granularity
 
 
-class SobolAttribution(MultitaskExplainerMixin, AttributionExplainer):
+class Sobol(MultitaskExplainerMixin, AttributionExplainer):
     """
     Sobol Attribution method.
 
     # TODO: add paper link
+    # TODO: add example
     """
 
     use_gradient = False
+    samplers: type[Enum] = SequenceSamplers
+    sobol_indices_orders: type[Enum] = SobolIndicesOrders
 
     def __init__(
         self,
         model: PreTrainedModel,
         tokenizer: PreTrainedTokenizer,
-        batch_size: int,
-        granularity_level: GranularityLevel = GranularityLevel.WORD,
+        batch_size: int = 4,
+        granularity: Granularity = Granularity.WORD,
         inference_mode: Callable[[torch.Tensor], torch.Tensor] = InferenceModes.LOGITS,
-        n_token_perturbations: int = 30,
+        n_token_perturbations: int = 32,
         sobol_indices_order: SobolIndicesOrders = SobolIndicesOrders.FIRST_ORDER,
         sampler: SequenceSamplers = SequenceSamplers.SOBOL,
         device: torch.device | None = None,
@@ -71,7 +74,7 @@ class SobolAttribution(MultitaskExplainerMixin, AttributionExplainer):
             model (PreTrainedModel): model to explain
             tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
             batch_size (int): batch size for the attribution method
-            granularity_level (GranularityLevel): The level of granularity for the explanation (e.g., token, word, sentence).
+            granularity (Granularity): The level of granularity for the explanation (e.g., token, word, sentence).
             inference_mode (Callable[[torch.Tensor], torch.Tensor], optional): The mode used for inference.
                 It can be either one of LOGITS, SOFTMAX, or LOG_SOFTMAX. Use InferenceModes to choose the appropriate mode.
             n_token_perturbations (int): the number of perturbations to generate
@@ -83,7 +86,7 @@ class SobolAttribution(MultitaskExplainerMixin, AttributionExplainer):
 
         perturbator = SobolTokenPerturbator(
             inputs_embedder=model.get_input_embeddings(),
-            granularity_level=granularity_level,
+            granularity=granularity,
             replace_token_id=replace_token_id,
             n_token_perturbations=n_token_perturbations,
             sampler=sampler,
@@ -100,7 +103,7 @@ class SobolAttribution(MultitaskExplainerMixin, AttributionExplainer):
             perturbator=perturbator,
             aggregator=aggregator,
             batch_size=batch_size,
-            granularity_level=granularity_level,
+            granularity=granularity,
             inference_mode=inference_mode,
             device=device,
         )

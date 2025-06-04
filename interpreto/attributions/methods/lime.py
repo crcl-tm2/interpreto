@@ -29,6 +29,7 @@ LIME attribution method
 from __future__ import annotations
 
 from collections.abc import Callable
+from enum import Enum
 
 import torch
 from transformers import PreTrainedModel, PreTrainedTokenizer
@@ -39,10 +40,9 @@ from interpreto.attributions.aggregations.linear_regression_aggregation import (
     Kernels,
     LinearRegressionAggregator,
 )
-from interpreto.attributions.base import AttributionExplainer, MultitaskExplainerMixin
+from interpreto.attributions.base import AttributionExplainer, InferenceModes, MultitaskExplainerMixin
 from interpreto.attributions.perturbations.random_perturbation import RandomMaskedTokenPerturbator
-from interpreto.commons.granularity import GranularityLevel
-from interpreto.commons.model_wrapping.inference_wrapper import InferenceModes
+from interpreto.commons import Granularity
 
 
 class Lime(MultitaskExplainerMixin, AttributionExplainer):
@@ -50,18 +50,20 @@ class Lime(MultitaskExplainerMixin, AttributionExplainer):
     Lime Attribution method
 
     # TODO: add paper link
+    # TODO: add example
     """
 
     use_gradient = False
+    distance_functions: type[Enum] = DistancesFromMask
 
     def __init__(
         self,
         model: PreTrainedModel,
         tokenizer: PreTrainedTokenizer,
-        batch_size: int,
-        granularity_level: GranularityLevel = GranularityLevel.WORD,
+        batch_size: int = 4,
+        granularity: Granularity = Granularity.WORD,
         inference_mode: Callable[[torch.Tensor], torch.Tensor] = InferenceModes.LOGITS,
-        n_perturbations: int = 1000,
+        n_perturbations: int = 100,
         perturb_probability: float = 0.5,
         distance_function: DistancesFromMaskProtocol = DistancesFromMask.COSINE,
         kernel_width: float | Callable | None = None,
@@ -74,7 +76,7 @@ class Lime(MultitaskExplainerMixin, AttributionExplainer):
             model (PreTrainedModel): model to explain
             tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
             batch_size (int): batch size for the attribution method
-            granularity_level (GranularityLevel): granularity level of the perturbations (token, word, sentence, etc.)
+            granularity (Granularity): granularity level of the perturbations (token, word, sentence, etc.)
             inference_mode (Callable[[torch.Tensor], torch.Tensor], optional): The mode used for inference.
                 It can be either one of LOGITS, SOFTMAX, or LOG_SOFTMAX. Use InferenceModes to choose the appropriate mode.
             n_perturbations (int): the number of perturbations to generate.
@@ -90,7 +92,7 @@ class Lime(MultitaskExplainerMixin, AttributionExplainer):
             inputs_embedder=model.get_input_embeddings(),
             n_perturbations=n_perturbations,
             replace_token_id=replace_token_id,
-            granularity_level=granularity_level,
+            granularity=granularity,
             perturb_probability=perturb_probability,
         )
 
@@ -106,7 +108,7 @@ class Lime(MultitaskExplainerMixin, AttributionExplainer):
             perturbator=perturbator,
             aggregator=aggregator,
             batch_size=batch_size,
-            granularity_level=granularity_level,
+            granularity=granularity,
             inference_mode=inference_mode,
             device=device,
         )

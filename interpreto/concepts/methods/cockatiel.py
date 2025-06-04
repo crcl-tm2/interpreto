@@ -87,5 +87,5 @@ class Cockatiel(NMFConcepts):
             A list of attribution scores for each concept.
         """
         return super().concept_output_attribution(
-            inputs, concepts, target, attribution_method="SobolAttribution", **attribution_kwargs
+            inputs, concepts, target, attribution_method="Sobol", **attribution_kwargs
         )  # TODO: add sobol class when it exists

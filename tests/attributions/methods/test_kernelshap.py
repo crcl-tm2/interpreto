@@ -32,7 +32,7 @@ from interpreto.attributions.aggregations.linear_regression_aggregation import (
 )
 from interpreto.attributions.base import AttributionOutput
 from interpreto.attributions.perturbations.shap_perturbation import ShapTokenPerturbator
-from interpreto.commons.granularity import GranularityLevel
+from interpreto.commons.granularity import Granularity
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -40,8 +40,8 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 @pytest.mark.parametrize(
     "granularity, n_perturbations",
     [
-        (GranularityLevel.TOKEN, 5),
-        (GranularityLevel.WORD, 100),
+        (Granularity.TOKEN, 5),
+        (Granularity.WORD, 100),
     ],
 )
 def test_kernel_shap_init_and_mask(bert_model, bert_tokenizer, granularity, n_perturbations):
@@ -53,7 +53,7 @@ def test_kernel_shap_init_and_mask(bert_model, bert_tokenizer, granularity, n_pe
         model=bert_model,
         tokenizer=bert_tokenizer,
         batch_size=batch_size,
-        granularity_level=granularity,
+        granularity=granularity,
         n_perturbations=n_perturbations,
         device=DEVICE,
     )
@@ -65,7 +65,7 @@ def test_kernel_shap_init_and_mask(bert_model, bert_tokenizer, granularity, n_pe
     assert isinstance(explainer.perturbator, ShapTokenPerturbator)
     pert = explainer.perturbator
     assert pert.n_perturbations == n_perturbations
-    assert pert.granularity_level == granularity
+    assert pert.granularity == granularity
     # replace_token_id matches tokenizer
     rid = bert_tokenizer.convert_tokens_to_ids("[REPLACE]")
     expected_id = rid if isinstance(rid, int) else rid[0]

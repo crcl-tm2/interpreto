@@ -24,7 +24,7 @@
 
 import torch
 
-from interpreto.commons.model_wrapping.model_with_split_points import ModelWithSplitPoints
+from interpreto.model_wrapping.model_with_split_points import ModelWithSplitPoints
 
 BERT_SPLIT_POINTS = [
     "cls.predictions.transform.LayerNorm",

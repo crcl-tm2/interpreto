@@ -24,7 +24,7 @@
 
 import torch
 
-from interpreto.commons.model_wrapping.classification_inference_wrapper import ClassificationInferenceWrapper
+from interpreto.model_wrapping.classification_inference_wrapper import ClassificationInferenceWrapper
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

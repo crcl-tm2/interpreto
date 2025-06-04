@@ -34,7 +34,7 @@ from interpreto.attributions.aggregations.linear_regression_aggregation import (
 )
 from interpreto.attributions.base import AttributionOutput
 from interpreto.attributions.perturbations.random_perturbation import RandomMaskedTokenPerturbator
-from interpreto.commons.granularity import GranularityLevel
+from interpreto.commons.granularity import Granularity
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -42,12 +42,12 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 @pytest.mark.parametrize(
     "granularity, n_perturbations, perturb_probability, distance_function, kernel_width",
     [
-        (GranularityLevel.TOKEN, 10, 0.5, DistancesFromMask.HAMMING, None),
-        (GranularityLevel.TOKEN, 20, 0.8, DistancesFromMask.EUCLIDEAN, 5),
-        (GranularityLevel.TOKEN, 10, 0.5, DistancesFromMask.COSINE, 0.5),
-        (GranularityLevel.WORD, 15, 0.3, DistancesFromMask.HAMMING, None),
-        (GranularityLevel.WORD, 25, 0.7, DistancesFromMask.EUCLIDEAN, None),
-        (GranularityLevel.WORD, 15, 0.3, DistancesFromMask.COSINE, 0.5),
+        (Granularity.TOKEN, 10, 0.5, DistancesFromMask.HAMMING, None),
+        (Granularity.TOKEN, 20, 0.8, DistancesFromMask.EUCLIDEAN, 5),
+        (Granularity.TOKEN, 10, 0.5, DistancesFromMask.COSINE, 0.5),
+        (Granularity.WORD, 15, 0.3, DistancesFromMask.HAMMING, None),
+        (Granularity.WORD, 25, 0.7, DistancesFromMask.EUCLIDEAN, None),
+        (Granularity.WORD, 15, 0.3, DistancesFromMask.COSINE, 0.5),
     ],
 )
 def test_lime_attribution_init_and_mask(
@@ -60,7 +60,7 @@ def test_lime_attribution_init_and_mask(
         model=bert_model,
         tokenizer=bert_tokenizer,
         batch_size=batch_size,
-        granularity_level=granularity,
+        granularity=granularity,
         n_perturbations=n_perturbations,
         perturb_probability=perturb_probability,
         distance_function=distance_function,
@@ -76,7 +76,7 @@ def test_lime_attribution_init_and_mask(
     perturbator = explainer.perturbator
     assert perturbator.n_perturbations == n_perturbations
     assert pytest.approx(perturbator.perturb_probability, rel=1e-6) == perturb_probability
-    assert perturbator.granularity_level == granularity
+    assert perturbator.granularity == granularity
     # the token ID should match what we just added
     replace_id = bert_tokenizer.convert_tokens_to_ids("[REPLACE]")
     assert perturbator.replace_token_id == (replace_id if isinstance(replace_id, int) else replace_id[0])

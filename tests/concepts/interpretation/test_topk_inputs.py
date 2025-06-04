@@ -35,7 +35,7 @@ from itertools import product
 import pytest
 import torch
 
-from interpreto.commons import ActivationSelectionStrategy, ModelWithSplitPoints
+from interpreto import ModelWithSplitPoints
 from interpreto.concepts import NeuronsAsConcepts
 from interpreto.concepts.interpretations import Granularities, InterpretationSources, TopKInputs
 
@@ -140,7 +140,7 @@ def test_interpret_via_topk_inputs(splitted_encoder_ml: ModelWithSplitPoints):
 
     # getting the activations
     activations = splitted_encoder_ml.get_activations(
-        joined_tokens_list, select_strategy=ActivationSelectionStrategy.FLATTEN
+        joined_tokens_list, select_strategy=ModelWithSplitPoints.activation_strategies.FLATTEN
     )
 
     # extracting concept interpretations
@@ -211,7 +211,7 @@ def test_topk_inputs_sources(splitted_encoder_ml: ModelWithSplitPoints):
 
     # getting the activations
     activations = splitted_encoder_ml.get_activations(
-        joined_tokens_list, select_strategy=ActivationSelectionStrategy.FLATTEN
+        joined_tokens_list, select_strategy=ModelWithSplitPoints.activation_strategies.FLATTEN
     )
 
     # getting the top k tokens

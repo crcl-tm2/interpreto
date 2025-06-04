@@ -41,15 +41,15 @@
 
 # from interpreto.attributions import (
 #     IntegratedGradients,
-#     SobolAttribution,
+#     Sobol,
 # )
 
 # DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-# attribution_methods_to_test = [IntegratedGradients, SobolAttribution]
+# attribution_methods_to_test = [IntegratedGradients, Sobol]
 # attribution_method_args = {
 #     IntegratedGradients: {"n_interpolations": 3, "baseline": 0.0},
-#     SobolAttribution: {"n_token_perturbations": 3},
+#     Sobol: {"n_token_perturbations": 3},
 # }
 
 

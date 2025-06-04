@@ -1,19 +1,20 @@
+from .base import InferenceModes
 from .methods import (
     IntegratedGradients,
     KernelShap,
     Lime,
-    OcclusionExplainer,
+    Occlusion,
     Saliency,
     SmoothGrad,
-    SobolAttribution,
+    Sobol,
 )
 
 __all__ = [
     "IntegratedGradients",
     "KernelShap",
     "Lime",
-    "OcclusionExplainer",
-    "SobolAttribution",
+    "Occlusion",
+    "Sobol",
     "SmoothGrad",
     "Saliency",
 ]

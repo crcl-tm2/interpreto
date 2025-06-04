@@ -40,11 +40,11 @@ from transformers import PreTrainedModel, PreTrainedTokenizer
 
 from interpreto.attributions.aggregations.base import Aggregator
 from interpreto.attributions.perturbations.base import Perturbator
+from interpreto.commons import Granularity
 from interpreto.commons.generator_tools import split_iterator
-from interpreto.commons.granularity import GranularityLevel
-from interpreto.commons.model_wrapping.classification_inference_wrapper import ClassificationInferenceWrapper
-from interpreto.commons.model_wrapping.generation_inference_wrapper import GenerationInferenceWrapper
-from interpreto.commons.model_wrapping.inference_wrapper import InferenceModes, InferenceWrapper
+from interpreto.model_wrapping.classification_inference_wrapper import ClassificationInferenceWrapper
+from interpreto.model_wrapping.generation_inference_wrapper import GenerationInferenceWrapper
+from interpreto.model_wrapping.inference_wrapper import InferenceModes, InferenceWrapper
 from interpreto.typing import ClassificationTarget, GeneratedTarget, ModelInputs, TensorMapping
 
 SingleAttribution = (
@@ -124,11 +124,11 @@ class AttributionExplainer:
         self,
         model: PreTrainedModel,
         tokenizer: PreTrainedTokenizer,
-        batch_size: int,
+        batch_size: int = 4,
         perturbator: Perturbator | None = None,
         aggregator: Aggregator | None = None,
         device: torch.device | None = None,
-        granularity_level: GranularityLevel = GranularityLevel.DEFAULT,
+        granularity: Granularity = Granularity.DEFAULT,
         inference_mode: Callable[[torch.Tensor], torch.Tensor] = InferenceModes.LOGITS,  # TODO: add to all classes
     ) -> None:
         """
@@ -144,8 +144,8 @@ class AttributionExplainer:
                 If None, the aggregator returns the original scores.
             device (torch.device, optional): The device on which computations are performed.
                 If None, defaults to the device of the model.
-            granularity_level (GranularityLevel, optional): The level of granularity for the explanation (e.g., token, word, sentence).
-                Defaults to GranularityLevel.DEFAULT (TOKEN)
+            granularity (Granularity, optional): The level of granularity for the explanation (e.g., token, word, sentence).
+                Defaults to Granularity.DEFAULT (TOKEN)
             inference_mode (Callable[[torch.Tensor], torch.Tensor], optional): The mode used for inference.
                 It can be either one of LOGITS, SOFTMAX, or LOG_SOFTMAX. Use InferenceModes to choose the appropriate mode.
         """
@@ -157,7 +157,7 @@ class AttributionExplainer:
         self.perturbator = perturbator or Perturbator()
         self.perturbator.to(self.device)
         self.aggregator = aggregator or Aggregator()
-        self.granularity_level = granularity_level
+        self.granularity = granularity
         self.inference_wrapper.pad_token_id = self.tokenizer.pad_token_id
 
     def _set_tokenizer(self, model, tokenizer) -> tuple[PreTrainedModel, int]:
@@ -330,9 +330,7 @@ class AttributionExplainer:
         )
 
         # Decompose each input for the desired granularity level (tokens, words, sentences...)
-        decompositions = [
-            GranularityLevel.get_decomposition(t, self.granularity_level) for t in model_inputs_to_explain
-        ]
+        decompositions = [Granularity.get_decomposition(t, self.granularity) for t in model_inputs_to_explain]
 
         # Create perturbation masks and perturb inputs based on the masks.
         # Inputs might be embedded during the perturbation process if the perturbator works with embeddings.
@@ -359,7 +357,7 @@ class AttributionExplainer:
                 c,
                 [
                     self.tokenizer.decode(
-                        token_ids, skip_special_tokens=self.granularity_level is not GranularityLevel.ALL_TOKENS
+                        token_ids, skip_special_tokens=self.granularity is not Granularity.ALL_TOKENS
                     )
                     for token_ids in d[0]
                 ],
@@ -367,7 +365,7 @@ class AttributionExplainer:
             for c, d in zip(contributions, decompositions, strict=True)
         ]
 
-    def __call__(self, model_inputs: ModelInputs, targets=None) -> Iterable[AttributionOutput]:
+    def __call__(self, model_inputs: ModelInputs, targets=None, **kwargs) -> Iterable[AttributionOutput]:
         """
         Enables the explainer instance to be called as a function.
 
@@ -380,7 +378,7 @@ class AttributionExplainer:
         Returns:
             List[AttributionOutput]: A list of attribution outputs, one per input sample.
         """
-        return self.explain(model_inputs, targets)
+        return self.explain(model_inputs, targets, **kwargs)
 
 
 class ClassificationAttributionExplainer(AttributionExplainer):
@@ -593,7 +591,7 @@ class GenerationAttributionExplainer(AttributionExplainer):
         self,
         model_inputs: Iterable[TensorMapping],
         targets: GeneratedTarget | None = None,
-        **model_kwargs: dict[str, Any],
+        **model_kwargs,
     ) -> tuple[Iterable[TensorMapping], Iterable[torch.Tensor]]:
         """
         Processes the inputs and targets for the generative model.

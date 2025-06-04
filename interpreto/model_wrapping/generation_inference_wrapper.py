@@ -29,7 +29,7 @@ from functools import singledispatchmethod
 
 import torch
 
-from interpreto.commons.model_wrapping.inference_wrapper import InferenceWrapper
+from interpreto.model_wrapping.inference_wrapper import InferenceWrapper
 from interpreto.typing import TensorMapping
 
 # TODO: make jaxtyping in the whole file!!

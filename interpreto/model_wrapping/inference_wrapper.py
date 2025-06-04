@@ -154,7 +154,7 @@ class InferenceWrapper(ABC):
     def __init__(
         self,
         model: PreTrainedModel,
-        batch_size: int,
+        batch_size: int = 4,
         device: torch.device | None = None,
         mode: Callable[[torch.Tensor], torch.Tensor] = InferenceModes.LOGITS,
     ):

@@ -23,6 +23,6 @@
 # SOFTWARE.
 
 from .distances import DistanceFunctions
-from .model_wrapping import ActivationSelectionStrategy, ModelWithSplitPoints
+from .granularity import Granularity
 
-__all__ = ["ActivationSelectionStrategy", "ModelWithSplitPoints"]
+__all__ = ["DistanceFunctions", "Granularity"]

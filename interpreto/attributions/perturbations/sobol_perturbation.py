@@ -36,7 +36,7 @@ from jaxtyping import Float, jaxtyped
 from scipy.stats import qmc
 
 from interpreto.attributions.perturbations.base import TokenMaskBasedPerturbator
-from interpreto.commons.granularity import GranularityLevel
+from interpreto.commons.granularity import Granularity
 
 
 class SequenceSamplers(Enum):
@@ -53,7 +53,7 @@ class SobolTokenPerturbator(TokenMaskBasedPerturbator):
     def __init__(
         self,
         inputs_embedder: torch.nn.Module | None = None,
-        granularity_level: GranularityLevel = GranularityLevel.TOKEN,
+        granularity: Granularity = Granularity.TOKEN,
         replace_token_id: int = 0,
         n_token_perturbations: int = 30,
         sampler: SequenceSamplers = SequenceSamplers.SOBOL,
@@ -64,12 +64,12 @@ class SobolTokenPerturbator(TokenMaskBasedPerturbator):
         Args:
             inputs_embedder (torch.nn.Module | None): optional inputs embedder
             nb_token_perturbations (int): number of Monte Carlo samples perturbations for each token.
-            granularity_level (str): granularity level of the perturbations (token, word, sentence, etc.)
+            granularity (str): granularity level of the perturbations (token, word, sentence, etc.)
             sampler (SequenceSamplers): Sobol sequence sampler, either `SOBOL`, `HALTON` or `LatinHypercube`.
         """
         super().__init__(
             inputs_embedder=inputs_embedder,
-            granularity_level=granularity_level,
+            granularity=granularity,
             n_perturbations=-1,  # TODO: find a better way to handle this, I guess, it should not be an attribute of the parent class
             replace_token_id=replace_token_id,
         )

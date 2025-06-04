@@ -33,7 +33,7 @@ from beartype import beartype
 from jaxtyping import Float, jaxtyped
 from torch import Tensor
 
-from interpreto.attributions.perturbations.base import GranularityLevel, TokenMaskBasedPerturbator
+from interpreto.attributions.perturbations.base import Granularity, TokenMaskBasedPerturbator
 
 
 class RandomMaskedTokenPerturbator(TokenMaskBasedPerturbator):
@@ -44,7 +44,7 @@ class RandomMaskedTokenPerturbator(TokenMaskBasedPerturbator):
     def __init__(
         self,
         inputs_embedder: torch.nn.Module | None = None,
-        granularity_level: GranularityLevel = GranularityLevel.TOKEN,
+        granularity: Granularity = Granularity.TOKEN,
         replace_token_id: int = 0,
         n_perturbations: int = 30,
         perturb_probability: float = 0.5,
@@ -63,7 +63,7 @@ class RandomMaskedTokenPerturbator(TokenMaskBasedPerturbator):
             inputs_embedder=inputs_embedder,
             n_perturbations=n_perturbations,
             replace_token_id=replace_token_id,
-            granularity_level=granularity_level,
+            granularity=granularity,
         )
         self.perturb_probability = perturb_probability
 

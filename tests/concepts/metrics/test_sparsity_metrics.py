@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import torch
 
-from interpreto.commons.model_wrapping.model_with_split_points import ModelWithSplitPoints
+from interpreto.model_wrapping.model_with_split_points import ModelWithSplitPoints
 from interpreto.concepts import NeuronsAsConcepts
 from interpreto.concepts.metrics import Sparsity, SparsityRatio
 

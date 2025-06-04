@@ -27,7 +27,7 @@ from __future__ import annotations
 import torch
 
 from interpreto.commons.distances import DistanceFunctions
-from interpreto.commons.model_wrapping.model_with_split_points import ModelWithSplitPoints
+from interpreto.model_wrapping.model_with_split_points import ModelWithSplitPoints
 from interpreto.concepts import NeuronsAsConcepts, PCAConcepts
 from interpreto.concepts.metrics import (
     FID,

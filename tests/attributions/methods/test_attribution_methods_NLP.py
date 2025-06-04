@@ -39,14 +39,14 @@ from interpreto.attributions import (
     IntegratedGradients,
     KernelShap,
     Lime,
-    OcclusionExplainer,
+    Occlusion,
     Saliency,
     SmoothGrad,
-    SobolAttribution,
+    Sobol,
 )
 from interpreto.attributions.base import AttributionOutput
-from interpreto.commons.granularity import GranularityLevel
-from interpreto.commons.model_wrapping.inference_wrapper import InferenceModes
+from interpreto.commons.granularity import Granularity
+from interpreto.model_wrapping.inference_wrapper import InferenceModes
 from interpreto.typing import IncompatibilityError
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -59,14 +59,14 @@ attribution_method_kwargs = {
     SmoothGrad: {"n_interpolations": 3, "noise_level": 0.1},
     # ---------------------------
     # Perturbation based methods:
-    OcclusionExplainer: {"granularity_level": GranularityLevel.TOKEN, "inference_mode": InferenceModes.SOFTMAX},
+    Occlusion: {"granularity": Granularity.TOKEN, "inference_mode": InferenceModes.SOFTMAX},
     KernelShap: {
         "n_perturbations": 3,
         "inference_mode": InferenceModes.LOG_SOFTMAX,
-        "granularity_level": GranularityLevel.TOKEN,  # TODO: change to ALL_TOKENS
+        "granularity": Granularity.TOKEN,  # TODO: change to ALL_TOKENS
     },
-    Lime: {"n_perturbations": 3, "granularity_level": GranularityLevel.WORD},
-    SobolAttribution: {"n_token_perturbations": 3},
+    Lime: {"n_perturbations": 3, "granularity": Granularity.WORD},
+    Sobol: {"n_token_perturbations": 3},
 }
 
 
@@ -205,7 +205,7 @@ def evaluate_attribution_methods_with_text(model_name, attribution_explainer):
         ), "In the AttributionOutput class, elements and attributions must have the same length."
 
 
-# TODO: test granularity_level
+# TODO: test granularity
 
 # TODO: test inference_mode
 
@@ -223,5 +223,5 @@ def evaluate_attribution_methods_with_text(model_name, attribution_explainer):
 if __name__ == "__main__":
     test_attribution_methods_with_text_short(
         model_name="hf-internal-testing/tiny-random-gpt2",
-        attribution_explainer=OcclusionExplainer,
+        attribution_explainer=Occlusion,
     )

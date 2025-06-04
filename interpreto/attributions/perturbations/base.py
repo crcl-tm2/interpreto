@@ -34,7 +34,7 @@ import torch
 from beartype import beartype
 from jaxtyping import Float, Int, jaxtyped
 
-from interpreto.commons.granularity import GranularityLevel
+from interpreto.commons.granularity import Granularity
 from interpreto.typing import TensorMapping
 
 
@@ -221,14 +221,14 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
     Base class for perturbations consisting in applying masks on token (or groups of tokens)
     """
 
-    __slots__ = ("n_perturbations", "replace_token_id", "granularity_level")
+    __slots__ = ("n_perturbations", "replace_token_id", "granularity")
 
     def __init__(
         self,
         replace_token_id: int,
         inputs_embedder: torch.nn.Module | None = None,
         n_perturbations: int = 1,
-        granularity_level: GranularityLevel = GranularityLevel.TOKEN,
+        granularity: Granularity = Granularity.TOKEN,
     ):
         super().__init__(inputs_embedder=inputs_embedder)
 
@@ -239,8 +239,8 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
         self.replace_token_id = replace_token_id
 
         # granularity level of the perturbation (token masking, word masking...)
-        # in most commons cases, this should be set to GranularityLevel.TOKEN
-        self.granularity_level = granularity_level
+        # in most commons cases, this should be set to Granularity.TOKEN
+        self.granularity = granularity
 
     @jaxtyped(typechecker=beartype)
     @abstractmethod
@@ -265,7 +265,7 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
     def get_gran_mask_from_real_mask(
         model_inputs: TensorMapping,
         real_mask: Float[torch.Tensor, "p l"],
-        granularity_level: GranularityLevel = GranularityLevel.DEFAULT,
+        granularity: Granularity = Granularity.DEFAULT,
     ) -> Float[torch.Tensor, "p g"]:
         """
         Transforms a real token-wise mask to an approximation of its associated mask for a certain granularity level
@@ -278,9 +278,9 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
             torch.Tensor: granularity level mask
         """
         # TODO : eventually store gran matrix in tokens to avoid recomputing it ?
-        t_gran_matrix: Float[torch.Tensor, "l g"] = GranularityLevel.get_association_matrix(
-            model_inputs, granularity_level
-        )[0].transpose(-1, -2)
+        t_gran_matrix: Float[torch.Tensor, "l g"] = Granularity.get_association_matrix(model_inputs, granularity)[
+            0
+        ].transpose(-1, -2)
         mask: Float[torch.Tensor, "p g"] = torch.einsum("pl,lg->pg", real_mask, t_gran_matrix) / t_gran_matrix.sum(
             dim=-1
         )
@@ -319,10 +319,10 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
         Returns:
             torch.Tensor, torch.Tensor: real general mask and specific granularity mask (theoretical mask)
         """
-        perturbation_dimension = int(GranularityLevel.get_length(model_inputs, self.granularity_level).max().item())
+        perturbation_dimension = int(Granularity.get_length(model_inputs, self.granularity).max().item())
         gran_mask: Float[torch.Tensor, "p g"] = self.get_mask(perturbation_dimension)
-        gran_assoc_matrix: Float[torch.Tensor, "g l"] = GranularityLevel.get_association_matrix(
-            model_inputs, self.granularity_level
+        gran_assoc_matrix: Float[torch.Tensor, "g l"] = Granularity.get_association_matrix(
+            model_inputs, self.granularity
         )[0]
         mask: Float[torch.Tensor, "p l"] = self.get_real_mask_from_gran_mask(gran_mask, gran_assoc_matrix)
         return mask
@@ -340,10 +340,10 @@ class TokenMaskBasedPerturbator(MaskBasedPerturbator):
         model_inputs = model_inputs.copy()  # type: ignore
         model_inputs.to(self.device)  # type: ignore
 
-        mask_dim = int(GranularityLevel.get_length(model_inputs, self.granularity_level).max().item())
+        mask_dim = int(Granularity.get_length(model_inputs, self.granularity).max().item())
         gran_mask = self.get_mask(mask_dim)
         real_mask = self.get_real_mask_from_gran_mask(
-            gran_mask, GranularityLevel.get_association_matrix(model_inputs, self.granularity_level)[0]
+            gran_mask, Granularity.get_association_matrix(model_inputs, self.granularity)[0]
         )
 
         # real_mask, gran_mask = self.get_model_inputs_mask(model_inputs)

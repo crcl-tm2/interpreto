@@ -34,14 +34,14 @@ from jaxtyping import Float, jaxtyped
 from torch import Tensor
 
 from interpreto.attributions.perturbations.base import TokenMaskBasedPerturbator
-from interpreto.commons.granularity import GranularityLevel
+from interpreto.commons.granularity import Granularity
 
 
 class ShapTokenPerturbator(TokenMaskBasedPerturbator):
     def __init__(
         self,
         inputs_embedder: torch.nn.Module | None = None,
-        granularity_level: GranularityLevel = GranularityLevel.TOKEN,
+        granularity: Granularity = Granularity.TOKEN,
         replace_token_id: int = 0,
         n_perturbations: int = 1000,
         device: torch.device | None = None,
@@ -60,7 +60,7 @@ class ShapTokenPerturbator(TokenMaskBasedPerturbator):
             inputs_embedder=inputs_embedder,
             n_perturbations=n_perturbations,
             replace_token_id=replace_token_id,
-            granularity_level=granularity_level,
+            granularity=granularity,
         )
         self.device = device  # type: ignore
 
