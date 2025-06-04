@@ -10,13 +10,13 @@
 [![License](https://img.shields.io/github/license/FOR-sight-ai/interpreto)](https://github.com/FOR-sight-ai/interpreto/blob/main/LICENSE)
 
   <!-- Link to the documentation -->
-  <a href="[TODO](https://for-sight-ai.github.io/interpreto/)"><strong>Explore Interpreto docs »</strong></a>
+  <a href="https://for-sight-ai.github.io/interpreto/"><strong>Explore Interpreto docs »</strong></a>
   <br>
 
 </div>
-> **Warning**
->
-> This library is currently in beta and many functions may not work. If you use it anyway, we welcome your comments; please open an issue!
+**Warning**
+
+This library is currently in beta and many functions may not work. If you use it anyway, we welcome your comments; please open an issue!
 
 ## 📚 Table of contents
 
