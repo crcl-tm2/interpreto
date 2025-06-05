@@ -14,9 +14,14 @@
   <br>
 
 </div>
-**Warning**
+
+## ⚠️ Warning
 
 This library is currently in beta and many functions may not work. If you use it anyway, we welcome your comments; please open an issue!
+
+The API might change and the documentation is not up to date.
+
+In particular, it is not yet possible to obtain interpretable concept-based explanations.
 
 ## 📚 Table of contents
 
@@ -32,7 +37,11 @@ This library is currently in beta and many functions may not work. If you use it
 
 ## 🚀 Quick Start
 
-The library hasn't been officially released yet, but if you'd like to try out its first features, just clone the dev branch on github and have a look at the examples notebooks.
+The library should be available on PyPI soon. Try `pip install interpreto` to install it.
+
+Otherwise, you can clone the repository and install it locally with `pip install -e .`.
+
+And any case, checkout the [attribution walkthrough](https://github.com/FOR-sight-ai/interpreto/tree/main/attribution_walkthrough.ipynb) to get started!
 
 ## 📦 What's Included
 
@@ -57,7 +66,7 @@ Interpreto 🪄 provides a modular framework encompassing Attribution Methods, C
 - Saliency: [Simonyan et al. 2013, Deep Inside Convolutional Networks: Visualising Image Classification Models and Saliency Maps](https://arxiv.org/abs/1312.6034).
 - Integrated Gradient: [Sundararajan et al. 2017, Axiomatic Attribution for Deep Networks](http://proceedings.mlr.press/v70/sundararajan17a.html).
 - SmoothGrad: [Smilkov et al. 2017, SmoothGrad: removing noise by adding noise](https://arxiv.org/abs/1706.03825)
-  
+
 *We will be adding these methods soon (Gradient based methods):*
 
 - InputxGradient: [Simonyan et al. 2013, Deep Inside Convolutional Networks: Visualising Image Classification Models and Saliency Maps](https://arxiv.org/abs/1312.6034).

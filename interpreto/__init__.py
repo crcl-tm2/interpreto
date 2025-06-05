@@ -43,7 +43,7 @@ from .model_wrapping import ModelWithSplitPoints
 
 
 def get_version() -> str:
-    """Returns the current version of the Intepreto library."""
+    """Returns the current version of the Interpreto library."""
     import pkg_resources
 
     try:
