@@ -12,9 +12,13 @@ jobs:
     permissions:
       id-token: write
     steps:
+      - uses: actions/checkout@v3
+
       - name: Install uv
         run: make uv-download
+
       - name: Build package
         run: uv build
+
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@v1.8.11
