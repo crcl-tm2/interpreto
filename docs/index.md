@@ -4,11 +4,11 @@ template: home.html
 <img src="assets/img/interpreto_banner.png" alt="Interpreto: Interpretability Toolkit for LLMs" style="max-width:100%; height:auto;" />
 
 [![Build status](https://img.shields.io/github/actions/workflow/status/FOR-sight-ai/interpreto/build.yml?branch=main)](https://github.com/FOR-sight-ai/interpreto/actions?query=workflow%3Abuild)
-[![Docs status](https://img.shields.io/readthedocs/interpreto)]([TODO](https://interpreto.readthedocs.io/))
+[![Docs status](https://img.shields.io/readthedocs/interpreto)](https://interpreto.readthedocs.io/)
 [![Version](https://img.shields.io/pypi/v/interpreto?color=blue)](https://pypi.org/project/interpreto/)
 [![Python Version](https://img.shields.io/pypi/pyversions/interpreto.svg?color=blue)](https://pypi.org/project/interpreto/)
 [![Downloads](https://static.pepy.tech/badge/interpreto)](https://pepy.tech/project/interpreto)
-[![License](https://img.shields.io/github/license/FOR-sight-ai/interpreto)](https://github.com/FOR-sight-ai/interpreto/blob/main/LICENSE)
+[![License](https://img.shields.io/github/license/FOR-sight-ai/interpreto.svg)](https://github.com/FOR-sight-ai/interpreto/blob/main/LICENSE)
 > **Warning**
 >
 > This library is currently in beta and many functions may not work. If you use it anyway, we welcome your comments; please open an issue!
