@@ -176,7 +176,9 @@ def evaluate_attribution_methods_with_text(model_name, attribution_explainer):
         # if we have a generative model, we need to give the max_length:
         try:
             if model.__class__.__name__.endswith("ForCausalLM") or model.__class__.__name__.endswith("LMHeadModel"):
-                attributions = explainer.explain(input_text, generation_kwargs={"max_length": 10})
+                attributions = explainer.explain(
+                    input_text, generation_kwargs={"max_length": input_text["input_ids"].shape[1] + 5}
+                )
             else:
                 attributions = explainer.explain(input_text, targets=target)
         except IncompatibilityError:

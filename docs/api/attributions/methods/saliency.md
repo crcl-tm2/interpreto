@@ -13,7 +13,7 @@ Procedure:
 ## Example
 
 ```python
-from interpreto.attributions import Saliency
+from interpreto import Saliency
 
 # load model, tokenizer and text
 method = Saliency(model, tokenizer, batch_size=4)
@@ -27,4 +27,5 @@ TODO: use mkdocs built in functionalities to generate the table and put example 
 - model (PreTrainedModel): Hugging Face model to explain
 - tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
 - batch_size (int): batch size for the attribution method
+- inference_mode (InferenceModes): output space to analyse (e.g., InferenceModes.LOGITS, InferenceModes.SOFTMAX, InferenceModes.LOG_SOFTMAX)
 - device (torch.device): device on which the attribution method will be run

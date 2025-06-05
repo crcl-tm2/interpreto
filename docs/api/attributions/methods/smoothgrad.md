@@ -14,7 +14,7 @@ Procedure:
 ## Example
 
 ```python
-from interpreto.attributions import Smoothgrad
+from interpreto import Smoothgrad
 
 # load model, tokenizer and text
 method = Smoothgrad(model, tokenizer, batch_size=4, n_interpolations=50, noise_level=0.01)
@@ -28,6 +28,7 @@ TODO: use mkdocs built in functionalities to generate the table and put example 
 - model (PreTrainedModel): Hugging Face model to explain.
 - tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model.
 - batch_size (int): batch size for the attribution method.
+- inference_mode (InferenceModes): output space to analyse (e.g., InferenceModes.LOGITS, InferenceModes.SOFTMAX, InferenceModes.LOG_SOFTMAX)
 - device (torch.device): device on which the attribution method will be run.
 - n_interpolations (int): the number of interpolations to generate multiple perturbed versions of the input by adding noise.
 - noise_level (float): standard deviation of the Gaussian noise to add to the inputs.
