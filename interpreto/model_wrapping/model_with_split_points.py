@@ -240,7 +240,7 @@ class ModelWithSplitPoints(LanguageModel):
         self,
         inputs: str | list[str] | BatchEncoding | torch.Tensor,
         select_strategy: ActivationSelectionStrategy = ActivationSelectionStrategy.ALL,
-        aggregation_strategy: AggregationProtocol = AggregationStrategy.SUM,
+        aggregation_strategy: AggregationProtocol = AggregationStrategy.MEAN,
         **kwargs,
     ) -> InterventionProxy:  # TODO: change to `dict[str, LatentActivations]` and test if it works well
         """Get intermediate activations for all model split points

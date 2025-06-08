@@ -67,7 +67,7 @@ def splitted_encoder_ml() -> ModelWithSplitPoints:
 @fixture(scope="session")
 def activations_dict(splitted_encoder_ml: ModelWithSplitPoints, sentences: list[str]) -> dict[str, LatentActivations]:
     return splitted_encoder_ml.get_activations(
-        sentences, select_strategy=ModelWithSplitPoints.activation_strategies.FLATTEN
+        sentences, select_strategy=ModelWithSplitPoints.activation_strategies.TOKENS
     )  # type: ignore
 
 

@@ -37,26 +37,9 @@ import torch
 from jaxtyping import Float
 from nnsight.intervention.graph import InterventionProxy
 
-from interpreto import ModelWithSplitPoints
+from interpreto import Granularity, ModelWithSplitPoints
 from interpreto.concepts.interpretations.base import BaseConceptInterpretationMethod
 from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentActivations
-
-
-class Granularities(Enum):  # TODO: harmonize with attribution granularities
-    """Code [:octicons-mark-github-24: `concepts/interpretations/topk_inputs.py`](https://github.com/FOR-sight-ai/interpreto/blob/main/interpreto/concepts/interpretations/topk_inputs.py)
-
-    Possible granularities of inputs returned by the Top-K Inputs concept interpretation method.
-
-    Valid granularities are:
-
-    - `TOKENS`: the granularity is at the token level.
-    """
-
-    # ALL_TOKENS = "all_tokens"
-    TOKENS = "tokens"
-    # WORDS = "words"
-    # CLAUSES = "clauses"
-    # SENTENCES = "sentences"
 
 
 class InterpretationSources(Enum):
@@ -107,18 +90,21 @@ class TopKInputs(BaseConceptInterpretationMethod):
         model_with_split_points (ModelWithSplitPoints): The model with split points to use for the interpretation.
         split_point (str): The split point to use for the interpretation.
         concept_model (ConceptModelProtocol): The concept model to use for the interpretation.
-        granularity (Granularities): The granularity at which the interpretation is computed.
+        granularity (Granularity): The granularity at which the interpretation is computed.
             Ignored for source `VOCABULARY`.
         source (InterpretationSources): The source of the inputs to use for the interpretation.
         k (int): The number of inputs to use for the interpretation.
     """
+
+    granularities = Granularity
+    sources = InterpretationSources
 
     def __init__(
         self,
         *,
         model_with_split_points: ModelWithSplitPoints,
         concept_model: ConceptModelProtocol,
-        granularity: Granularities,
+        granularity: Granularity = Granularity.TOKEN,
         source: InterpretationSources,
         split_point: str | None = None,
         k: int = 5,
@@ -126,9 +112,6 @@ class TopKInputs(BaseConceptInterpretationMethod):
         super().__init__(
             model_with_split_points=model_with_split_points, concept_model=concept_model, split_point=split_point
         )
-
-        if granularity is not Granularities.TOKENS:
-            raise NotImplementedError("Only token granularity is currently supported for interpretation.")
 
         if source not in InterpretationSources:
             raise ValueError(f"The source {source} is not supported. Supported sources: {InterpretationSources}")
@@ -165,7 +148,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
             # compute the vocabulary's latent activations
             input_tensor: Float[torch.Tensor, "v 1"] = torch.tensor(input_ids).unsqueeze(1)
             activations_dict: InterventionProxy = self.model_with_split_points.get_activations(
-                input_tensor, select_strategy=ModelWithSplitPoints.activation_strategies.FLATTEN
+                input_tensor, select_strategy=ModelWithSplitPoints.activation_strategies.ALL_TOKENS
             )  # TODO: verify `ModelWithSplitPoints.get_activations()` can take in ids
             latent_activations = self.model_with_split_points.get_split_activations(
                 activations_dict, split_point=self.split_point
@@ -178,7 +161,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
         # inputs source: compute the latent activations from the inputs
         if source is InterpretationSources.INPUTS:
             activations_dict: InterventionProxy = self.model_with_split_points.get_activations(
-                inputs, select_strategy=ModelWithSplitPoints.activation_strategies.FLATTEN
+                inputs, select_strategy=ModelWithSplitPoints.activation_strategies.TOKENS
             )
             latent_activations = self.model_with_split_points.get_split_activations(
                 activations_dict, split_point=self.split_point
@@ -207,39 +190,25 @@ class TopKInputs(BaseConceptInterpretationMethod):
 
         return inputs, concepts_activations
 
-    def _get_granular_inputs(
-        self,
-        inputs: list[str],  # (n, l)
-        concepts_activations: ConceptsActivations,  # (n*l, cpt)
-    ):
+    def _get_granular_inputs(self, inputs: list[str]) -> list[str]:
         if self.source is InterpretationSources.VOCABULARY:
             # no granularity is needed
-            return inputs, concepts_activations
+            return inputs
 
-        max_seq_len = concepts_activations.shape[0] / len(inputs)
+        tokens = self.model_with_split_points.tokenizer(
+            inputs, return_tensors="pt", return_offsets_mapping=True, return_special_tokens_mask=True, padding=True
+        )
+        decompositions = Granularity.get_decomposition(tokens, granularity=self.granularity)
 
-        if max_seq_len != int(max_seq_len):
-            raise ValueError(
-                f"The number of inputs and activations should be the same. Got {len(inputs)} inputs and {concepts_activations.shape[0]} activations."
-            )
-        max_seq_len = int(max_seq_len)
-        if self.granularity is Granularities.TOKENS:
-            indices_mask = torch.zeros(size=(concepts_activations.shape[0],), dtype=torch.bool)
-
-            granular_flattened_inputs = []
-            for i, input_example in enumerate(inputs):
-                # TODO: check this treatment is correct, for now it has not really been tested
-                tokens = self.model_with_split_points.tokenizer.tokenize(input_example)
-                indices_mask[i * max_seq_len : i * max_seq_len + len(tokens)] = True
-                granular_flattened_inputs += tokens
-            studied_inputs_concept_activations = concepts_activations[indices_mask]
-        else:
-            raise NotImplementedError(
-                f"Granularity {self.granularity} is not yet implemented, only `TOKEN` is supported for now."
-            )
-
-        assert len(granular_flattened_inputs) == len(studied_inputs_concept_activations)
-        return granular_flattened_inputs, studied_inputs_concept_activations
+        granular_inputs = []
+        for token_ids in decompositions:
+            granular_inputs += [
+                self.model_with_split_points.tokenizer.decode(
+                    ids, skip_special_tokens=self.granularity is not Granularity.ALL_TOKENS
+                )
+                for ids in token_ids
+            ]
+        return granular_inputs
 
     def _verify_concepts_indices(
         self,
@@ -332,23 +301,23 @@ class TopKInputs(BaseConceptInterpretationMethod):
         """
         # compute the concepts activations from the provided source, can also create inputs from the vocabulary
         sure_inputs: list[str]  # Verified by concepts_activations_from_source
-        sure_concepts_activations: Float[torch.Tensor, "nl cpt"]  # Verified by concepts_activations_from_source
+        sure_concepts_activations: Float[torch.Tensor, "ng cpt"]  # Verified by concepts_activations_from_source
         sure_inputs, sure_concepts_activations = self._concepts_activations_from_source(
             inputs, latent_activations, concepts_activations
         )
 
-        granular_inputs: list[str]  # len: ng, inputs becomes a list of elements extracted from the examples
-        granular_concepts_activations: Float[torch.Tensor, "ng cpt"]
-        granular_inputs, granular_concepts_activations = self._get_granular_inputs(
-            inputs=sure_inputs, concepts_activations=sure_concepts_activations
+        concepts_indices = self._verify_concepts_indices(
+            concepts_activations=sure_concepts_activations, concepts_indices=concepts_indices
         )
 
-        concepts_indices = self._verify_concepts_indices(
-            concepts_activations=granular_concepts_activations, concepts_indices=concepts_indices
+        granular_inputs: list[str]  # len: ng, inputs becomes a list of elements extracted from the examples
+        granular_inputs = self._get_granular_inputs(sure_inputs)
+        assert len(granular_inputs) == len(sure_concepts_activations), (
+            f"The lengths of the granulated inputs do not match le number of concepts activations {len(granular_inputs)} != {len(sure_concepts_activations)}"
         )
 
         return self._topk_inputs_from_concepts_activations(
             inputs=granular_inputs,
-            concepts_activations=granular_concepts_activations,
+            concepts_activations=sure_concepts_activations,
             concepts_indices=concepts_indices,
         )
