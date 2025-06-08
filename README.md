@@ -3,7 +3,7 @@
 <br/>
 
 [![Build status](https://img.shields.io/github/actions/workflow/status/FOR-sight-ai/interpreto/build.yml?branch=main)](https://github.com/FOR-sight-ai/interpreto/actions?query=workflow%3Abuild)
-[![Docs status](https://img.shields.io/readthedocs/interpreto)](https://interpreto.readthedocs.io/)
+[![Docs status](https://github.com/FOR-sight-ai/interpreto/actions/workflows/pages-build-deployment/badge.svg)](https://for-sight-ai.github.io/interpreto/)
 [![Version](https://img.shields.io/pypi/v/interpreto?color=blue)](https://pypi.org/project/interpreto/)
 [![Python Version](https://img.shields.io/pypi/pyversions/interpreto.svg?color=blue)](https://pypi.org/project/interpreto/)
 [![Downloads](https://static.pepy.tech/badge/interpreto)](https://pepy.tech/project/interpreto)

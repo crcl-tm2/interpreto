@@ -30,6 +30,8 @@ from __future__ import annotations
 from enum import Enum
 
 import torch
+from beartype import beartype
+from jaxtyping import Float, Int, jaxtyped
 from torch.types import Number
 
 from interpreto.typing import HasWordIds, TensorMapping
@@ -60,12 +62,38 @@ class Granularity(Enum):
     DEFAULT = ALL_TOKENS
 
     @staticmethod
-    def __all_tokens_assoc_matrix(tokens_ids: TensorMapping) -> torch.Tensor:
+    @jaxtyped(typechecker=beartype)
+    def __all_tokens_assoc_matrix(tokens_ids: TensorMapping) -> Float[torch.Tensor, "n lp lp"]:
+        """Return the association matrix for :attr:`ALL_TOKENS` granularity.
+
+        The returned tensor is a batch of identity matrices mapping every token
+        to itself.
+
+        Args:
+            tokens_ids: Tokenized inputs.
+
+        Returns:
+            torch.Tensor: Tensor of shape ``(n, lp, lp)``
+                where ``lp`` is the padded sequence length.
+        """
         n, l_p = tokens_ids["input_ids"].shape
         return torch.eye(l_p).unsqueeze(0).expand(n, -1, -1)
 
     @staticmethod
-    def __token_assoc_matrix(tokens_ids: TensorMapping) -> torch.Tensor:
+    @jaxtyped(typechecker=beartype)
+    def __token_assoc_matrix(tokens_ids: TensorMapping) -> Float[torch.Tensor, "n lt lp"]:
+        """Return the association matrix for :attr:`TOKEN` granularity.
+
+        Special tokens are ignored so that only real tokens are perturbed.
+
+        Args:
+            tokens_ids: Tokenized inputs containing ``special_tokens_mask``.
+
+        Returns:
+            torch.Tensor: Tensor of shape ``(n, lt, lp)``
+                where ``lt`` is the number of perturbable tokens for each sequence,
+                and ``lp`` is the padded sequence length.
+        """
         # TODO : remake this using only tensor operation (if possible ?)
         n, l_p = tokens_ids["input_ids"].shape
         perturbable_matrix = torch.diag_embed(1 - tokens_ids["special_tokens_mask"])
@@ -77,7 +105,25 @@ class Granularity(Enum):
         return result
 
     @staticmethod
-    def __word_assoc_matrix(tokens_ids: TensorMapping) -> torch.Tensor:
+    @jaxtyped(typechecker=beartype)
+    def __word_assoc_matrix(tokens_ids: TensorMapping) -> Float[torch.Tensor, "n lw lp"]:
+        """Return the association matrix for :attr:`WORD` granularity.
+
+        This matrix maps each word to the tokens that compose it. It requires the
+        token mapping to implement ``word_ids``.
+
+        Args:
+            tokens_ids: Tokenized inputs with word id information.
+
+        Returns:
+            torch.Tensor: Tensor of shape ``(n, lw, lp)``
+                where ``lw`` is the maximum number of words in the batch
+                and ``lp`` the padded sequence.
+            length.
+
+        Raises:
+            NoWordIdsError: If ``tokens_ids`` does not provide ``word_ids``.
+        """
         if not isinstance(tokens_ids, HasWordIds):
             raise NoWordIdsError()
         n = tokens_ids["input_ids"].shape[0]
@@ -91,7 +137,7 @@ class Granularity(Enum):
             padding_value=l_t + 1,
         )
         reference = torch.diagonal_scatter(torch.zeros(l_t + 1, l_t), torch.ones(l_t))
-        res = (
+        res: Float[torch.Tensor, "n lw lp"] = (
             torch.index_select(reference, 0, index_tensor.flatten())
             .reshape(index_tensor.shape + (reference.shape[1],))
             .transpose(-1, -2)
@@ -99,7 +145,8 @@ class Granularity(Enum):
         return res
 
     @staticmethod
-    def get_length(tokens_ids: TensorMapping, granularity: Granularity | None = None) -> torch.Tensor:
+    @jaxtyped(typechecker=beartype)
+    def get_length(tokens_ids: TensorMapping, granularity: Granularity | None = None) -> Int[torch.Tensor, "n"]:
         """
         Returns the length of the sequences according to the granularity level
 
@@ -131,7 +178,8 @@ class Granularity(Enum):
                 raise NotImplementedError(f"Granularity level {granularity} not implemented")
 
     @staticmethod
-    def get_decomposition(tokens_ids: TensorMapping, granularity: Granularity | None = None):
+    @jaxtyped(typechecker=beartype)
+    def get_decomposition(tokens_ids: TensorMapping, granularity: Granularity | None = None) -> list[list[list[int]]]:
         """Return the token decomposition at the requested granularity level.
 
         This method groups token ids according to the chosen granularity. It can
@@ -159,11 +207,15 @@ class Granularity(Enum):
                 raise NotImplementedError(f"Granularity level {granularity} not implemented in decompose function")
 
     @staticmethod
-    def __all_tokens_decomposition(tokens_ids: TensorMapping) -> list[list[list[Number]]]:
-        return [[[tok.item()] for tok in seq] for seq in tokens_ids["input_ids"]]
+    @jaxtyped(typechecker=beartype)
+    def __all_tokens_decomposition(tokens_ids: TensorMapping) -> list[list[list[int]]]:
+        """Return a decomposition keeping every token including special ones."""
+        return [[[tok.item()] for tok in seq] for seq in tokens_ids["input_ids"]]  # type: ignore
 
     @staticmethod
-    def __token_decomposition(tokens_ids: TensorMapping) -> list[list[list[Number]]]:
+    @jaxtyped(typechecker=beartype)
+    def __token_decomposition(tokens_ids: TensorMapping) -> list[list[list[int]]]:
+        """Return a decomposition ignoring special tokens."""
         if "special_tokens_mask" not in tokens_ids.keys():
             raise ValueError(
                 "Cannot decompose tokens without `'special_tokens_mask'`."
@@ -172,10 +224,12 @@ class Granularity(Enum):
         return [
             [[tok.item()] for tok, mask in zip(seq, mask_seq, strict=True) if mask == 0]
             for seq, mask_seq in zip(tokens_ids["input_ids"], tokens_ids["special_tokens_mask"], strict=True)
-        ]
+        ]  # type: ignore
 
     @staticmethod
-    def __word_decomposition(tokens_ids: TensorMapping) -> list[list[list[Number]]]:
+    @jaxtyped(typechecker=beartype)
+    def __word_decomposition(tokens_ids: TensorMapping) -> list[list[list[int]]]:
+        """Return a decomposition grouping tokens belonging to the same word."""
         if not isinstance(tokens_ids, HasWordIds):
             raise NoWordIdsError()
         res: list[list[list[Number]]] = []
@@ -185,10 +239,13 @@ class Granularity(Enum):
             for tok, word_id in zip(token_ids, word_ids, strict=True):
                 if word_id is not None:
                     res[-1][word_id] += [tok.item()]
-        return res
+        return res  # type: ignore
 
     @staticmethod
-    def get_association_matrix(tokens_ids: TensorMapping, granularity: Granularity | None = None) -> torch.Tensor:
+    @jaxtyped(typechecker=beartype)
+    def get_association_matrix(
+        tokens_ids: TensorMapping, granularity: Granularity | None = None
+    ) -> Float[torch.Tensor, "n g lp"]:
         """
         Creates the matrix to pass from one granularity level to ALL_TOKENS granularity level (finally used by the perturbator)
 
@@ -201,7 +258,11 @@ class Granularity(Enum):
             NotImplementedError: if granularity level is unknown, raises NotImplementedError
 
         Returns:
-            torch.Tensor: the matrix used to transform a specific granularity mask to a general mask that can be used on tokens
+            torch.Tensor: the matrix used to transform a specific granularity mask to a general mask that can be used on tokens.
+                The returned tensor is of shape ``(n, g, lp)``
+                    where ``n`` is the number of sequences,
+                    ``g`` is the padded sequence length in the specific granularity,
+                    and ``lp`` is the padded sequence length.
         """
         match granularity or Granularity.DEFAULT:
             case Granularity.ALL_TOKENS:
