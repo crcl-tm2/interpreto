@@ -148,8 +148,83 @@ def test_granularity_on_text():
     assert torch.equal(word_matrix, expected_word)
 
 
+def test_granularity_on_text_padding():
+    bert_tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+
+    # First sentence has 2 words → 3 sub-tokens (+2 specials) = 5,
+    # second has 3 words → 6 sub-tokens (+2 specials) = 8.
+    # With padding='longest' the first sequence is padded to length 8.
+    texts = [
+        "word longword",  # needs padding
+        "word longword verylongword",  # the longest one
+    ]
+
+    tokens = bert_tokenizer(
+        texts,
+        padding=True,  # force [PAD] on the shorter sequence
+        return_tensors="pt",
+        return_offsets_mapping=True,
+        return_special_tokens_mask=True,
+    )
+
+    # ------------- ALL_TOKENS -----------------
+    all_tokens = Granularity.get_association_matrix(tokens, Granularity.ALL_TOKENS)
+    # Both sequences are length-8 and should be pure identities (incl. PAD slots)
+    assert torch.equal(all_tokens[0], torch.eye(8))
+    assert torch.equal(all_tokens[1], torch.eye(8))
+
+    # ------------- TOKEN ----------------------
+    token_matrix = Granularity.get_association_matrix(tokens, Granularity.TOKEN)
+    # max_token_count = 6 (from the longer sentence)
+    expected_token = torch.tensor(
+        [
+            # sample 0 (3 real tokens, then zero-rows)
+            [
+                [0, 1, 0, 0, 0, 0, 0, 0],  # 'word'
+                [0, 0, 1, 0, 0, 0, 0, 0],  # 'long'
+                [0, 0, 0, 1, 0, 0, 0, 0],  # '##word'
+                [0, 0, 0, 0, 0, 0, 0, 0],  # padding row (no PAD col hit)
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+            ],
+            # sample 1 (6 real tokens)
+            [
+                [0, 1, 0, 0, 0, 0, 0, 0],  # 'word'
+                [0, 0, 1, 0, 0, 0, 0, 0],  # 'long'
+                [0, 0, 0, 1, 0, 0, 0, 0],  # '##word'
+                [0, 0, 0, 0, 1, 0, 0, 0],  # 'very'
+                [0, 0, 0, 0, 0, 1, 0, 0],  # '##long'
+                [0, 0, 0, 0, 0, 0, 1, 0],  # '##word'
+            ],
+        ]
+    )
+    assert torch.equal(token_matrix, expected_token)
+
+    # ------------- WORD -----------------------
+    word_matrix = Granularity.get_association_matrix(tokens, Granularity.WORD)
+    # max_word_count = 3 (from the longer sentence)
+    expected_word = torch.tensor(
+        [
+            # sample 0 (2 real words, then zero-row)
+            [
+                [0, 1, 0, 0, 0, 0, 0, 0],  # 'word'
+                [0, 0, 1, 1, 0, 0, 0, 0],  # 'longword'
+                [0, 0, 0, 0, 0, 0, 0, 0],  # padding row
+            ],
+            # sample 1 (3 real words)
+            [
+                [0, 1, 0, 0, 0, 0, 0, 0],  # 'word'
+                [0, 0, 1, 1, 0, 0, 0, 0],  # 'longword'
+                [0, 0, 0, 0, 1, 1, 1, 0],  # 'verylongword'
+            ],
+        ]
+    )
+    assert torch.equal(word_matrix, expected_word)
+
+
 if __name__ == "__main__":
     test_get_length()
     test_get_decomposition()
     test_get_association_matrix()
     test_granularity_on_text()
+    test_granularity_on_text_padding()
