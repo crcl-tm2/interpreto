@@ -42,6 +42,7 @@ from transformers import (
 )
 from transformers.models.auto import modeling_auto
 
+from interpreto.commons.granularity import Granularity
 from interpreto.model_wrapping.splitting_utils import get_layer_by_idx, sort_paths, validate_path, walk_modules
 from interpreto.model_wrapping.transformers_classes import (
     get_supported_hf_transformer_autoclasses,
@@ -56,14 +57,17 @@ class InitializationError(ValueError):
 
 
 class ActivationSelectionStrategy(Enum):
-    """Activation selection strategies for ModelWithSplitPoints.get_activations."""
+    """Activation selection strategies for :meth:`ModelWithSplitPoints.get_activations`."""
 
     ALL = "all"
+    CLS = "cls"
     FLATTEN = "flatten"
+    TOKENS = "tokens"
+    WORDS = "words"
 
-    @staticmethod
-    def is_match(a: str | ActivationSelectionStrategy, b: ActivationSelectionStrategy) -> bool:
-        return a == b.value if isinstance(a, str) else a == b
+    # @staticmethod
+    # def is_match(a: str | ActivationSelectionStrategy, b: ActivationSelectionStrategy) -> bool:
+    #     return a == b.value if isinstance(a, str) else a == b
 
 
 class ModelWithSplitPoints(LanguageModel):
@@ -214,28 +218,27 @@ class ModelWithSplitPoints(LanguageModel):
     def get_activations(
         self,
         inputs: str | list[str] | BatchEncoding | torch.Tensor,
-        select_strategy: str
-        | ActivationSelectionStrategy = ActivationSelectionStrategy.FLATTEN,  # TODO: discuss the default behavior, but if methods require flatten it should be the default
-        select_indices: int | list[int] | tuple[int] | None = None,
+        select_strategy: ActivationSelectionStrategy = ActivationSelectionStrategy.FLATTEN,  # TODO: discuss the default behavior, but if methods require flatten it should be the default
         **kwargs,
     ) -> InterventionProxy:  # TODO: change to `dict[str, LatentActivations]` and test if it works well
         """Get intermediate activations for all model split points
 
         Args:
             inputs (str | list[str] | BatchEncoding | torch.Tensor): Inputs to the model forward pass before or after tokenization.
-            select_strategy (str | ActivationSelectionStrategy): Selection strategy for activations.
+            select_strategy (ActivationSelectionStrategy): Selection strategy for activations.
 
                 Options are:
 
-                * `all`: All sequence activations are returned, keeping the original shape `(batch, seq_len, d_model)`.
-                * `flatten`: Every token activation is treated as a separate element - `(batch x seq_len, d_model)`.
-
-            select_indices (list[int] | tuple[int] | None): Specifies indices that should be selected from the
-                activation sequence. Can be combined with `select_strategy` to obtain several behaviors. E.g.
-                `select_strategy="all", select_indices=mask_idxs` can be used to extract only activations corresponding
-                to [MASK] input ids with shape `(batch, len(mask_idxs), d_model)`, or
-                `select_strategy="flatten", select_indices=0` can be used to extract activations for the `[CLS]` token
-                only across all sequences, with shape `(batch, d_model)`. By default, all positions are selected.
+                * ``ModelWithSplitPoints.activation_strategies.ALL``:
+                    all sequence activations are returned, keeping the original shape ``(batch, seq_len, d_model)``.
+                * ``ModelWithSplitPoints.activation_strategies.CLS``:
+                    only the first token (e.g. ``[CLS]``) activation is returned ``(batch, d_model)``.
+                * ``ModelWithSplitPoints.activation_strategies.FLATTEN``:
+                    every token activation is treated as a separate element ``(batch x seq_len, d_model)``.
+                * ``ModelWithSplitPoints.activation_strategies.TOKENS``:
+                    activations are aggregated according to :class:`~interpreto.commons.granularity.Granularity.TOKEN`.
+                * ``ModelWithSplitPoints.activation_strategies.WORDS``:
+                    activations are aggregated according to :class:`~interpreto.commons.granularity.Granularity.WORD`.
 
         Returns:
             (InterventionProxy) Dictionary having one key, value pair for each split point defined for the model. Keys correspond to split
@@ -247,7 +250,17 @@ class ModelWithSplitPoints(LanguageModel):
                 "No split points are currently defined for the model. "
                 "Please set split points before calling get_activations."
             )
-        select_indices = [select_indices] if isinstance(select_indices, int) else select_indices
+
+        if isinstance(inputs, str) or isinstance(inputs, list) or isinstance(inputs, tuple):
+            if select_strategy in [ActivationSelectionStrategy.TOKENS, ActivationSelectionStrategy.WORDS]:
+                inputs = self.tokenizer(
+                    inputs,  # type: ignore
+                    return_tensors="pt",
+                    padding=True,
+                    truncation=True,
+                    return_special_tokens_mask=True,
+                    return_offsets_mapping=True,
+                )
 
         # Compute activations
         with self.trace(inputs, **kwargs):
@@ -277,15 +290,28 @@ class ModelWithSplitPoints(LanguageModel):
                 )
 
             # Apply selection rule
-            if select_indices:
-                activations[layer] = activations[layer][:, select_indices, :]
-            if ActivationSelectionStrategy.is_match(select_strategy, ActivationSelectionStrategy.FLATTEN):
-                activations[layer] = activations[layer].flatten(0, 1)
-                if len(activations[layer].shape) != 2:
-                    raise RuntimeError(
-                        f"Invalid output for layer '{layer}'. Expected a torch.Tensor activation with shape"
-                        f"(batch_size x sequence_length, model_dim), got {activations[layer].shape}"
-                    )
+            match select_strategy:
+                case ActivationSelectionStrategy.ALL:
+                    pass
+                case ActivationSelectionStrategy.CLS:
+                    activations[layer] = activations[layer][:, 0, :]
+                case ActivationSelectionStrategy.FLATTEN:
+                    activations[layer] = activations[layer].flatten(0, 1)
+                    if len(activations[layer].shape) != 2:
+                        raise RuntimeError(
+                            f"Invalid output for layer '{layer}'. Expected a torch.Tensor activation with shape"
+                            f"(batch_size x sequence_length, model_dim), got {activations[layer].shape}"
+                        )
+                case ActivationSelectionStrategy.TOKENS:
+                    assoc = Granularity.get_association_matrix(inputs, Granularity.TOKEN).to(act.device)  # type: ignore
+                    weights = assoc / assoc.sum(-1, keepdim=True).clamp(min=1)
+                    activations[layer] = torch.einsum("ngl,nld->ngd", weights, activations[layer])
+                case ActivationSelectionStrategy.WORDS:
+                    assoc = Granularity.get_association_matrix(inputs, Granularity.WORD).to(act.device)  # type: ignore
+                    weights = assoc / assoc.sum(-1, keepdim=True).clamp(min=1)
+                    activations[layer] = torch.einsum("ngl,nld->ngd", weights, activations[layer])
+                case _:
+                    raise ValueError(f"Invalid activation selection strategy: {select_strategy}")
         return activations
 
     def get_split_activations(
