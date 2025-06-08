@@ -261,6 +261,10 @@ class ModelWithSplitPoints(LanguageModel):
                     return_special_tokens_mask=True,
                     return_offsets_mapping=True,
                 )
+        if isinstance(inputs, BatchEncoding):
+            inputs = inputs.copy()
+            inputs.pop("offset_mapping", None)  # type: ignore
+            special_tokens_mask = inputs.pop("special_tokens_mask", None)  # type: ignore
 
         # Compute activations
         with self.trace(inputs, **kwargs):
@@ -302,11 +306,13 @@ class ModelWithSplitPoints(LanguageModel):
                             f"Invalid output for layer '{layer}'. Expected a torch.Tensor activation with shape"
                             f"(batch_size x sequence_length, model_dim), got {activations[layer].shape}"
                         )
-                case ActivationSelectionStrategy.TOKENS:
+                case ActivationSelectionStrategy.TOKENS:  # TODO: choose the aggregation method
+                    inputs["special_tokens_mask"] = special_tokens_mask  # type: ignore
                     assoc = Granularity.get_association_matrix(inputs, Granularity.TOKEN).to(act.device)  # type: ignore
                     weights = assoc / assoc.sum(-1, keepdim=True).clamp(min=1)
                     activations[layer] = torch.einsum("ngl,nld->ngd", weights, activations[layer])
-                case ActivationSelectionStrategy.WORDS:
+                case ActivationSelectionStrategy.WORDS:  # TODO: choose the aggregation method
+                    inputs["special_tokens_mask"] = special_tokens_mask  # type: ignore
                     assoc = Granularity.get_association_matrix(inputs, Granularity.WORD).to(act.device)  # type: ignore
                     weights = assoc / assoc.sum(-1, keepdim=True).clamp(min=1)
                     activations[layer] = torch.einsum("ngl,nld->ngd", weights, activations[layer])

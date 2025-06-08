@@ -23,7 +23,9 @@
 # SOFTWARE.
 
 import torch
+from tests.conftest import splitted_encoder_ml
 
+from interpreto.commons.granularity import Granularity
 from interpreto.model_wrapping.model_with_split_points import ModelWithSplitPoints
 
 BERT_SPLIT_POINTS = [
@@ -67,6 +69,63 @@ def test_activation_equivalence_batched_text_token_inputs(multi_split_model: Mod
         assert torch.allclose(activations_str[k], activations_tensor[k])  # type: ignore
 
 
+def test_get_activations_selection_strategies(
+    splitted_encoder_ml: ModelWithSplitPoints,
+    sentences: list[str],
+):
+    """Validate output shapes and values for all activation selection strategies."""
+
+    tokenizer = splitted_encoder_ml.tokenizer
+    tokens = tokenizer(
+        sentences,
+        return_tensors="pt",
+        padding=True,
+        truncation=True,
+        return_special_tokens_mask=True,
+    )
+
+    batch, seq_len = tokens["input_ids"].shape  # type: ignore
+    hidden = splitted_encoder_ml._model.config.hidden_size
+    token_len = int(Granularity.get_length(tokens, Granularity.TOKEN).max().item())
+    word_len = int(Granularity.get_length(tokens, Granularity.WORD).max().item())
+
+    expected_shapes = {
+        splitted_encoder_ml.activation_strategies.ALL: (batch, seq_len, hidden),
+        splitted_encoder_ml.activation_strategies.CLS: (batch, hidden),
+        splitted_encoder_ml.activation_strategies.FLATTEN: (batch * seq_len, hidden),
+        splitted_encoder_ml.activation_strategies.TOKENS: (batch, token_len, hidden),
+        splitted_encoder_ml.activation_strategies.WORDS: (batch, word_len, hidden),
+    }
+
+    baseline = splitted_encoder_ml.get_activations(
+        tokens, select_strategy=splitted_encoder_ml.activation_strategies.ALL
+    )
+    split = splitted_encoder_ml.split_points[0]
+
+    for strategy, shape in expected_shapes.items():
+        activations = splitted_encoder_ml.get_activations(tokens, select_strategy=strategy)
+        assert activations[split].shape == shape
+
+        if strategy == splitted_encoder_ml.activation_strategies.ALL:
+            expected = baseline[split]
+        elif strategy == splitted_encoder_ml.activation_strategies.CLS:
+            expected = baseline[split][:, 0, :]
+        elif strategy == splitted_encoder_ml.activation_strategies.FLATTEN:
+            expected = baseline[split].flatten(0, 1)
+        elif strategy == splitted_encoder_ml.activation_strategies.TOKENS:
+            assoc = Granularity.get_association_matrix(tokens, Granularity.TOKEN).to(baseline[split].device)  # type: ignore
+            weights = assoc / assoc.sum(-1, keepdim=True).clamp(min=1)
+            expected = torch.einsum("ngl,nld->ngd", weights, baseline[split])
+        elif strategy == splitted_encoder_ml.activation_strategies.WORDS:
+            assoc = Granularity.get_association_matrix(tokens, Granularity.WORD).to(baseline[split].device)  # type: ignore
+            weights = assoc / assoc.sum(-1, keepdim=True).clamp(min=1)
+            expected = torch.einsum("ngl,nld->ngd", weights, baseline[split])
+        else:
+            raise AssertionError(f"Unhandled strategy: {strategy}")
+
+        assert torch.allclose(activations[split], expected)  # type: ignore
+
+
 # TODO: This test was removed because we do not currently handle splitting over layers that return
 # outputs that are not tensors.
 # def test_index_by_layer_idx(multi_split_model: ModelWithSplitPoints):
@@ -79,3 +138,19 @@ def test_activation_equivalence_batched_text_token_inputs(multi_split_model: Mod
 #        f"Expected: {BERT_SPLIT_POINTS_SORTED}\n"
 #        f"Got:      {multi_split_model.split_points}"
 #    )
+
+if __name__ == "__main__":
+    from transformers import AutoModelForMaskedLM
+
+    splitted_encoder_ml = ModelWithSplitPoints(
+        "hf-internal-testing/tiny-random-bert",
+        split_points=["bert.encoder.layer.1.output"],
+        model_autoclass=AutoModelForMaskedLM,  # type: ignore
+    )
+    sentences = [
+        "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+        "Interpreto is magical",
+        "Testing interpreto",
+    ]
+    test_activation_equivalence_batched_text_token_inputs(splitted_encoder_ml)
+    test_get_activations_selection_strategies(splitted_encoder_ml, sentences)
