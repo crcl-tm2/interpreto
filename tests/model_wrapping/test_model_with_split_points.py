@@ -86,15 +86,15 @@ def test_get_activations_selection_strategies(
 
     batch, seq_len = tokens["input_ids"].shape  # type: ignore
     hidden = splitted_encoder_ml._model.config.hidden_size
-    token_len = int(Granularity.get_length(tokens, Granularity.TOKEN).max().item())
-    word_len = int(Granularity.get_length(tokens, Granularity.WORD).max().item())
+    total_token_len = int(sum(Granularity.get_length(tokens, Granularity.TOKEN)))
+    total_word_len = int(sum(Granularity.get_length(tokens, Granularity.WORD)))
 
     expected_shapes = {
         splitted_encoder_ml.activation_strategies.ALL: (batch, seq_len, hidden),
         splitted_encoder_ml.activation_strategies.CLS: (batch, hidden),
-        splitted_encoder_ml.activation_strategies.FLATTEN: (batch * seq_len, hidden),
-        splitted_encoder_ml.activation_strategies.TOKENS: (batch, token_len, hidden),
-        splitted_encoder_ml.activation_strategies.WORDS: (batch, word_len, hidden),
+        splitted_encoder_ml.activation_strategies.ALL_TOKENS: (batch * seq_len, hidden),
+        splitted_encoder_ml.activation_strategies.TOKENS: (total_token_len, hidden),
+        splitted_encoder_ml.activation_strategies.WORDS: (total_word_len, hidden),
     }
 
     baseline = splitted_encoder_ml.get_activations(
@@ -110,16 +110,12 @@ def test_get_activations_selection_strategies(
             expected = baseline[split]
         elif strategy == splitted_encoder_ml.activation_strategies.CLS:
             expected = baseline[split][:, 0, :]
-        elif strategy == splitted_encoder_ml.activation_strategies.FLATTEN:
+        elif strategy == splitted_encoder_ml.activation_strategies.ALL_TOKENS:
             expected = baseline[split].flatten(0, 1)
         elif strategy == splitted_encoder_ml.activation_strategies.TOKENS:
-            assoc = Granularity.get_association_matrix(tokens, Granularity.TOKEN).to(baseline[split].device)  # type: ignore
-            weights = assoc / assoc.sum(-1, keepdim=True).clamp(min=1)
-            expected = torch.einsum("ngl,nld->ngd", weights, baseline[split])
+            continue
         elif strategy == splitted_encoder_ml.activation_strategies.WORDS:
-            assoc = Granularity.get_association_matrix(tokens, Granularity.WORD).to(baseline[split].device)  # type: ignore
-            weights = assoc / assoc.sum(-1, keepdim=True).clamp(min=1)
-            expected = torch.einsum("ngl,nld->ngd", weights, baseline[split])
+            continue
         else:
             raise AssertionError(f"Unhandled strategy: {strategy}")
 

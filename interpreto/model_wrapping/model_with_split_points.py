@@ -25,9 +25,10 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
+from typing import Any, Protocol
 
 import torch
+from jaxtyping import Int
 from nnsight import dict as nnsight_dict
 from nnsight.intervention import Envoy
 from nnsight.intervention.graph import InterventionProxy
@@ -61,13 +62,33 @@ class ActivationSelectionStrategy(Enum):
 
     ALL = "all"
     CLS = "cls"
-    FLATTEN = "flatten"
+    ALL_TOKENS = "all_tokens"
     TOKENS = "tokens"
     WORDS = "words"
 
-    # @staticmethod
-    # def is_match(a: str | ActivationSelectionStrategy, b: ActivationSelectionStrategy) -> bool:
-    #     return a == b.value if isinstance(a, str) else a == b
+
+class AggregationStrategy(Enum):
+    """Aggregation strategies for :meth:`ModelWithSplitPoints.get_activations`."""
+
+    SUM = staticmethod(lambda x: x.sum(dim=2))
+    MEAN = staticmethod(lambda x: x.mean(dim=2))
+    MAX = staticmethod(lambda x: x.max(dim=2))
+    SIGNED_MAX = staticmethod(lambda x: x.abs().max(dim=2) * x.sign())
+
+
+class AggregationProtocol(Protocol):
+    """Protocol for aggregation strategies used in :meth:`ModelWithSplitPoints.get_activations`."""
+
+    def __call__(self, x: torch.Tensor) -> torch.Tensor:
+        """Aggregate activations.
+
+        Args:
+            x (torch.Tensor): The tensor to aggregate.
+
+        Returns:
+            torch.Tensor: The aggregated tensor.
+        """
+        ...
 
 
 class ModelWithSplitPoints(LanguageModel):
@@ -218,7 +239,8 @@ class ModelWithSplitPoints(LanguageModel):
     def get_activations(
         self,
         inputs: str | list[str] | BatchEncoding | torch.Tensor,
-        select_strategy: ActivationSelectionStrategy = ActivationSelectionStrategy.FLATTEN,  # TODO: discuss the default behavior, but if methods require flatten it should be the default
+        select_strategy: ActivationSelectionStrategy = ActivationSelectionStrategy.ALL,
+        aggregation_strategy: AggregationProtocol = AggregationStrategy.SUM,
         **kwargs,
     ) -> InterventionProxy:  # TODO: change to `dict[str, LatentActivations]` and test if it works well
         """Get intermediate activations for all model split points
@@ -233,12 +255,15 @@ class ModelWithSplitPoints(LanguageModel):
                     all sequence activations are returned, keeping the original shape ``(batch, seq_len, d_model)``.
                 * ``ModelWithSplitPoints.activation_strategies.CLS``:
                     only the first token (e.g. ``[CLS]``) activation is returned ``(batch, d_model)``.
-                * ``ModelWithSplitPoints.activation_strategies.FLATTEN``:
+                * ``ModelWithSplitPoints.activation_strategies.ALL_TOKENS``:
                     every token activation is treated as a separate element ``(batch x seq_len, d_model)``.
                 * ``ModelWithSplitPoints.activation_strategies.TOKENS``:
                     activations are aggregated according to :class:`~interpreto.commons.granularity.Granularity.TOKEN`.
                 * ``ModelWithSplitPoints.activation_strategies.WORDS``:
                     activations are aggregated according to :class:`~interpreto.commons.granularity.Granularity.WORD`.
+            aggregation_strategy: Strategy to aggregate activations.
+                Only necessary for WORDS `select_strategy`, ignored otherwise.
+        **kwargs: Additional keyword arguments passed to the model forward pass.
 
         Returns:
             (InterventionProxy) Dictionary having one key, value pair for each split point defined for the model. Keys correspond to split
@@ -299,23 +324,35 @@ class ModelWithSplitPoints(LanguageModel):
                     pass
                 case ActivationSelectionStrategy.CLS:
                     activations[layer] = activations[layer][:, 0, :]
-                case ActivationSelectionStrategy.FLATTEN:
+                case ActivationSelectionStrategy.ALL_TOKENS:
                     activations[layer] = activations[layer].flatten(0, 1)
                     if len(activations[layer].shape) != 2:
                         raise RuntimeError(
                             f"Invalid output for layer '{layer}'. Expected a torch.Tensor activation with shape"
                             f"(batch_size x sequence_length, model_dim), got {activations[layer].shape}"
                         )
-                case ActivationSelectionStrategy.TOKENS:  # TODO: choose the aggregation method
+                case ActivationSelectionStrategy.TOKENS:
                     inputs["special_tokens_mask"] = special_tokens_mask  # type: ignore
-                    assoc = Granularity.get_association_matrix(inputs, Granularity.TOKEN).to(act.device)  # type: ignore
-                    weights = assoc / assoc.sum(-1, keepdim=True).clamp(min=1)
-                    activations[layer] = torch.einsum("ngl,nld->ngd", weights, activations[layer])
-                case ActivationSelectionStrategy.WORDS:  # TODO: choose the aggregation method
+
+                    # aggregate a
+                    assoc: Int[torch.Tensor, "n g l"] = Granularity.get_association_matrix(
+                        inputs,  # type: ignore
+                        Granularity.TOKEN,
+                    ).to(self.device)
+                    acti = torch.einsum("ngl,nld->ngd", assoc, activations[layer])
+                    acti: Int[torch.Tensor, "ng d"] = acti.flatten(0, 1)
+                    activations[layer] = acti[(acti != 0).any(dim=1)]
+                case ActivationSelectionStrategy.WORDS:
                     inputs["special_tokens_mask"] = special_tokens_mask  # type: ignore
-                    assoc = Granularity.get_association_matrix(inputs, Granularity.WORD).to(act.device)  # type: ignore
-                    weights = assoc / assoc.sum(-1, keepdim=True).clamp(min=1)
-                    activations[layer] = torch.einsum("ngl,nld->ngd", weights, activations[layer])
+                    assoc: Int[torch.Tensor, "n g l"] = Granularity.get_association_matrix(
+                        inputs,  # type: ignore
+                        Granularity.WORD,
+                    )
+                    assoc: Int[torch.Tensor, "n g l 1"] = assoc.to(self.device).unsqueeze(-1)
+                    acti: Int[torch.Tensor, "n 1 l d"] = activations[layer].unsqueeze(1)  # type: ignore
+                    acti: Int[torch.Tensor, "n g d"] = aggregation_strategy(assoc * acti)
+                    acti: Int[torch.Tensor, "ng d"] = acti.flatten(0, 1)
+                    activations[layer] = acti[(acti != 0).any(dim=1)]
                 case _:
                     raise ValueError(f"Invalid activation selection strategy: {select_strategy}")
         return activations
