@@ -33,7 +33,7 @@ nav:
     - Attribution Explainers:
       - Overview: api/attributions/overview.md
       - Methods:
-        - KernelSHAP: api/attributions/methods/kernel_shap.md
+        - KernelSHAP: api/attributions/methods/kernelshap.md
         - LIME: api/attributions/methods/lime.md
         - Integrated Gradients: api/attributions/methods/integrated_gradients.md
         - Occlusion: api/attributions/methods/occlusion.md
