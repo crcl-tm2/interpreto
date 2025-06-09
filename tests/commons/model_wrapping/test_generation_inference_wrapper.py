@@ -63,9 +63,10 @@ def test_generation_inference_wrapper_single_sentence(model_name, sentences):
     model_inputs = tokenizer(sentences[0], return_tensors="pt", padding=True, truncation=True)
     model_inputs.to(DEVICE)
     model_inputs_length = model_inputs["input_ids"].shape[1]
+    max_length = model_inputs_length + 12
 
     full_model_inputs, target = inference_wrapper.get_inputs_to_explain_and_targets(
-        model_inputs, max_length=model_inputs_length + 6, do_sample=False
+        model_inputs, max_length=max_length, do_sample=False
     )
     target_length = target.shape[1]
     full_shape = full_model_inputs["input_ids"].shape[1]
@@ -77,6 +78,11 @@ def test_generation_inference_wrapper_single_sentence(model_name, sentences):
     # Check that the second part of the full input is equal to the target.
     assert full_model_inputs["input_ids"][:, -target_length:].equal(target), (
         "For a single sentence, the target part of the full input does not match the provided target."
+    )
+
+    # Check that the full input has the expected shape given by the max_length.
+    assert full_model_inputs["input_ids"].shape[1] == max_length, (
+        "The full input shape doesn't match the expected shape given by max_length."
     )
 
     logits = inference_wrapper.get_logits(full_model_inputs)
@@ -118,9 +124,10 @@ def test_generation_inference_wrapper_multiple_sentences(model_name, sentences):
     model_inputs = tokenizer(sentences, return_tensors="pt", padding=True, truncation=True)
     model_inputs.to(DEVICE)
     model_inputs_length = model_inputs["input_ids"].shape[1]
+    max_length = model_inputs_length + 12
 
     full_model_inputs, target = inference_wrapper.get_inputs_to_explain_and_targets(
-        model_inputs, max_length=model_inputs_length + 6, do_sample=False
+        model_inputs, max_length=max_length, do_sample=False
     )
     target_length = target.shape[1]
     full_shape = full_model_inputs["input_ids"].shape[1]
@@ -132,6 +139,11 @@ def test_generation_inference_wrapper_multiple_sentences(model_name, sentences):
     # Check that the second part of the full input is equal to the target.
     assert full_model_inputs["input_ids"][:, -target_length:].equal(target), (
         "For multiple sentences, the target part of the full input does not match the provided target."
+    )
+
+    # Check that the full input has the expected shape given by the max_length.
+    assert full_model_inputs["input_ids"].shape[1] == max_length, (
+        "The full input shape doesn't match the expected shape given by max_length."
     )
 
     logits = inference_wrapper.get_logits(full_model_inputs)
@@ -182,9 +194,10 @@ def test_generation_inference_wrapper_multiple_mappings(model_name, sentences):
     model_inputs = [model_inputs1, model_inputs2]
     model_inputs_length1 = model_inputs1["input_ids"].shape[1]
     model_inputs_length2 = model_inputs2["input_ids"].shape[1]
+    max_length = max(model_inputs_length1, model_inputs_length2) + 6
 
     full_model_inputs, target = inference_wrapper.get_inputs_to_explain_and_targets(
-        model_inputs, max_length=max(model_inputs_length1, model_inputs_length2) + 6, do_sample=False
+        model_inputs, max_length=max_length, do_sample=False
     )
 
     target_length1 = target[0].shape[1]
@@ -199,12 +212,21 @@ def test_generation_inference_wrapper_multiple_mappings(model_name, sentences):
     assert full_model_inputs[1]["input_ids"][:, :-target_length2].equal(model_inputs[1]["input_ids"]), (
         "The first part of the full input for mapping 1 does not match the original input."
     )
+
     # check that the second part of the full input is equal to the target:
     assert full_model_inputs[0]["input_ids"][:, -target_length1:].equal(target[0]), (
         "The target part of the full input for mapping 0 does not match the target."
     )
     assert full_model_inputs[1]["input_ids"][:, -target_length2:].equal(target[1]), (
         "The target part of the full input for mapping 1 does not match the target."
+    )
+
+    # Check that the full input has the expected shape given by the max_length.
+    assert full_model_inputs[0]["input_ids"].shape[1] == max_length, (
+        "The full input shape doesn't match the expected shape given by max_length."
+    )
+    assert full_model_inputs[1]["input_ids"].shape[1] == max_length, (
+        "The full input shape doesn't match the expected shape given by max_length."
     )
 
     logits = inference_wrapper.get_logits(full_model_inputs)
