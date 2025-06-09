@@ -11,15 +11,18 @@ explanation = explainer(inputs, targets)
 
 The API have two steps:
 
-- explainer instantiation: Method is an attribution method among those displayed methods tables. It inherits from the Base class BlackBoxExplainer. Their initialization takes 2 parameters apart from the specific ones and generates an explainer:
-  - model: the model from which we want to obtain attributions.
-  - tokenizer: if the model is an NLP model, the associated tokenizer must be given, otherwise None.
-  - batch_size: an integer which allows to process inputs per batch.
-  - args: specifics for each method.
+- Explainer instantiation: `Method` is a generic name for an attribution method from the list of available methods (below). It inherits from the `AttributionExplainer` base class. Its initialization takes the general parameters explained here (and parameters that are specific to each method, explained in their own documentation):
+  - `model` (`PreTrainedModel`): Hugging Face model to explain,
+  - `tokenizer` (`PreTrainedTokenizer`): Hugging Face tokenizer associated with the model,
+  - `batch_size` (`int`): batch size for the attribution method,
+  - `device` (`torch.device | None = None`): device on which the attribution method will be run,
+  - `args`: specifics for each method.
 
-- explain method: The call to explainer generates the explanations, it takes two parameters:
-  - inputs: the samples on which the explanations are requested, see inputs section for more detail.
-  - targets: another parameter to specify what to explain in the inputs, can be a specific class or a set of classes (for classification), or texts (for generation). If targets=None, the target is calculated by making the prediction from the input with the given model.
+
+- The `AttributionExplainer` class overloads the `__call__` method to directly invoke the `explain` function. Therefore, calling `explainer(inputs, targets)` is equivalent to `explainer.explain(inputs, targets)`. It takes two parameters:
+  - `inputs`: the samples for which explanations are requested.
+  - `targets`: specifies what to explain in the inputs. This can be a specific class or a set of classes (for classification tasks), or target texts (for generation tasks). If `targets=None`, the target is automatically inferred by performing a prediction on the input using the provided model.
+
 
 ## Specifics methods
 
@@ -53,7 +56,7 @@ First step:
 Instantiate a perturbator and an aggregator that will be used by the attribution method.
 
 perturbator:
-    - inputs_embedder: Optional module used to embed input IDs when only ``input_ids`` are provided.
+    - `inputs_embedder`: Optional module used to embed input IDs when only ``input_ids`` are provided.
 
 aggregator: no argument.
 
@@ -62,16 +65,17 @@ Second step:
 Instantiate the AttributionExplainer class with the perturbator and aggregator.
 
 - AttributionExplainer is the class that instantiates any attribution method based on whether or not it uses gradients (with the boolean argument use_gradient), its perturbation type and its aggregation type. It take the custom parameters (perturbator, aggregator, use_gradient) and the classic parameters for explaination:
-  - model (PreTrainedModel): Hugging Face model to explain,
-  - tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model,
-  - batch_size (int): batch size for the attribution method,
-  - perturbator (BasePerturbator | None = None): Instance used to generate input perturbations.
+  - `model` (`PreTrainedModel`): Hugging Face model to explain,
+  - `tokenizer` (`PreTrainedTokenizer`): Hugging Face tokenizer associated with the model,
+  - `batch_size` (`int`): batch size for the attribution method,
+  - `perturbator` (`BasePerturbator | None = None`): Instance used to generate input perturbations.
                 If None, the perturbator returns only the original input,
-  - aggregator (Aggregator | None = None): Instance used to aggregate computed attribution scores.
-                If None, the aggregator returns the original scores,
-  - device (torch.device | None = None): device on which the attribution method will be run,
-  - use_gradient: boolean.
+  - `aggregator` (`Aggregator | None = None`): Instance used to aggregate computed attribution scores.
+                If `None`, the aggregator returns the original scores,
+  - `device` (`torch.device | None = None`): device on which the attribution method will be run,
+  - `use_gradient`: (`bool`): If True, computes gradients instead of inference for targeted explanations.
 
-- La classe AttributionExplainer, contient une méthode explain: The call to explainer generates the explanations, it takes two parameters:
-  - inputs: the samples on which the explanations are requested, see inputs section for more detail.
-  - targets: another parameter to specify what to explain in the inputs, can be a specific class or a set of classes (for classification), or texts (for generation).
+
+- The `AttributionExplainer` class overloads the __call__ method to directly invoke explain. Thus, `explainer(inputs, targets)` is equivalent to `explainer.explain(inputs, targets)`. The explain method takes two parameters:
+  - `inputs`: the samples on which the explanations are requested, see inputs section for more detail.
+  - `targets`: another parameter to specify what to explain in the inputs, can be a specific class or a set of classes (for classification), or texts (for generation).
