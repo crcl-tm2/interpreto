@@ -52,8 +52,6 @@ class Occlusion(MultitaskExplainerMixin, AttributionExplainer):
     # TODO: add example
     """
 
-    use_gradient = False
-
     def __init__(
         self,
         model: Any,
@@ -87,4 +85,5 @@ class Occlusion(MultitaskExplainerMixin, AttributionExplainer):
             aggregator=OcclusionAggregator(),
             granularity=granularity,
             inference_mode=inference_mode,
+            use_gradient=False,
         )

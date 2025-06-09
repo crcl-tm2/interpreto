@@ -45,8 +45,6 @@ class Saliency(MultitaskExplainerMixin, AttributionExplainer):
     # TODO: add example
     """
 
-    use_gradient = True
-
     def __init__(
         self,
         model: PreTrainedModel,
@@ -75,4 +73,5 @@ class Saliency(MultitaskExplainerMixin, AttributionExplainer):
             perturbator=None,
             aggregator=None,
             inference_mode=inference_mode,
+            use_gradient=True,
         )

@@ -51,8 +51,6 @@ class KernelShap(MultitaskExplainerMixin, AttributionExplainer):
     # TODO: add example
     """
 
-    use_gradient = False
-
     def __init__(
         self,
         model: PreTrainedModel,
@@ -103,4 +101,5 @@ class KernelShap(MultitaskExplainerMixin, AttributionExplainer):
             granularity=granularity,
             inference_mode=inference_mode,
             device=device,
+            use_gradient=False,
         )

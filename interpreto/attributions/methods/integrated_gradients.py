@@ -47,8 +47,6 @@ class IntegratedGradients(MultitaskExplainerMixin, AttributionExplainer):
     # TODO: add example
     """
 
-    use_gradient = True
-
     def __init__(
         self,
         model: PreTrainedModel,
@@ -83,4 +81,5 @@ class IntegratedGradients(MultitaskExplainerMixin, AttributionExplainer):
             perturbator=perturbator,
             aggregator=MeanAggregator(),  # TODO: check if we need a trapezoidal mean
             inference_mode=inference_mode,
+            use_gradient=True,
         )

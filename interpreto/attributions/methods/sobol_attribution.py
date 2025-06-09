@@ -51,7 +51,6 @@ class Sobol(MultitaskExplainerMixin, AttributionExplainer):
     # TODO: add example
     """
 
-    use_gradient = False
     samplers: type[Enum] = SequenceSamplers
     sobol_indices_orders: type[Enum] = SobolIndicesOrders
 
@@ -106,4 +105,5 @@ class Sobol(MultitaskExplainerMixin, AttributionExplainer):
             granularity=granularity,
             inference_mode=inference_mode,
             device=device,
+            use_gradient=False,
         )

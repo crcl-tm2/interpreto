@@ -53,7 +53,6 @@ class Lime(MultitaskExplainerMixin, AttributionExplainer):
     # TODO: add example
     """
 
-    use_gradient = False
     distance_functions: type[Enum] = DistancesFromMask
 
     def __init__(
@@ -111,4 +110,5 @@ class Lime(MultitaskExplainerMixin, AttributionExplainer):
             granularity=granularity,
             inference_mode=inference_mode,
             device=device,
+            use_gradient=False,
         )

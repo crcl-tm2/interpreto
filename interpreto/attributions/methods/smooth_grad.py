@@ -47,8 +47,6 @@ class SmoothGrad(MultitaskExplainerMixin, AttributionExplainer):
     # TODO: add example
     """
 
-    use_gradient = True
-
     def __init__(
         self,
         model: PreTrainedModel,
@@ -84,4 +82,5 @@ class SmoothGrad(MultitaskExplainerMixin, AttributionExplainer):
             perturbator=perturbator,
             aggregator=MeanAggregator(),
             inference_mode=inference_mode,
+            use_gradient=True,
         )
