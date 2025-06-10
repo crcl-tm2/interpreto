@@ -41,10 +41,25 @@ from interpreto.model_wrapping.inference_wrapper import InferenceModes
 
 class SmoothGrad(MultitaskExplainerMixin, AttributionExplainer):
     """
-    SmoothGrad method
+    SmoothGrad is an enhanced version of gradient-based interpretability methods, such as saliency maps.
+    It reduces the noise and visual instability often seen in raw gradient attributions by averaging gradients
+    over multiple noisy versions of the input. The result is a smoothed importance score for each token.
 
-    # TODO: add paper link
-    # TODO: add example
+    Procedure:
+    - Generate multiple perturbed versions of the input by adding noise (Gaussian) to the input embeddings.
+    - For each noisy input, compute the gradient of the output with respect to the embeddings.
+    - Average the gradients across all samples.
+    - Aggregate the result per token (e.g., by norm with the input) to get the final attribution scores.
+
+    **Reference:**
+    Smilkov et al. (2017). *SmoothGrad: removing noise by adding noise.*
+    [Paper](https://arxiv.org/abs/1706.03825)
+
+    Examples:
+        >>> from interpreto import Smoothgrad
+        >>> method = Smoothgrad(model, tokenizer, batch_size=4,
+        >>>                     n_interpolations=50, noise_level=0.01)
+        >>> explanations = method.explain(text)
     """
 
     def __init__(

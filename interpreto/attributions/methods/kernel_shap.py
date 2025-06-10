@@ -45,10 +45,25 @@ from interpreto.model_wrapping.inference_wrapper import InferenceModes
 
 class KernelShap(MultitaskExplainerMixin, AttributionExplainer):
     """
-    Kernel SHAP attribution method.
+    KernelSHAP is a model‑agnostic Shapley value estimator that interprets predictions
+    by computing Shapley values through a weighted linear regression in the space of
+    feature coalitions.
 
-    # TODO: add paper link
-    # TODO: add example
+    By unifying ideas from LIME and Shapley value theory, KernelSHAP provides additive
+    feature attributions with strong consistency guarantees.
+
+    **Reference:**
+    Lundberg and Lee (2017). *A Unified Approach to Interpreting Model Predictions.*
+    [Paper](https://arxiv.org/abs/1705.07874)
+
+    Examples:
+        >>> from interpreto import Granularity, KernelShap
+        >>> from interpreto.attributions import InferenceModes
+        >>> method = KernelShap(model, tokenizer, batch_size=4,
+        >>>                     inference_mode=InferenceModes.SOFTMAX,
+        >>>                     n_perturbations=20,
+        >>>                     granularity=Granularity.WORD)
+        >>> explanations = method(text)
     """
 
     def __init__(
