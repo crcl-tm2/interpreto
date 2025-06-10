@@ -331,7 +331,7 @@ class ModelWithSplitPoints(LanguageModel):
                             f"Invalid output for layer '{layer}'. Expected a torch.Tensor activation with shape"
                             f"(batch_size x sequence_length, model_dim), got {activations[layer].shape}"
                         )
-                case ActivationSelectionStrategy.TOKENS:
+                case ActivationSelectionStrategy.TOKENS:  # TODO: try something around indices, without association matrices, create an indices method from which other granularity methods depend.
                     inputs["special_tokens_mask"] = special_tokens_mask  # type: ignore
 
                     # aggregate a
