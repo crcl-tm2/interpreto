@@ -39,13 +39,24 @@ from interpreto.model_wrapping.inference_wrapper import InferenceModes
 
 class Saliency(MultitaskExplainerMixin, AttributionExplainer):
     """
-    Saliency method
+    Saliency maps are a simple and widely used gradient-based method for interpreting
+    neural network predictions. The idea is to compute the gradient of the model's output
+    with respect to its input embeddings to estimate which input tokens most influence the output.
 
-    # TODO: add paper link
-    # TODO: add example
+    Procedure:
+    - Pass the input through the model to obtain an output (e.g., class logit, token probability).
+    - Compute the gradient of the output with respect to the input embeddings.
+    - For each token, reduce the gradient vector (e.g., via norm with the embedding) to obtain a scalar importance score.
+
+    **Reference:**
+    Simonyan et al. (2013). *Deep Inside Convolutional Networks: Visualising Image Classification Models and Saliency Maps.*
+    [Paper](https://arxiv.org/abs/1312.6034)
+
+    Examples:
+        >>> from interpreto import Saliency
+        >>> method = Saliency(model, tokenizer, batch_size=4)
+        >>> explanations = method.explain(text)
     """
-
-    use_gradient = True
 
     def __init__(
         self,
@@ -75,4 +86,5 @@ class Saliency(MultitaskExplainerMixin, AttributionExplainer):
             perturbator=None,
             aggregator=None,
             inference_mode=inference_mode,
+            use_gradient=True,
         )

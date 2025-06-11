@@ -45,13 +45,29 @@ from interpreto.commons.granularity import Granularity
 
 class Sobol(MultitaskExplainerMixin, AttributionExplainer):
     """
-    Sobol Attribution method.
+    Sobol is a variance-based sensitivity analysis method used to quantify the contribution
+    of each input component to the output variance of the model.
 
-    # TODO: add paper link
-    # TODO: add example
+    It estimates both the first-order (main) and total (interaction) effects of features using
+    Monte Carlo sampling strategies. In NLP, Sobol helps assess which words or tokens are most
+    influential for the model’s decision, including how they interact with one another.
+
+    **Reference:**
+    Fel et al. (2021). *Look at the variance! Efficient black-box explanations with Sobol-based sensitivity analysis.*
+    [Paper](https://arxiv.org/abs/2111.04138)
+
+    Examples:
+        >>> from interpreto import Granularity, Sobol
+        >>> from interpreto.attributions import InferenceModes
+        >>> method = Sobol(model, tokenizer, batch_size=4,
+        >>>                inference_mode=InferenceModes.LOGITS,
+        >>>                n_token_perturbations=8,
+        >>>                granularity=Granularity.WORD,
+        >>>                sobol_indices_order=Sobol.sobol_indices_orders.FIRST_ORDER,
+        >>>                sampler=Sobol.samplers.SOBOL))
+        >>> explanations = method(text)
     """
 
-    use_gradient = False
     samplers: type[Enum] = SequenceSamplers
     sobol_indices_orders: type[Enum] = SobolIndicesOrders
 
@@ -106,4 +122,5 @@ class Sobol(MultitaskExplainerMixin, AttributionExplainer):
             granularity=granularity,
             inference_mode=inference_mode,
             device=device,
+            use_gradient=False,
         )

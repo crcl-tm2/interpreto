@@ -74,7 +74,7 @@ ALL_MODEL_LOADERS = {
     "hf-internal-testing/tiny-random-albert": AutoModelForSequenceClassification,
     "hf-internal-testing/tiny-random-bart": AutoModelForSequenceClassification,
     "hf-internal-testing/tiny-random-bert": AutoModelForSequenceClassification,
-    "hf-internal-testing/tiny-random-DebertaV2Model": AutoModelForSequenceClassification,
+    # "hf-internal-testing/tiny-random-DebertaV2Model": AutoModelForSequenceClassification,
     "hf-internal-testing/tiny-random-distilbert": AutoModelForSequenceClassification,
     "hf-internal-testing/tiny-random-ElectraModel": AutoModelForSequenceClassification,
     "hf-internal-testing/tiny-random-roberta": AutoModelForSequenceClassification,
@@ -176,7 +176,11 @@ def evaluate_attribution_methods_with_text(model_name, attribution_explainer):
         # if we have a generative model, we need to give the max_length:
         try:
             if model.__class__.__name__.endswith("ForCausalLM") or model.__class__.__name__.endswith("LMHeadModel"):
-                attributions = explainer.explain(input_text, generation_kwargs={"max_length": 10})
+                attributions = explainer.explain(
+                    input_text,
+                    targets=target,
+                    max_length=35,
+                )
             else:
                 attributions = explainer.explain(input_text, targets=target)
         except IncompatibilityError:

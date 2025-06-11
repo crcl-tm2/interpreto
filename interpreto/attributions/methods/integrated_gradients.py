@@ -41,13 +41,24 @@ from interpreto.model_wrapping.inference_wrapper import InferenceModes
 
 class IntegratedGradients(MultitaskExplainerMixin, AttributionExplainer):
     """
-    Integrated Gradients method
+    Integrated Gradients (IG) is a gradient-based interpretability method that attributes
+    importance scores to input features (e.g., tokens) by integrating the model’s gradients
+    along a path from a baseline input to the actual input.
 
-    # TODO: add paper link
-    # TODO: add example
+    The method is designed to address some of the limitations of standard gradients, such as
+    saturation and noise, by averaging gradients over interpolated inputs rather than relying
+    on a single local gradient.
+
+    **Reference:**
+    Sundararajan et al. (2017). *Axiomatic Attribution for Deep Networks.*
+    [Paper](http://proceedings.mlr.press/v70/sundararajan17a.html)
+
+    Examples:
+        >>> from interpreto import IntegratedGradients
+        >>> method = IntegratedGradients(model=model, tokenizer=tokenizer,
+        >>>                              batch_size=4, n_interpolations=50)
+        >>> explanations = method.explain(model_inputs=text)
     """
-
-    use_gradient = True
 
     def __init__(
         self,
@@ -83,4 +94,5 @@ class IntegratedGradients(MultitaskExplainerMixin, AttributionExplainer):
             perturbator=perturbator,
             aggregator=MeanAggregator(),  # TODO: check if we need a trapezoidal mean
             inference_mode=inference_mode,
+            use_gradient=True,
         )

@@ -47,13 +47,27 @@ from interpreto.commons import Granularity
 
 class Lime(MultitaskExplainerMixin, AttributionExplainer):
     """
-    Lime Attribution method
+    Local Interpretable Model-agnostic Explanations (LIME) is a perturbation‑based approach that explains individual predictions by
+    fitting a simple, interpretable surrogate model locally around the prediction
+    of interest. By sampling perturbed versions of the input and weighting them by
+    their proximity to the original instance, LIME learns per‑feature importance scores
+    that approximate the behaviour of the underlying black‑box model in that local region.
 
-    # TODO: add paper link
-    # TODO: add example
+    **Reference:**
+    Ribeiro et al. (2016). *"Why Should I Trust You?": Explaining the Predictions of Any Classifier.*
+    [Paper](https://arxiv.org/abs/1602.04938)
+
+    Examples:
+        >>> from interpreto import Granularity, Lime
+        >>> from interpreto.attributions import InferenceModes
+        >>> method = Lime(model, tokenizer, batch_size=4,
+        >>>               inference_mode=InferenceModes.LOG_SOFTMAX,
+        >>>               n_perturbations=20,
+        >>>               granularity=Granularity.WORD,
+        >>>               distance_function=Lime.distance_functions.HAMMING)
+        >>> explanations = method(text)
     """
 
-    use_gradient = False
     distance_functions: type[Enum] = DistancesFromMask
 
     def __init__(
@@ -111,4 +125,5 @@ class Lime(MultitaskExplainerMixin, AttributionExplainer):
             granularity=granularity,
             inference_mode=inference_mode,
             device=device,
+            use_gradient=False,
         )
