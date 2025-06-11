@@ -137,4 +137,4 @@ class OcclusionAggregator(Aggregator):
         # first prediction is reference, unmodified input
         scores = results[..., 0, :] - results[..., 1:, :]
         mask = mask[..., 1:, :]
-        return torch.einsum("pt,pl->tl", scores, mask) / mask.sum(dim=1)
+        return torch.einsum("pt,pl->tl", scores, mask) / mask.sum(dim=0)
