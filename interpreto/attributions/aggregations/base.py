@@ -116,7 +116,7 @@ class MaskwiseMeanAggregator(Aggregator):
         results: Float[Tensor, "p t"],
         mask: Float[Tensor, "p l"],
     ) -> Float[Tensor, "t l"]:
-        return torch.einsum("pt,pl->tl", results, mask) / mask.sum(dim=1)
+        return torch.einsum("pt,pl->tl", results, mask) / mask.sum(dim=0)
 
 
 class OcclusionAggregator(Aggregator):
