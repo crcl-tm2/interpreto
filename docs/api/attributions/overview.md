@@ -5,7 +5,7 @@
 ```
 from interpreto import Method
 
-explainer = Method(model, tokenizer, device, args)
+explainer = Method(model, tokenizer, batch_size, args)
 explanation = explainer(inputs, targets)
 ```
 
@@ -19,6 +19,10 @@ The API have two steps:
 - `device` (`torch.device | None = None`): device on which the attribution method will be run,
 - `args`: specifics for each method.
 
+*Note: There are also two arguments, general to all inference-based attribution methods, which are:*
+
+- `granularity` (`Granularity`): granularity level of the perturbations. It can be either one of `ALL_TOKENS` (includes all sentence tokens, even special tokens), `TOKEN`, and `WORD`.
+- `inference_mode` (`Callable[[torch.Tensor], torch.Tensor], optional`): The mode used for inference. It can be either one of `LOGITS`, `SOFTMAX`, or `LOG_SOFTMAX`. Use `InferenceModes` to choose the appropriate mode. Default inference mode is `LOGITS`.
 
 
 **Step 2:** The `AttributionExplainer` class overloads the `__call__` method to directly invoke the `explain` function. Therefore, calling `explainer(inputs, targets)` is equivalent to `explainer.explain(inputs, targets)`. It takes two parameters:

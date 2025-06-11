@@ -62,7 +62,9 @@ class Sobol(MultitaskExplainerMixin, AttributionExplainer):
         >>> method = Sobol(model, tokenizer, batch_size=4,
         >>>                inference_mode=InferenceModes.LOGITS,
         >>>                n_token_perturbations=8,
-        >>>                granularity=Granularity.WORD)
+        >>>                granularity=Granularity.WORD,
+        >>>                sobol_indices_order=Sobol.sobol_indices_orders.FIRST_ORDER,
+        >>>                sampler=Sobol.samplers.SOBOL))
         >>> explanations = method(text)
     """
 
