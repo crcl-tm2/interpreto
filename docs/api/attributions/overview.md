@@ -5,7 +5,7 @@
 ```
 from interpreto import Method
 
-explainer = Method(model, tokenizer, batch_size, args)
+explainer = Method(model, tokenizer, kwargs)
 explanation = explainer(inputs, targets)
 ```
 
@@ -24,12 +24,10 @@ The API have two steps:
 - `granularity` (`Granularity`): granularity level of the perturbations. It can be either one of `ALL_TOKENS` (includes all sentence tokens, even special tokens), `TOKEN`, and `WORD`.
 - `inference_mode` (`Callable[[torch.Tensor], torch.Tensor], optional`): The mode used for inference. It can be either one of `LOGITS`, `SOFTMAX`, or `LOG_SOFTMAX`. Use `InferenceModes` to choose the appropriate mode. Default `inference_mode` is `LOGITS`.
 
-
 **Step 2:** The `AttributionExplainer` class overloads the `__call__` method to directly invoke the `explain` function. Therefore, calling `explainer(inputs, targets)` is equivalent to `explainer.explain(inputs, targets)`. It takes two parameters:
 
 - `inputs`: the samples for which explanations are requested.
 - `targets`: specifies what to explain in the inputs. This can be a specific class or a set of classes (for classification tasks), or target texts (for generation tasks). If `targets=None`, the target is automatically inferred by performing a prediction on the input using the provided model.
-
 
 ## Available methods
 
@@ -59,7 +57,6 @@ Please check how we did it with the implemented method. If you have any question
 
 Once you succeed, please make a pull request. We welcome your method and contributions to the library.
 
-
 ```
 perturbator = Perturbator(inputs_embedder)
 aggregator = Aggregator()
@@ -78,7 +75,6 @@ perturbator:
 
 aggregator: no argument.
 
-
 **Step 2:**
 Instantiate the AttributionExplainer class with the perturbator and aggregator.
 
@@ -92,9 +88,7 @@ AttributionExplainer is the class that instantiates any attribution method based
 - `device` (`torch.device | None = None`): device on which the attribution method will be run,
 - `use_gradient` (`bool`): If True, computes gradients instead of inference for targeted explanations.
 
+The `AttributionExplainer` class overloads the `__call__` method to directly invoke explain. Thus, `explainer(inputs, targets)` is equivalent to `explainer.explain(inputs, targets)`. The explain method takes two parameters:
 
-
-The `AttributionExplainer` class overloads the __call__ method to directly invoke explain. Thus, `explainer(inputs, targets)` is equivalent to `explainer.explain(inputs, targets)`. The explain method takes two parameters:
-
-  - `inputs`: the samples on which the explanations are requested, see inputs section for more detail.
-  - `targets`: another parameter to specify what to explain in the inputs, can be a specific class or a set of classes (for classification), or texts (for generation).
+- `inputs`: the samples on which the explanations are requested, see inputs section for more detail.
+- `targets`: another parameter to specify what to explain in the inputs, can be a specific class or a set of classes (for classification), or texts (for generation).
