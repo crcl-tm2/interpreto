@@ -9,14 +9,14 @@ site_url: https://for-sight-ai.github.io/interpreto/
 nav:
   - Home: index.md
   - Tutorials:
-    - "Training a concept explainer": notebooks/concept_explainer_training.ipynb
-    - "Use Attribution Methods": notebooks/attribution_walkthrough.ipynb
+    - Use Attribution Methods: notebooks/attribution_walkthrough.ipynb
+    - Training a Concept Explainer: notebooks/concept_examples.ipynb
   - API Reference:
     - Attribution Explainers:
       - Overview: api/attributions/overview.md
       - Methods:
         - KernelShap: api/attributions/methods/kernelshap.md
-        - LIME: api/attributions/methods/lime.md
+        - Lime: api/attributions/methods/lime.md
         - IntegratedGradients: api/attributions/methods/integrated_gradients.md
         - Occlusion: api/attributions/methods/occlusion.md
         - Saliency: api/attributions/methods/saliency.md
@@ -49,7 +49,8 @@ nav:
 
 plugins:
   - search
-  - mknotebooks
+  - mknotebooks:
+      execute: false
   - autorefs
   - section-index
   - mkdocstrings:

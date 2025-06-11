@@ -41,7 +41,7 @@ The library should be available on PyPI soon. Try `pip install interpreto` to in
 
 Otherwise, you can clone the repository and install it locally with `pip install -e .`.
 
-And any case, checkout the [attribution walkthrough](https://github.com/FOR-sight-ai/interpreto/tree/main/attribution_walkthrough.ipynb) to get started!
+And any case, checkout the [attribution walkthrough](https://github.com/FOR-sight-ai/interpreto/tree/main/docs/notebooks/attribution_walkthrough.ipynb) to get started!
 
 ## 📦 What's Included
 

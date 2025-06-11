@@ -6,13 +6,12 @@ Welcome to the roadmap of Interpreto 🪄. This document outlines the planned fe
 
 ## 🧭 Upcoming Features
 
-### 🔢 1. Evaluation Metrics for Attribution Methods
+### 1. Evaluation Metrics for Attribution Methods
 
 We plan to integrate a set of standardized evaluation metrics to assess the quality and reliability of attribution methods. We'll start by adding the **insertion/deletion metrics**.
 
----
 
-### 🧠 2. Gradient-based Attribution: Token and Word Granularity
+### 2. Gradient-based Attribution: Token and Word Granularity
 
 We aim to enhance our **gradient-based attribution methods** (e.g., Integrated Gradients, Saliency) by adding:
 
@@ -21,15 +20,13 @@ We aim to enhance our **gradient-based attribution methods** (e.g., Integrated G
 
 We currently have these attribution methods only with the ALL_TOKENS granularity, which corresponds to having an attribution score for each token in the sentence (even special tokens). We want to align gradient-based methods with inference-based ones.
 
----
 
-### 🌌 3. Integration of VarGrad
+### 3. Integration of VarGrad
 
 We will implement **VarGrad**, a variance-based extension of gradient attribution. This method improves robustness by computing the **variance of attributions across multiple noisy forward passes**, capturing uncertainty and stabilizing explanations.
 
----
 
-### 🔍 4. Word-level Concept Interpretation via Top-K Tokens
+### 4. Word-level Concept Interpretation via Top-K Tokens
 
 Currently, concept-based methods in Interpreto support Top-K **token** importance. We plan to extend this to **word-level concept importance**, by:
 
@@ -38,9 +35,8 @@ Currently, concept-based methods in Interpreto support Top-K **token** importanc
 
 This will provide clearer insight into the semantic essence of each concept.
 
----
 
-### 📚 5. LLM-Based Concept Interpretation: Theme Prediction
+### 5. LLM-Based Concept Interpretation: Theme Prediction
 
 We will introduce a novel interpretation method for concept vectors using Large Language Models (LLMs):
 

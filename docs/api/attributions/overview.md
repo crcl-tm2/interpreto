@@ -22,7 +22,7 @@ The API have two steps:
 *Note: There are also two arguments, general to all inference-based attribution methods, which are:*
 
 - `granularity` (`Granularity`): granularity level of the perturbations. It can be either one of `ALL_TOKENS` (includes all sentence tokens, even special tokens), `TOKEN`, and `WORD`.
-- `inference_mode` (`Callable[[torch.Tensor], torch.Tensor], optional`): The mode used for inference. It can be either one of `LOGITS`, `SOFTMAX`, or `LOG_SOFTMAX`. Use `InferenceModes` to choose the appropriate mode. Default inference mode is `LOGITS`.
+- `inference_mode` (`Callable[[torch.Tensor], torch.Tensor], optional`): The mode used for inference. It can be either one of `LOGITS`, `SOFTMAX`, or `LOG_SOFTMAX`. Use `InferenceModes` to choose the appropriate mode. Default `inference_mode` is `LOGITS`.
 
 
 **Step 2:** The `AttributionExplainer` class overloads the `__call__` method to directly invoke the `explain` function. Therefore, calling `explainer(inputs, targets)` is equivalent to `explainer.explain(inputs, targets)`. It takes two parameters:
@@ -31,16 +31,16 @@ The API have two steps:
 - `targets`: specifies what to explain in the inputs. This can be a specific class or a set of classes (for classification tasks), or target texts (for generation tasks). If `targets=None`, the target is automatically inferred by performing a prediction on the input using the provided model.
 
 
-## Specifics methods
+## Available methods
 
-**Inference-based Methods:**
+➡️ **Inference-based Methods:**
 
 - [Kernel SHAP](./methods/kernelshap.md): [Lundberg and Lee, 2017, A Unified Approach to Interpreting Model Predictions](https://arxiv.org/abs/1705.07874).
 - [LIME](./methods/lime.md): [Ribeiro et al. 2013, "Why should i trust you?" explaining the predictions of any classifier](https://dl.acm.org/doi/abs/10.1145/2939672.2939778).
 - [Occlusion](./methods/occlusion.md): [Zeiler and Fergus, 2014. Visualizing and understanding convolutional networks](https://link.springer.com/chapter/10.1007/978-3-319-10590-1_53).
 - [Sobol Attribution](./methods/sobol.md): [Fel et al. 2021, Look at the variance! efficient black-box explanations with sobol-based sensitivity analysis](https://proceedings.neurips.cc/paper/2021/hash/da94cbeff56cfda50785df477941308b-Abstract.html).
 
-**Gradient based methods:**
+🔁 **Gradient based methods:**
 
 - [Integrated Gradient](./methods/integrated_gradients.md): [Sundararajan et al. 2017, Axiomatic Attribution for Deep Networks](http://proceedings.mlr.press/v70/sundararajan17a.html).
 - [Saliency](./methods/saliency.md): [Simonyan et al. 2013, Deep Inside Convolutional Networks: Visualising Image Classification Models and Saliency Maps](https://arxiv.org/abs/1312.6034).
@@ -48,7 +48,17 @@ The API have two steps:
 
 # Custom API
 
-Although we've created an API that allows the user to call specific allocation methods directly, a harmonized API for all allocation methods can be used for greater freedom.
+You can easily use Interpreto with your attribution methods. You have to implement two things:
+
+- a `Perturbator` to generate perturbed elements.
+- an `Aggregator` to aggregate scores on perturbed elements.
+
+Then, inherit from `MultitaskExplainerMixin` and `AttributionExplainer`, and finally, in the initialization of your method, point to your perturbator and aggregator in the `super().__init__`.
+
+Please check how we did it with the implemented method. If you have any questions, please file an issue or contact us directly.
+
+Once you succeed, please make a pull request. We welcome your method and contributions to the library.
+
 
 ```
 perturbator = Perturbator(inputs_embedder)
