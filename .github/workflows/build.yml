@@ -34,6 +34,12 @@ jobs:
         path: .venv
         key: venv-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml') }}
 
+    - name: Recreate virtual environment if cache is invalid
+      run: |
+        if [ ! -f .venv/bin/python ]; then
+          uv venv --python=python${{ matrix.python-version }}
+        fi
+
     - name: Install dependencies
       run: |
         source .venv/bin/activate
