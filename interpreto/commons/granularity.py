@@ -50,6 +50,9 @@ class NoWordIdsError(AttributeError):
         )
 
 
+# TODO: try to use: tokenizer.all_special_ids
+
+
 class Granularity(Enum):
     """
     Enumerations of the different granularity levels supported for masking perturbations
@@ -60,6 +63,108 @@ class Granularity(Enum):
     TOKEN = "token"  # Strictly tokens of the input
     WORD = "word"  # Words of the input
     DEFAULT = ALL_TOKENS
+
+    @staticmethod
+    @jaxtyped(typechecker=beartype)
+    def get_indices(
+        tokens_ids: TensorMapping,
+        granularity: Granularity | None,
+        tokenizer,
+    ) -> list[list[int]]:
+        """
+        Return *indices* of the tokens that correspond to the desired
+        granularity for **one single sentence**.
+
+        The result is a *list[list[int]]* where each inner list contains the
+        positions of the tokens that compose one granularity unit:
+
+        * **ALL_TOKENS**  ``[[0], [1], ..., [Lp-1]]``
+        * **TOKEN**       same as above but *without* special-token positions
+        * **WORD**        one sub-list per word, e.g.
+                           ``[[1], [2, 3], [4]]`` for “a| beau|tiful| day”
+
+        Args:
+            text:        Raw sentence to tokenize.
+            granularity: Desired grouping (defaults to :pyattr:`DEFAULT`).
+            tokenizer:   Hugging-Face tokenizer used downstream.
+
+        Raises:
+            NoWordIdsError: if *WORD* granularity is requested with a slow
+                            tokenizer.
+            NotImplementedError: if an unknown granularity is supplied.
+        """
+
+        match granularity or Granularity.DEFAULT:
+            case Granularity.ALL_TOKENS:
+                return Granularity.__all_tokens_get_indices(tokens_ids)
+            case Granularity.TOKEN:
+                return Granularity.__token_get_indices(tokens_ids, tokenizer)
+            case Granularity.WORD:
+                return Granularity.__word_get_indices(tokens_ids, tokenizer)
+            case _:
+                raise NotImplementedError(f"Granularity level {granularity} not implemented")
+
+    @staticmethod
+    def __all_tokens_get_indices(tokens_ids) -> list[list[int]]:
+        """Indices for :pyattr:`ALL_TOKENS` – every position kept."""
+        length = len(tokens_ids["input_ids"])
+        return [[i] for i in range(length)]
+
+    @staticmethod
+    def __token_get_indices(tokens_ids, tokenizer) -> list[list[int]]:
+        """Indices for :pyattr:`TOKEN` – skip special tokens."""
+        special_ids = set(tokenizer.all_special_ids)
+        return [[i] for i, tok_id in enumerate(tokens_ids["input_ids"]) if tok_id not in special_ids]
+
+    @staticmethod
+    def __word_get_indices(tokens_ids, tokenizer) -> list[list[int]]:
+        """Indices for :pyattr:`WORD` – group tokens belonging to the same word."""
+        if not tokenizer.is_fast:
+            raise NoWordIdsError()
+
+        # `None` for special tokens – ignore them
+        word_ids = tokens_ids.word_ids()  # TODO: see if there is better
+        mapping: dict[int, list[int]] = {}
+        for idx, wid in enumerate(word_ids):
+            if wid is None:
+                continue
+            mapping.setdefault(wid, []).append(idx)
+
+        # Return groups ordered by word id (i.e. sentence order)
+        return [mapping[k] for k in sorted(mapping)]
+
+    @staticmethod
+    @jaxtyped(typechecker=beartype)
+    def get_association_matrix(
+        tokens_ids: TensorMapping, granularity: Granularity | None = None
+    ) -> Float[torch.Tensor, "n g lp"]:
+        """
+        Creates the matrix to pass from one granularity level to ALL_TOKENS granularity level (finally used by the perturbator)
+
+
+        Args:
+            tokens_ids (TensorMapping): inputs of the perturb meth
+            granularity (Granularity | None, optional): source granularity level. Defaults to Granularity.DEFAULT.
+
+        Raises:
+            NotImplementedError: if granularity level is unknown, raises NotImplementedError
+
+        Returns:
+            torch.Tensor: the matrix used to transform a specific granularity mask to a general mask that can be used on tokens.
+                The returned tensor is of shape ``(n, g, lp)``
+                    where ``n`` is the number of sequences,
+                    ``g`` is the padded sequence length in the specific granularity,
+                    and ``lp`` is the padded sequence length.
+        """
+        match granularity or Granularity.DEFAULT:
+            case Granularity.ALL_TOKENS:
+                return Granularity.__all_tokens_assoc_matrix(tokens_ids)
+            case Granularity.TOKEN:
+                return Granularity.__token_assoc_matrix(tokens_ids)
+            case Granularity.WORD:
+                return Granularity.__word_assoc_matrix(tokens_ids)
+            case _:
+                raise NotImplementedError(f"Granularity level {granularity} not implemented")
 
     @staticmethod
     @jaxtyped(typechecker=beartype)
@@ -240,36 +345,3 @@ class Granularity(Enum):
                 if word_id is not None:
                     res[-1][word_id] += [tok.item()]
         return res  # type: ignore
-
-    @staticmethod
-    @jaxtyped(typechecker=beartype)
-    def get_association_matrix(
-        tokens_ids: TensorMapping, granularity: Granularity | None = None
-    ) -> Float[torch.Tensor, "n g lp"]:
-        """
-        Creates the matrix to pass from one granularity level to ALL_TOKENS granularity level (finally used by the perturbator)
-
-
-        Args:
-            tokens_ids (TensorMapping): inputs of the perturb meth
-            granularity (Granularity | None, optional): source granularity level. Defaults to Granularity.DEFAULT.
-
-        Raises:
-            NotImplementedError: if granularity level is unknown, raises NotImplementedError
-
-        Returns:
-            torch.Tensor: the matrix used to transform a specific granularity mask to a general mask that can be used on tokens.
-                The returned tensor is of shape ``(n, g, lp)``
-                    where ``n`` is the number of sequences,
-                    ``g`` is the padded sequence length in the specific granularity,
-                    and ``lp`` is the padded sequence length.
-        """
-        match granularity or Granularity.DEFAULT:
-            case Granularity.ALL_TOKENS:
-                return Granularity.__all_tokens_assoc_matrix(tokens_ids)
-            case Granularity.TOKEN:
-                return Granularity.__token_assoc_matrix(tokens_ids)
-            case Granularity.WORD:
-                return Granularity.__word_assoc_matrix(tokens_ids)
-            case _:
-                raise NotImplementedError(f"Granularity level {granularity} not implemented")
