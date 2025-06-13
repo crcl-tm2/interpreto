@@ -36,7 +36,7 @@ from typing import Any
 import torch
 from beartype import beartype
 from jaxtyping import Float, Int, jaxtyped
-from transformers import PreTrainedModel, PreTrainedTokenizer
+from transformers import BatchEncoding, PreTrainedModel, PreTrainedTokenizer
 
 from interpreto.attributions.aggregations.base import Aggregator
 from interpreto.attributions.perturbations.base import Perturbator
@@ -241,18 +241,23 @@ class AttributionExplainer:
             ValueError: If the type of model_inputs is not supported.
         """
         if isinstance(model_inputs, str):
-            return [
-                self.tokenizer(
-                    model_inputs, return_tensors="pt", return_offsets_mapping=True, return_special_tokens_mask=True
-                )
-            ]
+            return [self.tokenizer(model_inputs, return_tensors="pt")]
         if isinstance(
-            model_inputs, MutableMapping
+            model_inputs, BatchEncoding
         ):  # we cant use TensorMapping in the isinstance so we use MutableMapping.
-            return [
-                {key: value[i].unsqueeze(0) for key, value in model_inputs.items()}
-                for i in range(model_inputs["attention_mask"].shape[0])  # type: ignore
-            ]  # type: ignore
+            splitted_encodings = []
+            for i, enc in enumerate(model_inputs.encodings):  # type: ignore  # one Encoding per row
+                data_i = {
+                    k: (v[i].unsqueeze(0) if isinstance(v, torch.Tensor) else [v[i]]) for k, v in model_inputs.items()
+                }
+                splitted_encodings.append(
+                    BatchEncoding(
+                        data=data_i,  # tensors/arrays for that row
+                        encoding=enc,  # its Encoding (keeps word_ids, offsets…) necessary for granularity
+                        tensor_type="pt",  # keep tensors if you had them
+                    )
+                )
+            return splitted_encodings
         if isinstance(model_inputs, Iterable):
             return list(itertools.chain(*[self.process_model_inputs(item) for item in model_inputs]))
         raise ValueError(
@@ -329,9 +334,6 @@ class AttributionExplainer:
             sanitized_model_inputs, targets, **model_kwargs
         )
 
-        # Decompose each input for the desired granularity level (tokens, words, sentences...)
-        decompositions = [Granularity.get_decomposition(t, self.granularity) for t in model_inputs_to_explain]
-
         # Create perturbation masks and perturb inputs based on the masks.
         # Inputs might be embedded during the perturbation process if the perturbator works with embeddings.
         pert_generator: Iterable[TensorMapping]
@@ -351,19 +353,14 @@ class AttributionExplainer:
             for score, mask in zip(scores, mask_generator, strict=True)
         )
 
+        # Decompose each input for the desired granularity level (tokens, words, sentences...)
+        granular_inputs_texts: list[list[str]] = [
+            Granularity.get_decomposition(t, self.granularity, self.tokenizer, return_text=True)[0]
+            for t in model_inputs_to_explain
+        ]  # type: ignore
+
         # Create and return AttributionOutput objects with the contributions and decoded token sequences:
-        return [
-            AttributionOutput(
-                c,
-                [
-                    self.tokenizer.decode(
-                        token_ids, skip_special_tokens=self.granularity is not Granularity.ALL_TOKENS
-                    )
-                    for token_ids in d[0]
-                ],
-            )
-            for c, d in zip(contributions, decompositions, strict=True)
-        ]
+        return [AttributionOutput(c, texts) for c, texts in zip(contributions, granular_inputs_texts, strict=True)]
 
     def __call__(self, model_inputs: ModelInputs, targets=None, **kwargs) -> Iterable[AttributionOutput]:
         """
@@ -482,12 +479,11 @@ class ClassificationAttributionExplainer(AttributionExplainer):
         **model_kwargs: Any,
     ) -> tuple[Iterable[TensorMapping], Iterable[torch.Tensor]]:
         """
-        Preprocesses model inputs and classification targets for explanation.
+        Pre-processes model inputs and classification targets for explanation.
 
         This method ensures that:
         - If `targets` are not provided, they are computed by performing inference on `model_inputs` and selecting the predicted class using `argmax`.
         - The `targets` are then validated and converted using `self.process_targets`, ensuring the same length as `model_inputs`.
-        - Each input mapping includes `special_tokens_mask` (and optionally `offset_mapping`) by decoding and re-tokenizing if necessary.
 
         Parameters
         ----------
@@ -513,10 +509,6 @@ class ClassificationAttributionExplainer(AttributionExplainer):
             If the provided or inferred targets do not match the number of input instances, or if their format is invalid.
         """
         if targets is None:
-            # logits = torch.stack(
-            #     [a.detach() for a in self.inference_wrapper.get_logits(clone_tensor_mapping(a) for a in model_inputs)]
-            # )
-            # targets = logits.argmax(dim=-1)
             # compute targets from logits if not provided
             sanitized_targets: Iterable[torch.Tensor] = self.inference_wrapper.get_targets(model_inputs)  # type: ignore
         else:
@@ -524,20 +516,7 @@ class ClassificationAttributionExplainer(AttributionExplainer):
             expected_targets_length = len(model_inputs)  # type: ignore
             sanitized_targets: Iterable[torch.Tensor] = self.process_targets(targets, expected_targets_length)  # type: ignore
 
-        # add special tokens mask if not already present:
-        model_inputs_to_explain = []
-        for mapping in model_inputs:
-            # if "special_tokens_mask" or "offsets_mapping" not in mapping:
-            if "special_tokens_mask" not in mapping:
-                text = self.tokenizer.decode(mapping["input_ids"][0], skip_special_tokens=True)
-                mapping_with_special_values = self.tokenizer(
-                    [text], return_tensors="pt", return_offsets_mapping=True, return_special_tokens_mask=True
-                )
-                model_inputs_to_explain.append(mapping_with_special_values)
-            else:
-                model_inputs_to_explain.append(mapping)
-
-        return model_inputs_to_explain, sanitized_targets
+        return model_inputs, sanitized_targets
 
 
 class GenerationAttributionExplainer(AttributionExplainer):
@@ -635,7 +614,6 @@ class GenerationAttributionExplainer(AttributionExplainer):
                 [model_inputs_to_explain_text],
                 return_tensors="pt",
                 return_offsets_mapping=True,
-                return_special_tokens_mask=True,
             )
             for model_inputs_to_explain_text in model_inputs_to_explain_text
         ]
