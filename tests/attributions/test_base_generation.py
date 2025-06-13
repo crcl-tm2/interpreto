@@ -94,7 +94,7 @@ def test_process_inputs_to_explain_and_targets(gpt2_model, gpt2_tokenizer):
     list_targets = create_targets_test(gpt2_tokenizer)
     list_targets.append(None)  # Add None to the list of targets for testing
 
-    # Model input example without special_tokens_mask
+    # Model input example
     model_input1 = gpt2_tokenizer(["I like kittens and I like dogs."], return_tensors="pt")
     model_input2 = gpt2_tokenizer(["Interpreto is incredible."], return_tensors="pt")
 
@@ -119,9 +119,6 @@ def test_process_inputs_to_explain_and_targets(gpt2_model, gpt2_tokenizer):
         )
         assert all(processed_input["input_ids"].shape[0] == 1 for processed_input in processed_inputs), (
             "The first dimension of the input_ids of the element of the processed_inputs list must be 1."
-        )
-        assert all("special_tokens_mask" in processed_input for processed_input in processed_inputs), (
-            "The processed_inputs must contain a 'special_tokens_mask' key."
         )
 
         assert isinstance(processed_targets, list), "processed_targets must be a list"

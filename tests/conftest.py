@@ -82,6 +82,11 @@ def bert_tokenizer():
 
 
 @fixture(scope="session")
+def real_bert_tokenizer():
+    return AutoTokenizer.from_pretrained("bert-base-uncased")
+
+
+@fixture(scope="session")
 def gpt2_model():
     return AutoModelForCausalLM.from_pretrained("hf-internal-testing/tiny-random-gpt2")
 

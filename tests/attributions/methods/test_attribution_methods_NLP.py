@@ -222,6 +222,6 @@ def evaluate_attribution_methods_with_text(model_name, attribution_explainer):
 
 if __name__ == "__main__":
     test_attribution_methods_with_text_short(
-        model_name="hf-internal-testing/tiny-random-gpt2",
-        attribution_explainer=Occlusion,
+        model_name="hf-internal-testing/tiny-random-bert",
+        attribution_explainer=Lime,
     )
