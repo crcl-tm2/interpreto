@@ -36,8 +36,10 @@ jobs:
 
     - name: Install dependencies
       run: |
-        make install-ci
         source .venv/bin/activate
+        make update-deps
+        uv pip install -r requirements-dev.txt
+
 
     - name: Export HF_HUB_TOKEN
       run: echo "HF_HUB_TOKEN=${{ secrets.HUGGINGFACE_TOKEN }}" >> $GITHUB_ENV
