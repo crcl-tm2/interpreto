@@ -34,10 +34,18 @@ jobs:
         path: .venv
         key: venv-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml') }}
 
+    - name: Recreate virtual environment if cache is invalid
+      run: |
+        if [ ! -f .venv/bin/python ]; then
+          uv venv --python=python${{ matrix.python-version }}
+        fi
+
     - name: Install dependencies
       run: |
-        make install-ci
         source .venv/bin/activate
+        make update-deps
+        uv pip install -r requirements-dev.txt
+
 
     - name: Export HF_HUB_TOKEN
       run: echo "HF_HUB_TOKEN=${{ secrets.HUGGINGFACE_TOKEN }}" >> $GITHUB_ENV
