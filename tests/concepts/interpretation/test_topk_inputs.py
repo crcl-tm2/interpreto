@@ -140,7 +140,7 @@ def test_interpret_via_topk_inputs(splitted_encoder_ml: ModelWithSplitPoints):
 
     # getting the activations
     activations = splitted_encoder_ml.get_activations(
-        joined_tokens_list, select_strategy=ModelWithSplitPoints.activation_strategies.TOKENS
+        joined_tokens_list, select_strategy=ModelWithSplitPoints.activation_strategies.TOKEN
     )
 
     # extracting concept interpretations
@@ -211,7 +211,7 @@ def test_topk_inputs_sources(splitted_encoder_ml: ModelWithSplitPoints):
 
     # getting the activations
     activations = splitted_encoder_ml.get_activations(
-        joined_tokens_list, select_strategy=ModelWithSplitPoints.activation_strategies.TOKENS
+        joined_tokens_list, select_strategy=ModelWithSplitPoints.activation_strategies.TOKEN
     )
 
     # getting the top k tokens
@@ -368,7 +368,7 @@ if __name__ == "__main__":
         "Testing interpreto",
     ]
     activation_dict = splitted_encoder_ml.get_activations(
-        sentences, select_strategy=ModelWithSplitPoints.activation_strategies.TOKENS
+        sentences, select_strategy=ModelWithSplitPoints.activation_strategies.TOKEN
     )
     test_topk_inputs_from_activations(splitted_encoder_ml)
     test_topk_inputs_from_vocabulary(splitted_encoder_ml)

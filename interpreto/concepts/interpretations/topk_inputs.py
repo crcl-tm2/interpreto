@@ -35,7 +35,6 @@ from typing import Any
 
 import torch
 from jaxtyping import Float
-from nnsight.intervention.graph import InterventionProxy
 
 from interpreto import Granularity, ModelWithSplitPoints
 from interpreto.concepts.interpretations.base import BaseConceptInterpretationMethod
@@ -147,9 +146,9 @@ class TopKInputs(BaseConceptInterpretationMethod):
 
             # compute the vocabulary's latent activations
             input_tensor: Float[torch.Tensor, "v 1"] = torch.tensor(input_ids).unsqueeze(1)
-            activations_dict: InterventionProxy = self.model_with_split_points.get_activations(
+            activations_dict: dict[str, LatentActivations] = self.model_with_split_points.get_activations(
                 input_tensor, select_strategy=ModelWithSplitPoints.activation_strategies.ALL_TOKENS
-            )  # TODO: verify `ModelWithSplitPoints.get_activations()` can take in ids
+            )
             latent_activations = self.model_with_split_points.get_split_activations(
                 activations_dict, split_point=self.split_point
             )
@@ -160,8 +159,8 @@ class TopKInputs(BaseConceptInterpretationMethod):
 
         # inputs source: compute the latent activations from the inputs
         if source is InterpretationSources.INPUTS:
-            activations_dict: InterventionProxy = self.model_with_split_points.get_activations(
-                inputs, select_strategy=ModelWithSplitPoints.activation_strategies.TOKENS
+            activations_dict: dict[str, LatentActivations] = self.model_with_split_points.get_activations(
+                inputs, select_strategy=ModelWithSplitPoints.activation_strategies.TOKEN
             )
             latent_activations = self.model_with_split_points.get_split_activations(
                 activations_dict, split_point=self.split_point
@@ -195,19 +194,14 @@ class TopKInputs(BaseConceptInterpretationMethod):
             # no granularity is needed
             return inputs
 
-        tokens = self.model_with_split_points.tokenizer(
-            inputs, return_tensors="pt", return_offsets_mapping=True, return_special_tokens_mask=True, padding=True
-        )
-        decompositions = Granularity.get_decomposition(tokens, granularity=self.granularity)
+        tokens = self.model_with_split_points.tokenizer(inputs, return_tensors="pt", padding=True)
+        list_list_str: list[list[str]] = Granularity.get_decomposition(
+            tokens, granularity=self.granularity, tokenizer=self.model_with_split_points.tokenizer, return_text=True
+        )  # type: ignore
 
-        granular_inputs = []
-        for token_ids in decompositions:
-            granular_inputs += [
-                self.model_with_split_points.tokenizer.decode(
-                    ids, skip_special_tokens=self.granularity is not Granularity.ALL_TOKENS
-                )
-                for ids in token_ids
-            ]
+        # flatten list of list of strings
+        granular_inputs = [string for list_str in list_list_str for string in list_str]
+
         return granular_inputs
 
     def _verify_concepts_indices(
