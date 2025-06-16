@@ -7,7 +7,7 @@
 [![Version](https://img.shields.io/pypi/v/interpreto?color=blue)](https://pypi.org/project/interpreto/)
 [![Python Version](https://img.shields.io/pypi/pyversions/interpreto.svg?color=blue)](https://pypi.org/project/interpreto/)
 [![Downloads](https://static.pepy.tech/badge/interpreto)](https://pepy.tech/project/interpreto)
-[![License](https://img.shields.io/github/license/FOR-sight-ai/interpreto.svg)](https://github.com/FOR-sight-ai/interpreto/blob/main/LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/FOR-sight-ai/interpreto/blob/main/LICENSE)
 
   <!-- Link to the documentation -->
   <a href="https://for-sight-ai.github.io/interpreto/"><strong>Explore Interpreto docs »</strong></a>
@@ -41,7 +41,7 @@ The library should be available on PyPI soon. Try `pip install interpreto` to in
 
 Otherwise, you can clone the repository and install it locally with `pip install -e .`.
 
-And any case, checkout the [attribution walkthrough](https://github.com/FOR-sight-ai/interpreto/tree/main/attribution_walkthrough.ipynb) to get started!
+And any case, checkout the [attribution walkthrough](https://github.com/FOR-sight-ai/interpreto/tree/main/docs/notebooks/attribution_walkthrough.ipynb) to get started!
 
 ## 📦 What's Included
 

@@ -35,7 +35,7 @@ from interpreto.concepts import (
     BatchTopKSAEConcepts,
     Cockatiel,
     ConceptAutoEncoderExplainer,
-    ConvexNMFConcepts,
+    # ConvexNMFConcepts,
     DictionaryLearningConcepts,
     ICAConcepts,
     JumpReLUSAEConcepts,
@@ -57,7 +57,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 ALL_CONCEPT_METHODS = [
     BatchTopKSAEConcepts,
     Cockatiel,
-    ConvexNMFConcepts,
+    # ConvexNMFConcepts,
     DictionaryLearningConcepts,
     ICAConcepts,
     JumpReLUSAEConcepts,

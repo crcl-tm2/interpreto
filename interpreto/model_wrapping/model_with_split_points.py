@@ -160,6 +160,7 @@ class ModelWithSplitPoints(LanguageModel):
             batch_size (int): Batch size for the model.
             device_map (str | None): Device map for the model. Directly passed to the model.
         """
+        self.model_autoclass = model_autoclass
         if isinstance(model_or_repo_id, str):  # Repository ID
             if model_autoclass is None:
                 raise InitializationError(
@@ -171,7 +172,7 @@ class ModelWithSplitPoints(LanguageModel):
             if isinstance(model_autoclass, str):
                 supported_autoclasses = get_supported_hf_transformer_autoclasses()
                 try:
-                    self.model_autoclass: type[AutoModel] = getattr(modeling_auto, model_autoclass)
+                    self.model_autoclass = getattr(modeling_auto, model_autoclass)
                 except AttributeError:
                     raise InitializationError(
                         f"The specified class {model_autoclass} is not a valid autoclass.\n"
@@ -183,7 +184,7 @@ class ModelWithSplitPoints(LanguageModel):
                         f"Supported autoclasses: {', '.join(supported_autoclasses)}"
                     )
             else:
-                self.model_autoclass: type[AutoModel] = model_autoclass
+                self.model_autoclass = model_autoclass
 
         # Handles model loading through LanguageModel._load
         super().__init__(
@@ -191,8 +192,7 @@ class ModelWithSplitPoints(LanguageModel):
             *args,
             config=config,
             tokenizer=tokenizer,  # type: ignore
-            automodel=self.model_autoclass,
-            device_map=device_map,
+            automodel=self.model_autoclass,  # type: ignore
             **kwargs,
         )
         self._model_paths = list(walk_modules(self._model))

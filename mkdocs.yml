@@ -8,13 +8,25 @@ site_url: https://for-sight-ai.github.io/interpreto/
 # Set navigation here
 nav:
   - Home: index.md
-  - Quickstart: notebooks/quickstart.ipynb
   - Tutorials:
-    - "Training a concept explainer": notebooks/concept_explainer_training.ipynb
+    - Use Attribution Methods: notebooks/attribution_walkthrough.ipynb
+    - Training a Concept Explainer: notebooks/concept_examples.ipynb
   - API Reference:
-    - Model Wrapping: api/commons/model_wrapping.md
+    - Attribution Explainers:
+      - Overview: api/attributions/overview.md
+      - Methods:
+        - KernelShap: api/attributions/methods/kernelshap.md
+        - Lime: api/attributions/methods/lime.md
+        - IntegratedGradients: api/attributions/methods/integrated_gradients.md
+        - Occlusion: api/attributions/methods/occlusion.md
+        - Saliency: api/attributions/methods/saliency.md
+        - SmoothGrad: api/attributions/methods/smoothgrad.md
+        - Sobol: api/attributions/methods/sobol.md
+      - Metrics:
+        - Overview: api/attributions/metrics/overview.md
     - Concept Explainers:
       - Overview: api/concepts/overview.md
+      - Model Wrapping: api/commons/model_wrapping.md
       - Methods:
         - Base Classes: api/concepts/methods/base.md
         - Cockatiel: api/concepts/methods/cockatiel.md
@@ -30,15 +42,6 @@ nav:
         - Dictionary Metrics: api/concepts/metrics/dictionary_metrics.md
         - Reconstruction Metrics: api/concepts/metrics/reconstruction_metrics.md
         - Sparsity: api/concepts/metrics/sparsity_metrics.md
-    - Attribution Explainers:
-      - Overview: api/attributions/overview.md
-      - Methods: 
-        - Integrated Gradients: api/attributions/methods/integrated_gradients.md
-        - Occlusion: api/attributions/methods/occlusion.md
-        - Saliency: api/attributions/methods/saliency.md
-        - SmoothGrad: api/attributions/methods/smoothgrad.md
-    - Evaluation Metrics:
-      - Overview: api/evaluation_metrics/overview.md
   - Roadmap: roadmap.md
   - Contributing: contributing.md
   - About: about.md
@@ -46,7 +49,8 @@ nav:
 
 plugins:
   - search
-  - mknotebooks
+  - mknotebooks:
+      execute: false
   - autorefs
   - section-index
   - mkdocstrings:

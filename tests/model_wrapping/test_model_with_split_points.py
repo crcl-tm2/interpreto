@@ -24,9 +24,11 @@
 
 import pytest
 import torch
+from tests.conftest import multi_split_model
+from transformers import AutoModelForCausalLM, AutoModelForMaskedLM, AutoModelForSequenceClassification
 
 from interpreto import Granularity, ModelWithSplitPoints
-from interpreto.model_wrapping.model_with_split_points import ActivationSelectionStrategy
+from interpreto.model_wrapping.model_with_split_points import ActivationSelectionStrategy, InitializationError
 
 BERT_SPLIT_POINTS = [
     "cls.predictions.transform.LayerNorm",
@@ -52,6 +54,36 @@ def test_order_split_points(multi_split_model: ModelWithSplitPoints):
         f"Expected: {BERT_SPLIT_POINTS_SORTED}\n"
         f"Got:      {multi_split_model.split_points}"
     )
+
+
+def test_loading_possibilities(bert_model, gpt2_model):
+    """
+    Test loading model with and without split points
+    """
+    # Load model with split points
+    model_with_split_points = ModelWithSplitPoints(bert_model, "bert.encoder.layer.1")
+    assert model_with_split_points.split_points == ["bert.encoder.layer.1"]
+    # Load model without split points
+    model_without_split_points = ModelWithSplitPoints(
+        "bert-base-cased",
+        model_autoclass=AutoModelForMaskedLM,  # type: ignore
+        split_points="bert.encoder.layer.1",
+    )
+    assert model_without_split_points.split_points == ["bert.encoder.layer.1"]
+    # Load model with split points
+    model_with_split_points = ModelWithSplitPoints(gpt2_model, "transformer.h.1")
+    assert model_with_split_points.split_points == ["transformer.h.1"]
+    # Load model without split points
+    model_without_split_points = ModelWithSplitPoints(
+        "gpt2",
+        model_autoclass=AutoModelForCausalLM,  # type: ignore
+        split_points="transformer.h.1",
+    )
+    assert model_without_split_points.split_points == ["transformer.h.1"]
+
+    with pytest.raises(InitializationError):
+        # Model id with no auto class
+        ModelWithSplitPoints("gpt2", "transformer.h.1")
 
 
 def test_activation_equivalence_batched_text_token_inputs(multi_split_model: ModelWithSplitPoints):
@@ -132,7 +164,6 @@ def test_batching(
 #        f"Got:      {multi_split_model.split_points}"
 #    )
 
-
 if __name__ == "__main__":
     from transformers import AutoModelForMaskedLM
 
@@ -143,11 +174,15 @@ if __name__ == "__main__":
         device_map="cuda",
         batch_size=4,
     )
+    bert_model = AutoModelForSequenceClassification.from_pretrained("hf-internal-testing/tiny-random-bert")
+    gpt2_model = AutoModelForCausalLM.from_pretrained("hf-internal-testing/tiny-random-gpt2")
     sentences = [
         "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
         "Interpreto is magical",
         "Testing interpreto",
     ]
+    test_order_split_points(multi_split_model)  # type: ignore
+    test_loading_possibilities(bert_model, gpt2_model)
     test_activation_equivalence_batched_text_token_inputs(splitted_encoder_ml)
     test_get_activations_selection_strategies(splitted_encoder_ml, sentences)
     test_batching(splitted_encoder_ml, sentences * 10, ModelWithSplitPoints.activation_strategies.WORD)  # type: ignore

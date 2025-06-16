@@ -41,4 +41,3 @@ Pull requests with minor changes must be approved by at least one member of the 
 - Fanny Jourdan <fanny.jourdan@irt-saintexupery.com>
 - Antonin Poché <antonin.poche@irt-saintexupery.com>
 - Thomas Mullor <thomas.mullor@irt-saintexupery.com>
-- Gabriele Sarti <gabriele.sarti996@gmail.com>

@@ -118,7 +118,6 @@ class AttributionExplainer:
     """
 
     _associated_inference_wrapper = InferenceWrapper
-    use_gradient: bool
 
     def __init__(
         self,
@@ -130,6 +129,7 @@ class AttributionExplainer:
         device: torch.device | None = None,
         granularity: Granularity = Granularity.DEFAULT,
         inference_mode: Callable[[torch.Tensor], torch.Tensor] = InferenceModes.LOGITS,  # TODO: add to all classes
+        use_gradient: bool = False,
     ) -> None:
         """
         Initializes the AttributionExplainer.
@@ -148,7 +148,9 @@ class AttributionExplainer:
                 Defaults to Granularity.DEFAULT (TOKEN)
             inference_mode (Callable[[torch.Tensor], torch.Tensor], optional): The mode used for inference.
                 It can be either one of LOGITS, SOFTMAX, or LOG_SOFTMAX. Use InferenceModes to choose the appropriate mode.
+            use_gradient (bool, optional): If True, computes gradients instead of inference for targeted explanations.
         """
+        self.use_gradient = use_gradient
         if not hasattr(self, "tokenizer"):
             model, _ = self._set_tokenizer(model, tokenizer)
         self.inference_wrapper = self._associated_inference_wrapper(
