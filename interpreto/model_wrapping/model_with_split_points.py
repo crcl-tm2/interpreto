@@ -24,26 +24,21 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from enum import Enum
 from typing import Any, Protocol
 
 import torch
-from beartype import beartype
-from jaxtyping import Float, Int, jaxtyped
-from nnsight import dict as nnsight_dict
+from jaxtyping import Float
 from nnsight.intervention import Envoy
 from nnsight.intervention.graph import InterventionProxy
 from nnsight.modeling.language import LanguageModel
-from transformers import (
-    AutoModel,
-    BatchEncoding,
-    PretrainedConfig,
-    PreTrainedModel,
-    PreTrainedTokenizer,
-    PreTrainedTokenizerFast,
-)
+from transformers import AutoModel
+from transformers.configuration_utils import PretrainedConfig
+from transformers.modeling_utils import PreTrainedModel
 from transformers.models.auto import modeling_auto
+from transformers.tokenization_utils import PreTrainedTokenizer
+from transformers.tokenization_utils_base import BatchEncoding
+from transformers.tokenization_utils_fast import PreTrainedTokenizerFast
 
 from interpreto.commons.granularity import Granularity
 from interpreto.model_wrapping.splitting_utils import get_layer_by_idx, sort_paths, validate_path, walk_modules
@@ -52,7 +47,7 @@ from interpreto.model_wrapping.transformers_classes import (
     get_supported_hf_transformer_generation_autoclasses,
     get_supported_hf_transformer_generation_classes,
 )
-from interpreto.typing import LatentActivations, TensorMapping
+from interpreto.typing import LatentActivations
 
 
 class InitializationError(ValueError):
@@ -62,20 +57,25 @@ class InitializationError(ValueError):
 class ActivationSelectionStrategy(Enum):
     """Activation selection strategies for :meth:`ModelWithSplitPoints.get_activations`."""
 
-    ALL = "all"
+    # ALL = "all"  # removed for now as it conflicts with batching
     CLS = "cls"
-    ALL_TOKENS = "all_tokens"
-    TOKENS = "tokens"
-    WORDS = "words"
+    ALL_TOKENS = Granularity.ALL_TOKENS
+    TOKEN = Granularity.TOKEN
+    WORD = Granularity.WORD
 
 
 class AggregationStrategy(Enum):
-    """Aggregation strategies for :meth:`ModelWithSplitPoints.get_activations`."""
+    """Aggregation strategies for :meth:`ModelWithSplitPoints.get_activations`.
 
-    SUM = staticmethod(lambda x: x.sum(dim=2))
-    MEAN = staticmethod(lambda x: x.mean(dim=2))
-    MAX = staticmethod(lambda x: x.max(dim=2))
-    SIGNED_MAX = staticmethod(lambda x: x.abs().max(dim=2) * x.sign())
+    The input x is a tensor of shape (sequence_length, model_dimension).
+
+    The output is a tensor of shape (1, model_dimension,).
+    """
+
+    SUM = staticmethod(lambda x: x.sum(dim=0, keepdim=True))
+    MEAN = staticmethod(lambda x: x.mean(dim=0, keepdim=True))
+    MAX = staticmethod(lambda x: x.max(dim=0, keepdim=True))
+    SIGNED_MAX = staticmethod(lambda x: x.gather(0, x.abs().max(dim=0)[1].unsqueeze(0)))
 
 
 class AggregationProtocol(Protocol):
@@ -244,104 +244,121 @@ class ModelWithSplitPoints(LanguageModel):
             )
         super()._generate(inputs=inputs, max_new_tokens=max_new_tokens, streamer=streamer, **kwargs)
 
-    @jaxtyped(typechecker=beartype)
+    # @jaxtyped(typechecker=beartype)
     def _apply_selection_strategy(
         self,
-        inputs: list[str] | torch.Tensor,
+        inputs: BatchEncoding | torch.Tensor,
         activations: Float[torch.Tensor, "n l d"],
         select_strategy: ActivationSelectionStrategy,
+        aggregation_strategy: AggregationProtocol,
         layer: str,
     ) -> torch.Tensor:
         """Apply selection strategy to activations.
 
         Args:
+            inputs (BatchEncoding | torch.Tensor): Inputs to the model forward pass before or after tokenization.
+                In the case of a `torch.Tensor`, we assume a batch dimension and token ids.
             activations (InterventionProxy): Activations to apply selection strategy to.
-            select_strategy (ActivationSelectionStrategy): Selection strategy to apply.
+            select_strategy (ActivationSelectionStrategy): Selection strategy to apply. see :meth:`ModelWithSplitPoints.get_activations`.
+            aggregation_strategy (AggregationProtocol): Aggregation strategy to apply. see :meth:`ModelWithSplitPoints.get_activations`.
+            layer (str): The layer for which the activations are extracted.
+
+        Returns:
+            torch.Tensor: The aggregated activations.
         """
-        if len(activations.shape) != 3:  # TODO: update tests
-            raise RuntimeError(
-                f"Invalid output for layer '{layer}'. Expected a torch.Tensor activation with shape"
-                f"(batch_size, sequence_length, model_dim), got {activations.shape}"
-            )
-        n, l, d = activations.shape
-
-        if isinstance(inputs, torch.Tensor) and select_strategy in [
-            ActivationSelectionStrategy.TOKENS,
-            ActivationSelectionStrategy.WORDS,
-        ]:
-            raise ValueError("Cannot use `TOKENS` or `WORDS` `select_strategy` with `torch.Tensor` inputs.")
-
-        if len(inputs) != n:
-            raise ValueError(
-                f"The number of inputs ({len(inputs)}) does not match the number of activations ({activations.shape[0]})."
-            )
 
         # Apply selection rule
         match select_strategy:
-            case ActivationSelectionStrategy.ALL:
-                pass
+            # case ActivationSelectionStrategy.ALL:
+            #     return activations.cpu()
             case ActivationSelectionStrategy.CLS:
-                activations = activations[:, 0, :]
+                return activations[:, 0, :].cpu()
             case ActivationSelectionStrategy.ALL_TOKENS:
-                activations = activations.flatten(0, 1)
-            case ActivationSelectionStrategy.TOKENS:  # TODO: try something around indices, without association matrices, create an indices method from which other granularity methods depend.
-                activation_list: list[Float[torch.Tensor, "l", d]] = []
-                for single_input, single_activations in zip(inputs, activations, strict=True):  # type: ignore
-                    single_input: str
-                    single_activations: Float[torch.Tensor, l, d]
-                    tokens_indices: list[int] = Granularity.get_indices(
-                        single_input, Granularity.TOKEN, self.tokenizer
+                return activations.flatten(0, 1).cpu()
+            case ActivationSelectionStrategy.TOKEN:
+                if not isinstance(inputs, BatchEncoding):
+                    raise ValueError(
+                        "Cannot get indices without a tokenizer if granularity is TOKEN."
+                        + "Please provide a tokenizer or set granularity to ALL_TOKENS."
+                        + f"Got: {type(inputs)}"
                     )
-                    activation_list.append(
-                        single_activations[tokens_indices]
-                    )  # TODO: debug and optimize by converting to tensor before
-                flatten_activations: Float[torch.Tensor, "ng", d] = torch.concat(activation_list, dim=0)
+
+                # extract indices of activations to keep from inputs
+                # select_strategy and granularities correspond
+                granularity: Granularity = select_strategy.value
+                indices_list = Granularity.get_indices(inputs, granularity, self.tokenizer)
+
+                # select activations based on indices
+                activation_list: list[Float[torch.Tensor, "g d"]] = []
+
+                # iterate over samples
+                for i in range(len(indices_list)):
+                    indices = torch.tensor(indices_list[i])[:, 0]
+                    activation_list.append(activations[i, indices])
+
+                # concat all activations
+                flatten_activations: Float[torch.Tensor, "ng d"] = torch.concat(activation_list, dim=0).cpu()
                 return flatten_activations
-            case ActivationSelectionStrategy.WORDS:
-                activation_list: list[Float[torch.Tensor, "l", d]] = []
-                for single_input, single_activations in zip(inputs, activations, strict=True):  # type: ignore
-                    single_input: str
-                    single_activations: Float[torch.Tensor, l, d]
-                    words_indices: list[int] = Granularity.get_indices(single_input, Granularity.WORD, self.tokenizer)
-                    activation_list.append(single_activations[words_indices])
-                flatten_activations: Float[torch.Tensor, "ng", d] = torch.concat(activation_list, dim=0)
+            case ActivationSelectionStrategy.WORD:
+                if not isinstance(inputs, BatchEncoding):
+                    raise ValueError(
+                        "Cannot get indices without a tokenizer if granularity is TOKEN."
+                        + "Please provide a tokenizer or set granularity to ALL_TOKENS."
+                        + f"Got: {type(inputs)}"
+                    )
+
+                # extract indices of activations to keep from inputs
+                # select_strategy and granularities correspond
+                granularity: Granularity = select_strategy.value
+                indices_list = Granularity.get_indices(inputs, granularity, self.tokenizer)
+
+                # select activations based on indices
+                activation_list: list[Float[torch.Tensor, "g d"]] = []
+
+                # iterate over samples
+                for i in range(len(indices_list)):
+                    # iterate over activations
+                    for j in range(len(indices_list[i])):
+                        word_activations = activations[i, indices_list[i][j]]
+                        aggregated_activations = aggregation_strategy(word_activations)
+                        activation_list.append(aggregated_activations)
+
+                # concat all activations
+                flatten_activations: Float[torch.Tensor, "ng d"] = torch.concat(activation_list, dim=0).cpu()
                 return flatten_activations
             case _:
                 raise ValueError(f"Invalid activation selection strategy: {select_strategy}")
-        return activations
 
     def get_activations(
         self,
-        inputs: Iterable[str] | torch.Tensor,
-        select_strategy: ActivationSelectionStrategy = ActivationSelectionStrategy.ALL,
+        inputs: list[str] | torch.Tensor | BatchEncoding,
+        select_strategy: ActivationSelectionStrategy = ActivationSelectionStrategy.ALL_TOKENS,
         aggregation_strategy: AggregationProtocol = AggregationStrategy.MEAN,
         **kwargs,
-    ) -> InterventionProxy:  # TODO: change to `dict[str, LatentActivations]` and test if it works well
+    ) -> dict[str, LatentActivations]:
         """Get intermediate activations for all model split points
 
         Args:
-            inputs Iterable[str] | torch.Tensor: Inputs to the model forward pass before or after tokenization.
+            inputs list[str] | torch.Tensor | BatchEncoding: Inputs to the model forward pass before or after tokenization.
                 In the case of a `torch.Tensor`, we assume a batch dimension and token ids.
             select_strategy (ActivationSelectionStrategy): Selection strategy for activations.
 
                 Options are:
 
-                * ``ModelWithSplitPoints.activation_strategies.ALL``:
-                    all sequence activations are returned, keeping the original shape ``(batch, seq_len, d_model)``.
                 * ``ModelWithSplitPoints.activation_strategies.CLS``:
                     only the first token (e.g. ``[CLS]``) activation is returned ``(batch, d_model)``.
                 * ``ModelWithSplitPoints.activation_strategies.ALL_TOKENS``:
                     every token activation is treated as a separate element ``(batch x seq_len, d_model)``.
-                * ``ModelWithSplitPoints.activation_strategies.TOKENS``:
+                * ``ModelWithSplitPoints.activation_strategies.TOKEN``:
                     activations are aggregated according to :class:`~interpreto.commons.granularity.Granularity.TOKEN`.
-                * ``ModelWithSplitPoints.activation_strategies.WORDS``:
+                * ``ModelWithSplitPoints.activation_strategies.WORD``:
                     activations are aggregated according to :class:`~interpreto.commons.granularity.Granularity.WORD`.
             aggregation_strategy: Strategy to aggregate activations.
                 Only necessary for WORDS `select_strategy`, ignored otherwise.
         **kwargs: Additional keyword arguments passed to the model forward pass.
 
         Returns:
-            (InterventionProxy) Dictionary having one key, value pair for each split point defined for the model. Keys correspond to split
+            (dict[str, LatentActivations]) Dictionary having one key, value pair for each split point defined for the model. Keys correspond to split
                 names in `self.split_points`, while values correspond to the extracted activations for the split point
                 for the given `inputs`.
         """
@@ -351,36 +368,60 @@ class ModelWithSplitPoints(LanguageModel):
                 "Please set split points before calling get_activations."
             )
 
-        if isinstance(inputs, BatchEncoding):  # TODO: remove
-            print(inputs["input_ids"].shape)  # TODO: remove
+        # batch inputs
+        if isinstance(inputs, BatchEncoding):
+            batch_generator = []
+            for i in range(0, len(inputs), self.batch_size):
+                end_idx = min(i + self.batch_size, len(inputs))
+                batch_generator.append({key: value[i:end_idx] for key, value in inputs.items()})
         else:
-            print(inputs)  # TODO: remove
+            batch_generator = (
+                inputs[i : min(i + self.batch_size, len(inputs))] for i in range(0, len(inputs), self.batch_size)
+            )
 
-        # Compute activations
-        with self.trace() as tracer:
-            activations: InterventionProxy = nnsight_dict().save()
-            for split_point in self.split_points:
-                activations[split_point] = []
-            for i in range(len(inputs) // self.batch_size):
-                batch_inputs = inputs[i * self.batch_size : (i + 1) * self.batch_size]
+        activations: dict = {}
+        for split_point in self.split_points:
+            activations[split_point] = []
 
-                with tracer.invoke(batch_inputs, **kwargs):
-                    # dict[str, torch.Tensor]
-                    for idx, split_point in enumerate(self.split_points):
-                        curr_module: Envoy = self.get(split_point)
-                        # Handle case in which module has .output attribute, and .nns_output gets overridden instead
-                        module_out_name = "nns_output" if hasattr(curr_module, "nns_output") else "output"
-                        raw_activations = getattr(curr_module, module_out_name)
-                        selected_activations = self._apply_selection_strategy(inputs, raw_activations, select_strategy)
-                        activations[split_point].append(selected_activations)
-                        # Early stopping at the last splitting layer
-                        if idx == len(self.split_points) - 1:
-                            getattr(curr_module, module_out_name).stop()
+        # iterate over batch of inputs
+        for batch_inputs in batch_generator:
+            if isinstance(batch_inputs, list):
+                tokenized_inputs = self.tokenizer(batch_inputs, return_tensors="pt", padding=True, truncation=True)
+            else:
+                tokenized_inputs = batch_inputs
 
-        # print(activations.keys())
-        print(self.device)
-        for layer, act in activations.items():
-            print(layer, act.shape)  # TODO: remove
+            # call model forward pass
+            with self.trace(batch_inputs, **kwargs):
+                # at each split point, get activations
+                for idx, split_point in enumerate(self.split_points):
+                    curr_module: Envoy = self.get(split_point)
+                    # Handle case in which module has .output attribute, and .nns_output gets overridden instead
+                    module_out_name = "nns_output" if hasattr(curr_module, "nns_output") else "output"
+
+                    # get activations
+                    raw_activations = getattr(curr_module, module_out_name)
+
+                    # apply selection strategy
+                    selected_activations = self._apply_selection_strategy(
+                        inputs=tokenized_inputs,  # type: ignore
+                        activations=raw_activations.cpu(),
+                        select_strategy=select_strategy,
+                        aggregation_strategy=aggregation_strategy,
+                        layer=split_point,
+                    ).save()  # type: ignore
+
+                    # store activations
+                    activations[split_point].append(selected_activations)
+
+                    # Early stopping at the last splitting layer
+                    if idx == len(self.split_points) - 1:
+                        getattr(curr_module, module_out_name).stop()
+
+        # concat activation batches
+        for split_point in self.split_points:
+            # print("DEBUG:", split_point, "nb batches:", len(activations[split_point]))
+            # activations[split_point] = nnsight.apply(torch.concat, activations[split_point]).save()
+            activations[split_point] = torch.concat(activations[split_point], dim=0)  # type: ignore
 
         # Validate that activations have the expected type
         for layer, act in activations.items():
@@ -388,15 +429,10 @@ class ModelWithSplitPoints(LanguageModel):
                 raise RuntimeError(
                     f"Invalid output for layer '{layer}'. Expected torch.Tensor activation, got {type(act)}: {act}"
                 )
-            if len(activations[layer].shape) != 3:  # TODO: update tests
-                raise RuntimeError(
-                    f"Invalid output for layer '{layer}'. Expected a torch.Tensor activation with shape"
-                    f"(batch_size, sequence_length, model_dim), got {activations[layer].shape}"
-                )
-        return activations
+        return activations  # type: ignore
 
     def get_split_activations(
-        self, activations: InterventionProxy, split_point: str | None = None
+        self, activations: dict[str, LatentActivations], split_point: str | None = None
     ) -> LatentActivations:
         """
         Extract activations for the specified split point.
@@ -407,7 +443,7 @@ class ModelWithSplitPoints(LanguageModel):
         * Specified split point does not exist in the activations.
 
         Args:
-            activations (InterventionProxy): A dictionary with model paths as keys and the corresponding
+            activations (dict[str, LatentActivations]): A dictionary with model paths as keys and the corresponding
                 tensors as values.
             split_point (str | None): The split point to extract activations from.
                 If None, the `split_point` of the explainer is used.
@@ -431,9 +467,7 @@ class ModelWithSplitPoints(LanguageModel):
         else:
             local_split_point: str = self.split_points[0]
 
-        # dict wrapped in InterventionProxy do not directly inherit from dict
-        activations_is_dict = hasattr(activations, "values") and hasattr(activations, "keys")
-        if not activations_is_dict or not all(isinstance(act, torch.Tensor) for act in activations.values()):
+        if not isinstance(activations, dict) or not all(isinstance(act, torch.Tensor) for act in activations.values()):
             raise TypeError(
                 "Invalid activations for the concept explainer. "
                 "Activations should be a dictionary of model paths and torch.Tensor activations. "
