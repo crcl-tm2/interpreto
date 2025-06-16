@@ -51,27 +51,27 @@ class DummyMapping(dict):
 tokens = DummyMapping()
 
 
-def test_get_decomposition(bert_tokenizer):
+def test_get_decomposition(real_bert_tokenizer):
     assert Granularity.get_decomposition(tokens, Granularity.ALL_TOKENS) == [
         [[101], [5], [6], [7], [102]],
         [[101], [8], [9], [102], [0]],
     ]
-    assert Granularity.get_decomposition(tokens, Granularity.TOKEN, bert_tokenizer) == [
+    assert Granularity.get_decomposition(tokens, Granularity.TOKEN, real_bert_tokenizer) == [
         [[5], [6], [7]],
         [[8], [9]],
     ]
-    assert Granularity.get_decomposition(tokens, Granularity.WORD, bert_tokenizer) == [
+    assert Granularity.get_decomposition(tokens, Granularity.WORD, real_bert_tokenizer) == [
         [[5, 6], [7]],
         [[8], [9]],
     ]
 
 
-def test_get_association_matrix(bert_tokenizer):
+def test_get_association_matrix(real_bert_tokenizer):
     all_tokens = Granularity.get_association_matrix(tokens, Granularity.ALL_TOKENS)
     assert torch.equal(all_tokens[0], torch.eye(5))
     assert torch.equal(all_tokens[1], torch.eye(5))
 
-    token_matrix = Granularity.get_association_matrix(tokens, Granularity.TOKEN, bert_tokenizer)
+    token_matrix = Granularity.get_association_matrix(tokens, Granularity.TOKEN, real_bert_tokenizer)
     expected_token = [
         torch.tensor([[0, 1, 0, 0, 0], [0, 0, 1, 0, 0], [0, 0, 0, 1, 0]], dtype=torch.bool),
         torch.tensor([[0, 1, 0, 0, 0], [0, 0, 1, 0, 0]], dtype=torch.bool),
@@ -79,7 +79,7 @@ def test_get_association_matrix(bert_tokenizer):
     assert torch.equal(token_matrix[0], expected_token[0])
     assert torch.equal(token_matrix[1], expected_token[1])
 
-    word_matrix = Granularity.get_association_matrix(tokens, Granularity.WORD, bert_tokenizer)
+    word_matrix = Granularity.get_association_matrix(tokens, Granularity.WORD, real_bert_tokenizer)
     expected_word = [
         torch.tensor([[0, 1, 1, 0, 0], [0, 0, 0, 1, 0]], dtype=torch.bool),
         torch.tensor([[0, 1, 0, 0, 0], [0, 0, 1, 0, 0]], dtype=torch.bool),
@@ -88,15 +88,15 @@ def test_get_association_matrix(bert_tokenizer):
     assert torch.equal(word_matrix[1], expected_word[1])
 
 
-def test_granularity_on_text(bert_tokenizer):
+def test_granularity_on_text(real_bert_tokenizer):
     text = "word longword verylongword"
-    # bert_tokenizer.tokenize(text)
+    # real_bert_tokenizer.tokenize(text)
     # > ['word', 'long', '##word', 'very', '##long', '##word']
-    tokens = bert_tokenizer(text, return_tensors="pt")
+    tokens = real_bert_tokenizer(text, return_tensors="pt")
     all_tokens = Granularity.get_association_matrix(tokens, Granularity.ALL_TOKENS)
     assert torch.equal(all_tokens[0], torch.eye(8))
 
-    token_matrix = Granularity.get_association_matrix(tokens, Granularity.TOKEN, bert_tokenizer)
+    token_matrix = Granularity.get_association_matrix(tokens, Granularity.TOKEN, real_bert_tokenizer)
     assert len(token_matrix) == 1
     token_matrix = token_matrix[0]
     expected_token = torch.tensor(
@@ -112,7 +112,7 @@ def test_granularity_on_text(bert_tokenizer):
     )
     assert torch.equal(token_matrix, expected_token)
 
-    word_matrix = Granularity.get_association_matrix(tokens, Granularity.WORD, bert_tokenizer)
+    word_matrix = Granularity.get_association_matrix(tokens, Granularity.WORD, real_bert_tokenizer)
     assert len(word_matrix) == 1
     word_matrix = word_matrix[0]
     expected_word = torch.tensor(
@@ -125,7 +125,7 @@ def test_granularity_on_text(bert_tokenizer):
     assert torch.equal(word_matrix, expected_word)
 
 
-def test_granularity_on_text_padding(bert_tokenizer):
+def test_granularity_on_text_padding(real_bert_tokenizer):
     # First sentence has 2 words → 3 sub-tokens (+2 specials) = 5,
     # second has 3 words → 6 sub-tokens (+2 specials) = 8.
     # With padding='longest' the first sequence is padded to length 8.
@@ -134,7 +134,7 @@ def test_granularity_on_text_padding(bert_tokenizer):
         "word longword verylongword",  # the longest one
     ]
 
-    tokens = bert_tokenizer(
+    tokens = real_bert_tokenizer(
         texts,
         padding=True,  # force [PAD] on the shorter sequence
         return_tensors="pt",
@@ -147,7 +147,7 @@ def test_granularity_on_text_padding(bert_tokenizer):
     assert torch.equal(all_tokens[1], torch.eye(8))
 
     # ------------- TOKEN ----------------------
-    token_matrix = Granularity.get_association_matrix(tokens, Granularity.TOKEN, bert_tokenizer)
+    token_matrix = Granularity.get_association_matrix(tokens, Granularity.TOKEN, real_bert_tokenizer)
     # max_token_count = 6 (from the longer sentence)
     expected_token = [
         # sample 0 (3 real tokens, then zero-rows)
@@ -176,7 +176,7 @@ def test_granularity_on_text_padding(bert_tokenizer):
     assert torch.equal(token_matrix[1], expected_token[1])
 
     # ------------- WORD -----------------------
-    word_matrix = Granularity.get_association_matrix(tokens, Granularity.WORD, bert_tokenizer)
+    word_matrix = Granularity.get_association_matrix(tokens, Granularity.WORD, real_bert_tokenizer)
     # max_word_count = 3 (from the longer sentence)
     expected_word = [
         # sample 0 (2 real words, then zero-row)
@@ -202,8 +202,8 @@ def test_granularity_on_text_padding(bert_tokenizer):
 
 
 if __name__ == "__main__":
-    bert_tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
-    test_get_decomposition(bert_tokenizer)
-    test_get_association_matrix(bert_tokenizer)
-    test_granularity_on_text(bert_tokenizer)
-    test_granularity_on_text_padding(bert_tokenizer)
+    real_bert_tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+    test_get_decomposition(real_bert_tokenizer)
+    test_get_association_matrix(real_bert_tokenizer)
+    test_granularity_on_text(real_bert_tokenizer)
+    test_granularity_on_text_padding(real_bert_tokenizer)
