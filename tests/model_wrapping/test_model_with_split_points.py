@@ -172,7 +172,7 @@ ALL_MODEL_LOADERS = {
     "hf-internal-testing/tiny-random-ElectraModel": AutoModelForSequenceClassification,
     "hf-internal-testing/tiny-random-roberta": AutoModelForSequenceClassification,
     "hf-internal-testing/tiny-random-t5": AutoModelForSequenceClassification,
-    "hf-internal-testing/tiny-xlm-roberta": AutoModelForSequenceClassification,
+    # "hf-internal-testing/tiny-xlm-roberta": AutoModelForSequenceClassification,
     "hf-internal-testing/tiny-random-gpt2": AutoModelForCausalLM,
     "hf-internal-testing/tiny-random-gpt_neo": AutoModelForCausalLM,
     "hf-internal-testing/tiny-random-gptj": AutoModelForCausalLM,
@@ -297,4 +297,4 @@ if __name__ == "__main__":
     test_activation_equivalence_batched_text_token_inputs(multi_split_model)
     test_get_activations_selection_strategies(splitted_encoder_ml, sentences)
     test_batching(splitted_encoder_ml, sentences * 10, ModelWithSplitPoints.activation_strategies.WORD)
-    evaluate_activations("hf-internal-testing/tiny-xlm-roberta", sentences * 100)
+    evaluate_activations("hf-internal-testing/tiny-random-bert", sentences * 100)

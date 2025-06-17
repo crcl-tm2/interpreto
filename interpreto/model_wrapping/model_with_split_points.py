@@ -221,7 +221,7 @@ class ModelWithSplitPoints(LanguageModel):
         return self._split_points
 
     @split_points.setter
-    def split_points(self, split_points: str | int | list[str | int] | tuple[str | int]) -> None:
+    def split_points(self, split_points: str | int | list[str] | list[int] | tuple[str] | tuple[int]) -> None:
         """Split points are automatically validated and sorted upon setting"""
         pre_conversion_split_points = split_points if isinstance(split_points, list | tuple) else [split_points]
         post_conversion_split_points: list[str] = []
@@ -257,7 +257,7 @@ class ModelWithSplitPoints(LanguageModel):
 
     @staticmethod
     def pad_and_concat(
-        tensor_list: List[Float[torch.Tensor, "n_i l_i d"]], pad_side: str, pad_value: float
+        tensor_list: list[Float[torch.Tensor, "n_i l_i d"]], pad_side: str, pad_value: float
     ) -> Float[torch.Tensor, "sum(n_i) max_l d"]:
         """
         Concatenates a list of 3D tensors along dim=0 after padding their second dimension to the same length.
