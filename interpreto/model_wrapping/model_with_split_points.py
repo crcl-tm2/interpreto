@@ -27,7 +27,9 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Protocol
 
+import nnsight
 import torch
+import torch.nn.functional as F
 from jaxtyping import Float
 from nnsight.intervention import Envoy
 from nnsight.intervention.graph import InterventionProxy
@@ -57,7 +59,7 @@ class InitializationError(ValueError):
 class ActivationSelectionStrategy(Enum):
     """Activation selection strategies for :meth:`ModelWithSplitPoints.get_activations`."""
 
-    # ALL = "all"  # removed for now as it conflicts with batching
+    ALL = "all"  # removed for now as it conflicts with batching
     CLS = "cls"
     ALL_TOKENS = Granularity.ALL_TOKENS
     TOKEN = Granularity.TOKEN
@@ -126,7 +128,7 @@ class ModelWithSplitPoints(LanguageModel):
     def __init__(
         self,
         model_or_repo_id: str | PreTrainedModel,
-        split_points: str | int | list[str | int] | tuple[str | int],
+        split_points: str | int | list[str] | list[int] | tuple[str] | tuple[int],
         *args: tuple[Any],
         model_autoclass: str | type[AutoModel] | None = None,
         tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast | None = None,
@@ -193,6 +195,7 @@ class ModelWithSplitPoints(LanguageModel):
             config=config,
             tokenizer=tokenizer,  # type: ignore
             automodel=self.model_autoclass,  # type: ignore
+            device_map=device_map,
             **kwargs,
         )
         self._model_paths = list(walk_modules(self._model))
@@ -204,6 +207,14 @@ class ModelWithSplitPoints(LanguageModel):
         if self._model.__class__.__name__ not in get_supported_hf_transformer_generation_classes():
             self.generator = None  # type: ignore
         self.batch_size = batch_size
+
+        if not isinstance(model_or_repo_id, str):
+            if device_map == "auto":
+                raise ValueError(
+                    "'auto' device_map is only supported when loading a model from a repository id. "
+                    "Please specify a device_map, e.g. 'cuda' or 'cpu'."
+                )
+            self.to(device_map)
 
     @property
     def split_points(self) -> list[str]:
@@ -244,6 +255,44 @@ class ModelWithSplitPoints(LanguageModel):
             )
         super()._generate(inputs=inputs, max_new_tokens=max_new_tokens, streamer=streamer, **kwargs)
 
+    @staticmethod
+    def pad_and_concat(
+        tensor_list: List[Float[torch.Tensor, "n_i l_i d"]], pad_side: str, pad_value: float
+    ) -> Float[torch.Tensor, "sum(n_i) max_l d"]:
+        """
+        Concatenates a list of 3D tensors along dim=0 after padding their second dimension to the same length.
+
+        Args:
+            tensor_list (List[Tensor]): List of tensors with shape (n_i, l_i, d)
+            pad_side (str): 'left' or 'right' — side on which to apply padding along dim=1
+            pad_value (float): Value to use for padding
+
+        Returns:
+            Tensor: Tensor of shape (sum(n_i), max_l, d)
+        """
+        if pad_side not in ("left", "right"):
+            raise ValueError("pad_side must be either 'left' or 'right'")
+
+        max_l = max(t.shape[1] for t in tensor_list)
+        padded = []
+
+        for t in tensor_list:
+            n, l, d = t.shape
+            pad_len = max_l - l
+
+            if pad_len == 0:
+                padded_tensor = t
+            else:
+                if pad_side == "right":
+                    pad = (0, 0, 0, pad_len)  # pad dim=1 on the right
+                else:  # pad_side == 'left'
+                    pad = (0, 0, pad_len, 0)  # pad dim=1 on the left
+                padded_tensor = F.pad(t, pad, value=pad_value)
+
+            padded.append(padded_tensor)
+
+        return torch.cat(padded, dim=0)
+
     # @jaxtyped(typechecker=beartype)
     def _apply_selection_strategy(
         self,
@@ -251,7 +300,6 @@ class ModelWithSplitPoints(LanguageModel):
         activations: Float[torch.Tensor, "n l d"],
         select_strategy: ActivationSelectionStrategy,
         aggregation_strategy: AggregationProtocol,
-        layer: str,
     ) -> torch.Tensor:
         """Apply selection strategy to activations.
 
@@ -261,7 +309,6 @@ class ModelWithSplitPoints(LanguageModel):
             activations (InterventionProxy): Activations to apply selection strategy to.
             select_strategy (ActivationSelectionStrategy): Selection strategy to apply. see :meth:`ModelWithSplitPoints.get_activations`.
             aggregation_strategy (AggregationProtocol): Aggregation strategy to apply. see :meth:`ModelWithSplitPoints.get_activations`.
-            layer (str): The layer for which the activations are extracted.
 
         Returns:
             torch.Tensor: The aggregated activations.
@@ -269,12 +316,12 @@ class ModelWithSplitPoints(LanguageModel):
 
         # Apply selection rule
         match select_strategy:
-            # case ActivationSelectionStrategy.ALL:
-            #     return activations.cpu()
+            case ActivationSelectionStrategy.ALL:
+                return activations
             case ActivationSelectionStrategy.CLS:
-                return activations[:, 0, :].cpu()
+                return activations[:, 0, :]
             case ActivationSelectionStrategy.ALL_TOKENS:
-                return activations.flatten(0, 1).cpu()
+                return activations.flatten(0, 1)
             case ActivationSelectionStrategy.TOKEN:
                 if not isinstance(inputs, BatchEncoding):
                     raise ValueError(
@@ -297,7 +344,7 @@ class ModelWithSplitPoints(LanguageModel):
                     activation_list.append(activations[i, indices])
 
                 # concat all activations
-                flatten_activations: Float[torch.Tensor, "ng d"] = torch.concat(activation_list, dim=0).cpu()
+                flatten_activations: Float[torch.Tensor, "ng d"] = torch.concat(activation_list, dim=0)
                 return flatten_activations
             case ActivationSelectionStrategy.WORD:
                 if not isinstance(inputs, BatchEncoding):
@@ -316,15 +363,15 @@ class ModelWithSplitPoints(LanguageModel):
                 activation_list: list[Float[torch.Tensor, "g d"]] = []
 
                 # iterate over samples
-                for i in range(len(indices_list)):
+                for i, indices in enumerate(indices_list):
                     # iterate over activations
-                    for j in range(len(indices_list[i])):
-                        word_activations = activations[i, indices_list[i][j]]
+                    for index in indices:
+                        word_activations = activations[i, index]
                         aggregated_activations = aggregation_strategy(word_activations)
                         activation_list.append(aggregated_activations)
 
                 # concat all activations
-                flatten_activations: Float[torch.Tensor, "ng d"] = torch.concat(activation_list, dim=0).cpu()
+                flatten_activations: Float[torch.Tensor, "ng d"] = torch.concat(activation_list, dim=0)
                 return flatten_activations
             case _:
                 raise ValueError(f"Invalid activation selection strategy: {select_strategy}")
@@ -334,6 +381,7 @@ class ModelWithSplitPoints(LanguageModel):
         inputs: list[str] | torch.Tensor | BatchEncoding,
         select_strategy: ActivationSelectionStrategy = ActivationSelectionStrategy.ALL_TOKENS,
         aggregation_strategy: AggregationProtocol = AggregationStrategy.MEAN,
+        pad_side: str = "left",
         **kwargs,
     ) -> dict[str, LatentActivations]:
         """Get intermediate activations for all model split points
@@ -355,7 +403,8 @@ class ModelWithSplitPoints(LanguageModel):
                     activations are aggregated according to :class:`~interpreto.commons.granularity.Granularity.WORD`.
             aggregation_strategy: Strategy to aggregate activations.
                 Only necessary for WORDS `select_strategy`, ignored otherwise.
-        **kwargs: Additional keyword arguments passed to the model forward pass.
+            pad_side (str): 'left' or 'right' — side on which to apply padding along dim=1 only for ALL strategy.
+            **kwargs: Additional keyword arguments passed to the model forward pass.
 
         Returns:
             (dict[str, LatentActivations]) Dictionary having one key, value pair for each split point defined for the model. Keys correspond to split
@@ -391,37 +440,53 @@ class ModelWithSplitPoints(LanguageModel):
                 tokenized_inputs = batch_inputs
 
             # call model forward pass
-            with self.trace(batch_inputs, **kwargs):
-                # at each split point, get activations
-                for idx, split_point in enumerate(self.split_points):
-                    curr_module: Envoy = self.get(split_point)
-                    # Handle case in which module has .output attribute, and .nns_output gets overridden instead
-                    module_out_name = "nns_output" if hasattr(curr_module, "nns_output") else "output"
+            with torch.no_grad():  # TODO: find a way to add this back
+                with self.trace(tokenized_inputs, **kwargs):
+                    # at each split point, get activations
+                    for idx, split_point in enumerate(self.split_points):
+                        curr_module: Envoy = self.get(split_point)
+                        # Handle case in which module has .output attribute, and .nns_output gets overridden instead
+                        module_out_name = "nns_output" if hasattr(curr_module, "nns_output") else "output"
 
-                    # get activations
-                    raw_activations = getattr(curr_module, module_out_name)
+                        # get activations
+                        raw_activations = getattr(curr_module, module_out_name)
 
-                    # apply selection strategy
-                    selected_activations = self._apply_selection_strategy(
-                        inputs=tokenized_inputs,  # type: ignore
-                        activations=raw_activations.cpu(),
-                        select_strategy=select_strategy,
-                        aggregation_strategy=aggregation_strategy,
-                        layer=split_point,
-                    ).save()  # type: ignore
+                        # move activations to cpu
+                        try:
+                            raw_activations = nnsight.apply(lambda x: x.cpu(), raw_activations).save()
+                        except nnsight.util.NNsightError as ex:
+                            raise RuntimeError(
+                                f"Failed to manipulate activations for split point '{split_point}'. "
+                                "If it comes from: ``nnsight.util.NNsightError: 'tuple' object has no attribute 'cpu'.'' "
+                                "Then the split point is not a valid path in the loaded model, because it has several outputs. "
+                                "Often, adding '.mlp' to the split point path solves the issue."
+                            ) from ex
 
-                    # store activations
-                    activations[split_point].append(selected_activations)
+                        # apply selection strategy
+                        selected_activations = self._apply_selection_strategy(
+                            inputs=tokenized_inputs,
+                            activations=raw_activations,  # type: ignore
+                            select_strategy=select_strategy,
+                            aggregation_strategy=aggregation_strategy,
+                        ).save()  # type: ignore
 
-                    # Early stopping at the last splitting layer
-                    if idx == len(self.split_points) - 1:
-                        getattr(curr_module, module_out_name).stop()
+                        # store activations
+                        activations[split_point].append(selected_activations)
+
+                        # Early stopping at the last splitting layer
+                        if idx == len(self.split_points) - 1:
+                            getattr(curr_module, module_out_name).stop()
+
+            torch.cuda.empty_cache()
 
         # concat activation batches
         for split_point in self.split_points:
-            # print("DEBUG:", split_point, "nb batches:", len(activations[split_point]))
-            # activations[split_point] = nnsight.apply(torch.concat, activations[split_point]).save()
-            activations[split_point] = torch.concat(activations[split_point], dim=0)  # type: ignore
+            if select_strategy == ActivationSelectionStrategy.ALL:
+                # three dimensional tensor (n, l, d)
+                activations[split_point] = ModelWithSplitPoints.pad_and_concat(activations[split_point], pad_side, 0.0)
+            else:
+                # two dimensional tensor (n*g, d)
+                activations[split_point] = torch.cat(activations[split_point], dim=0)
 
         # Validate that activations have the expected type
         for layer, act in activations.items():

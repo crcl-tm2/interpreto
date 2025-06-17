@@ -32,7 +32,8 @@ from enum import Enum
 import torch
 from beartype import beartype
 from jaxtyping import Bool, Int, jaxtyped
-from transformers import BatchEncoding, PreTrainedTokenizer
+from transformers.tokenization_utils import PreTrainedTokenizer
+from transformers.tokenization_utils_base import BatchEncoding
 
 
 class NoWordIdsError(AttributeError):
