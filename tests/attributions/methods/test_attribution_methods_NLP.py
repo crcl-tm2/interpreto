@@ -85,6 +85,7 @@ ALL_MODEL_LOADERS = {
     "hf-internal-testing/tiny-random-gptj": AutoModelForCausalLM,
     "hf-internal-testing/tiny-random-CodeGenForCausalLM": AutoModelForCausalLM,
     "hf-internal-testing/tiny-random-FalconModel": AutoModelForCausalLM,
+    "hf-internal-testing/tiny-random-Gemma3ForCausalLM": AutoModelForCausalLM,
     "hf-internal-testing/tiny-random-LlamaForCausalLM": AutoModelForCausalLM,
     "hf-internal-testing/tiny-random-MistralForCausalLM": AutoModelForCausalLM,
     "hf-internal-testing/tiny-random-Starcoder2ForCausalLM": AutoModelForCausalLM,

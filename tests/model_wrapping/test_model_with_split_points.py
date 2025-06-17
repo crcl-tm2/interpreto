@@ -24,8 +24,7 @@
 
 import pytest
 import torch
-from tests.conftest import multi_split_model
-from transformers import AutoModelForCausalLM, AutoModelForMaskedLM, AutoModelForSequenceClassification
+from transformers import AutoModelForCausalLM, AutoModelForMaskedLM, AutoModelForSequenceClassification, AutoTokenizer
 
 from interpreto import Granularity, ModelWithSplitPoints
 from interpreto.model_wrapping.model_with_split_points import ActivationSelectionStrategy, InitializationError
@@ -164,25 +163,138 @@ def test_batching(
 #        f"Got:      {multi_split_model.split_points}"
 #    )
 
+ALL_MODEL_LOADERS = {
+    "hf-internal-testing/tiny-random-albert": AutoModelForSequenceClassification,
+    "hf-internal-testing/tiny-random-bart": AutoModelForSequenceClassification,
+    "hf-internal-testing/tiny-random-bert": AutoModelForSequenceClassification,
+    # "hf-internal-testing/tiny-random-DebertaV2Model": AutoModelForSequenceClassification,
+    "hf-internal-testing/tiny-random-distilbert": AutoModelForSequenceClassification,
+    "hf-internal-testing/tiny-random-ElectraModel": AutoModelForSequenceClassification,
+    "hf-internal-testing/tiny-random-roberta": AutoModelForSequenceClassification,
+    "hf-internal-testing/tiny-random-t5": AutoModelForSequenceClassification,
+    "hf-internal-testing/tiny-xlm-roberta": AutoModelForSequenceClassification,
+    "hf-internal-testing/tiny-random-gpt2": AutoModelForCausalLM,
+    "hf-internal-testing/tiny-random-gpt_neo": AutoModelForCausalLM,
+    "hf-internal-testing/tiny-random-gptj": AutoModelForCausalLM,
+    "hf-internal-testing/tiny-random-CodeGenForCausalLM": AutoModelForCausalLM,
+    "hf-internal-testing/tiny-random-FalconModel": AutoModelForCausalLM,
+    "hf-internal-testing/tiny-random-Gemma3ForCausalLM": AutoModelForCausalLM,
+    "hf-internal-testing/tiny-random-LlamaForCausalLM": AutoModelForCausalLM,
+    "hf-internal-testing/tiny-random-MistralForCausalLM": AutoModelForCausalLM,
+    "hf-internal-testing/tiny-random-Starcoder2ForCausalLM": AutoModelForCausalLM,
+}
+
+ALL_MODEL_SPLIT_POINTS = {
+    "hf-internal-testing/tiny-random-albert": ["albert.encoder.albert_layer_groups.1.albert_layers.0.ffn_output"],
+    "hf-internal-testing/tiny-random-bart": ["model.decoder.layers.1.fc2"],
+    "hf-internal-testing/tiny-random-bert": ["bert.encoder.layer.1.output"],
+    # "hf-internal-testing/tiny-random-DebertaV2Model": ["todo"],
+    "hf-internal-testing/tiny-random-distilbert": ["distilbert.transformer.layer.1.ffn"],
+    "hf-internal-testing/tiny-random-ElectraModel": ["electra.encoder.layer.1.output"],
+    "hf-internal-testing/tiny-random-roberta": ["roberta.encoder.layer.1.output"],
+    "hf-internal-testing/tiny-random-t5": ["transformer.decoder.block.1.layer.2"],
+    "hf-internal-testing/tiny-xlm-roberta": ["roberta.encoder.layer.1.output"],
+    "hf-internal-testing/tiny-random-gpt2": ["transformer.h.1.mlp"],
+    "hf-internal-testing/tiny-random-gpt_neo": ["transformer.h.1.mlp"],
+    "hf-internal-testing/tiny-random-gptj": ["transformer.h.1.mlp"],
+    "hf-internal-testing/tiny-random-CodeGenForCausalLM": ["transformer.h.1.mlp"],
+    "hf-internal-testing/tiny-random-FalconModel": ["transformer.h.1.mlp"],
+    "hf-internal-testing/tiny-random-Gemma3ForCausalLM": ["model.layers.1.mlp"],
+    "hf-internal-testing/tiny-random-LlamaForCausalLM": ["model.layers.1.mlp"],
+    "hf-internal-testing/tiny-random-MistralForCausalLM": ["model.layers.1.mlp"],
+    "hf-internal-testing/tiny-random-Starcoder2ForCausalLM": ["model.layers.1.mlp"],
+}
+
+# A small subset to run on CI:
+CI_MODEL_LOADERS = [
+    "hf-internal-testing/tiny-random-bert",
+    "hf-internal-testing/tiny-random-gpt2",
+    "hf-internal-testing/tiny-random-roberta",
+    "hf-internal-testing/tiny-random-t5",
+]
+
+STRATEGIES = [
+    ModelWithSplitPoints.activation_strategies.ALL,
+    ModelWithSplitPoints.activation_strategies.CLS,
+    ModelWithSplitPoints.activation_strategies.ALL_TOKENS,
+    ModelWithSplitPoints.activation_strategies.TOKEN,
+    ModelWithSplitPoints.activation_strategies.WORD,
+]
+
+
+@pytest.mark.parametrize("model_name", CI_MODEL_LOADERS)
+def test_activations_short(model_name, huge_text: list[str]):
+    evaluate_activations(model_name, huge_text)
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("model_name", [k for k in ALL_MODEL_LOADERS.keys() if k not in CI_MODEL_LOADERS])
+def test_activations_long(model_name, huge_text: list[str]):
+    evaluate_activations(model_name, huge_text)
+
+
+def evaluate_activations(model_name, huge_text: list[str]):
+    """Tests all combinations of models and loaders with an attribution method"""
+    model = ALL_MODEL_LOADERS[model_name].from_pretrained(model_name)
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+    if not hasattr(tokenizer, "pad_token") or tokenizer.pad_token is None:
+        tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+        model.resize_token_embeddings(len(tokenizer))
+
+    print(model_name)
+    print(model_name in ALL_MODEL_LOADERS.keys())
+    print(list(model.named_children()))
+    print(tokenizer.pad_token)
+
+    splitted_model = ModelWithSplitPoints(
+        model,
+        tokenizer=tokenizer,
+        split_points=ALL_MODEL_SPLIT_POINTS[model_name],
+        model_autoclass=ALL_MODEL_LOADERS[model_name],
+        device_map="cuda",
+        batch_size=8,
+    )
+
+    for strategy in STRATEGIES:
+        print(strategy)
+        splitted_model.get_activations(huge_text, select_strategy=strategy)
+
+
 if __name__ == "__main__":
     from transformers import AutoModelForMaskedLM
 
-    splitted_encoder_ml = ModelWithSplitPoints(
-        "hf-internal-testing/tiny-random-bert",
-        split_points=["bert.encoder.layer.2.output"],
-        model_autoclass=AutoModelForMaskedLM,  # type: ignore
-        device_map="cuda",
-        batch_size=4,
-    )
-    bert_model = AutoModelForSequenceClassification.from_pretrained("hf-internal-testing/tiny-random-bert")
-    gpt2_model = AutoModelForCausalLM.from_pretrained("hf-internal-testing/tiny-random-gpt2")
     sentences = [
         "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
         "Interpreto is magical",
         "Testing interpreto",
     ]
-    test_order_split_points(multi_split_model)  # type: ignore
+
+    splitted_encoder_ml = ModelWithSplitPoints(
+        "bert-base-uncased",
+        split_points=["bert.encoder.layer.2.output"],
+        model_autoclass=AutoModelForMaskedLM,  # type: ignore
+        device_map="auto",
+        batch_size=4,
+    )
+    multi_split_model = ModelWithSplitPoints(
+        "bert-base-uncased",
+        split_points=[
+            "cls.predictions.transform.LayerNorm",
+            "bert.encoder.layer.1.output",
+            "bert.encoder.layer.3.attention.self.query",
+        ],
+        model_autoclass=AutoModelForMaskedLM,  # type: ignore
+        device_map="cuda",
+        batch_size=4,
+    )
+
+    bert_model = AutoModelForSequenceClassification.from_pretrained("hf-internal-testing/tiny-random-bert")
+    gpt2_model = AutoModelForCausalLM.from_pretrained("hf-internal-testing/tiny-random-gpt2")
+
+    test_order_split_points(multi_split_model)
     test_loading_possibilities(bert_model, gpt2_model)
-    test_activation_equivalence_batched_text_token_inputs(splitted_encoder_ml)
+    test_activation_equivalence_batched_text_token_inputs(multi_split_model)
     test_get_activations_selection_strategies(splitted_encoder_ml, sentences)
-    test_batching(splitted_encoder_ml, sentences * 10, ModelWithSplitPoints.activation_strategies.WORD)  # type: ignore
+    test_batching(splitted_encoder_ml, sentences * 10, ModelWithSplitPoints.activation_strategies.WORD)
+    evaluate_activations("hf-internal-testing/tiny-xlm-roberta", sentences * 100)
