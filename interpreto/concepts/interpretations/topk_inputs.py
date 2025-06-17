@@ -179,7 +179,11 @@ class TopKInputs(BaseConceptInterpretationMethod):
             InterpretationSources.INPUTS,
             InterpretationSources.LATENT_ACTIVATIONS,
         ]:
-            concepts_activations = self.concept_model.encode(latent_activations)  # type: ignore
+            if hasattr(self.concept_model, "device"):
+                latent_activations = latent_activations.to(self.concept_model.device)  # type: ignore
+            concepts_activations = self.concept_model.encode(latent_activations)
+            if isinstance(concepts_activations, tuple):
+                concepts_activations = concepts_activations[1]
 
         # concepts activation source: ensure that the concepts activations are provided
         if concepts_activations is None:
@@ -257,8 +261,15 @@ class TopKInputs(BaseConceptInterpretationMethod):
                     break
                 if inputs[input_index] in interpretation_dict[cpt_idx]:
                     continue
+                if activation == 0:
+                    break
                 # set the kth input for the concept
                 interpretation_dict[cpt_idx][inputs[input_index]] = activation.item()
+
+            # if no inputs were found for the concept, set it to None
+            # TODO: see if we should remove the concept completely
+            if len(interpretation_dict[cpt_idx]) == 0:
+                interpretation_dict[cpt_idx] = None
         return interpretation_dict
 
     def interpret(
@@ -276,6 +287,8 @@ class TopKInputs(BaseConceptInterpretationMethod):
         The returned inputs are the most activating inputs for the concepts.
 
         The required arguments depend on the `source` class attribute.
+
+        If all activations are zero, the corresponding concept interpretation is set to `None`.
 
         Args:
             concepts_indices (int | list[int]): The indices of the concepts to interpret.
