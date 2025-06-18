@@ -243,7 +243,7 @@ class AttributionExplainer:
             ValueError: If the type of model_inputs is not supported.
         """
         if isinstance(model_inputs, str):
-            return [self.tokenizer(model_inputs, return_tensors="pt")]
+            return [self.tokenizer(model_inputs, return_tensors="pt", return_offsets_mapping=True)]
         if isinstance(
             model_inputs, BatchEncoding
         ):  # we cant use TensorMapping in the isinstance so we use MutableMapping.

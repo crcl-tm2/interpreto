@@ -198,7 +198,9 @@ class TopKInputs(BaseConceptInterpretationMethod):
             # no granularity is needed
             return inputs
 
-        tokens = self.model_with_split_points.tokenizer(inputs, return_tensors="pt", padding=True)
+        tokens = self.model_with_split_points.tokenizer(
+            inputs, return_tensors="pt", padding=True, return_offsets_mapping=True
+        )
         list_list_str: list[list[str]] = Granularity.get_decomposition(
             tokens, granularity=self.granularity, tokenizer=self.model_with_split_points.tokenizer, return_text=True
         )  # type: ignore

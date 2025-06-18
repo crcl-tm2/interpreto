@@ -66,7 +66,7 @@ def test_embeddings_perturbators(perturbator_class, sentences, bert_model, bert_
     perturbator.to(DEVICE)
 
     for sent in sentences:
-        elem = bert_tokenizer(sent, return_tensors="pt")
+        elem = bert_tokenizer(sent, return_tensors="pt", return_offsets_mapping=True)
         elem.to(DEVICE)
         assert isinstance(elem, MutableMapping)
         l = elem["input_ids"].shape[1]
@@ -119,7 +119,7 @@ def test_token_perturbators(perturbator_class, sentences, bert_model, bert_token
     perturbator.to(DEVICE)
 
     for sent in sentences:
-        elem = bert_tokenizer(sent, return_tensors="pt")
+        elem = bert_tokenizer(sent, return_tensors="pt", return_offsets_mapping=True)
         elem.to(DEVICE)
         assert isinstance(elem, MutableMapping)
         l = elem["input_ids"].shape[1]

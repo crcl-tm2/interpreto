@@ -38,11 +38,11 @@ def create_targets_test(tokenizer):
     target1b = "Interpreto is magic"
 
     # TensorMapping:
-    target2a = tokenizer(target1a, return_tensors="pt")
-    target2b = tokenizer([target1b], return_tensors="pt")
+    target2a = tokenizer(target1a, return_tensors="pt", return_offsets_mapping=True)
+    target2b = tokenizer([target1b], return_tensors="pt", return_offsets_mapping=True)
 
     # TensorMapping with multiple elements:
-    target2c = tokenizer([target1a, target1b], return_tensors="pt", padding=True)
+    target2c = tokenizer([target1a, target1b], return_tensors="pt", padding=True, return_offsets_mapping=True)
 
     # torch.Tensor:
     target3a = target2a["input_ids"]
@@ -95,8 +95,10 @@ def test_process_inputs_to_explain_and_targets(gpt2_model, gpt2_tokenizer):
     list_targets.append(None)  # Add None to the list of targets for testing
 
     # Model input example
-    model_input1 = gpt2_tokenizer(["I like kittens and I like dogs."], return_tensors="pt")
-    model_input2 = gpt2_tokenizer(["Interpreto is incredible."], return_tensors="pt")
+    model_input1 = gpt2_tokenizer(
+        ["I like kittens and I like dogs."], return_tensors="pt", return_offsets_mapping=True
+    )
+    model_input2 = gpt2_tokenizer(["Interpreto is incredible."], return_tensors="pt", return_offsets_mapping=True)
 
     model_input1element = [model_input1]
     model_input2elements = [model_input1, model_input2]
