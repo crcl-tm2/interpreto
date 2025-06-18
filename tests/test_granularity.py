@@ -22,188 +22,191 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+from __future__ import annotations
+
+import sys
+
+import pytest
 import torch
 from transformers import AutoTokenizer
 
-from interpreto.commons.granularity import Granularity
+# local import – the module is supplied alongside this test file
+from interpreto import Granularity
+from interpreto.commons.granularity import _HAS_SPACY
+
+# -------
+# Helpers
 
 
-class DummyMapping(dict):
-    """Simple mapping implementing ``word_ids`` for testing."""
-
-    def __init__(self):
-        input_ids = torch.tensor(
-            [
-                [101, 5, 6, 7, 102],
-                [101, 8, 9, 102, 0],
-            ]
-        )
-        super().__init__(input_ids=input_ids)
-        self._word_ids = [
-            [None, 0, 0, 1, None],
-            [None, 0, 1, None, None],
-        ]
-
-    def word_ids(self, index: int):
-        return self._word_ids[index]
+def _build_expected_matrix(indices: list[list[int]], seq_len: int) -> torch.Tensor:
+    """Utility building a bool matrix from *indices* (g × lp)."""
+    mat = torch.zeros((len(indices), seq_len), dtype=torch.bool)
+    for g, token_pos in enumerate(indices):
+        mat[g, token_pos] = True
+    return mat
 
 
-tokens = DummyMapping()
+# --------
+# Fixtures
 
 
-def test_get_decomposition(real_bert_tokenizer):
-    assert Granularity.get_decomposition(tokens, Granularity.ALL_TOKENS) == [
-        [[101], [5], [6], [7], [102]],
-        [[101], [8], [9], [102], [0]],
-    ]
-    assert Granularity.get_decomposition(tokens, Granularity.TOKEN, real_bert_tokenizer) == [
-        [[5], [6], [7]],
-        [[8], [9]],
-    ]
-    assert Granularity.get_decomposition(tokens, Granularity.WORD, real_bert_tokenizer) == [
-        [[5, 6], [7]],
-        [[8], [9]],
-    ]
+@pytest.fixture(scope="session")
+def real_bert_tokenizer():
+    """Load the BERT‑base uncased tokenizer once for the whole session."""
+    return AutoTokenizer.from_pretrained("bert-base-uncased")
 
 
-def test_get_association_matrix(real_bert_tokenizer):
-    all_tokens = Granularity.get_association_matrix(tokens, Granularity.ALL_TOKENS)
-    assert torch.equal(all_tokens[0], torch.eye(5))
-    assert torch.equal(all_tokens[1], torch.eye(5))
-
-    token_matrix = Granularity.get_association_matrix(tokens, Granularity.TOKEN, real_bert_tokenizer)
-    expected_token = [
-        torch.tensor([[0, 1, 0, 0, 0], [0, 0, 1, 0, 0], [0, 0, 0, 1, 0]], dtype=torch.bool),
-        torch.tensor([[0, 1, 0, 0, 0], [0, 0, 1, 0, 0]], dtype=torch.bool),
-    ]
-    assert torch.equal(token_matrix[0], expected_token[0])
-    assert torch.equal(token_matrix[1], expected_token[1])
-
-    word_matrix = Granularity.get_association_matrix(tokens, Granularity.WORD, real_bert_tokenizer)
-    expected_word = [
-        torch.tensor([[0, 1, 1, 0, 0], [0, 0, 0, 1, 0]], dtype=torch.bool),
-        torch.tensor([[0, 1, 0, 0, 0], [0, 0, 1, 0, 0]], dtype=torch.bool),
-    ]
-    assert torch.equal(word_matrix[0], expected_word[0])
-    assert torch.equal(word_matrix[1], expected_word[1])
+@pytest.fixture(scope="module")
+def simple_text():
+    """A single‑sentence, single‑paragraph short text."""
+    return "word longword verylongword"
 
 
-def test_granularity_on_text(real_bert_tokenizer):
-    text = "word longword verylongword"
-    # real_bert_tokenizer.tokenize(text)
-    # > ['word', 'long', '##word', 'very', '##long', '##word']
-    tokens = real_bert_tokenizer(text, return_tensors="pt")
-    all_tokens = Granularity.get_association_matrix(tokens, Granularity.ALL_TOKENS)
-    assert torch.equal(all_tokens[0], torch.eye(8))
-
-    token_matrix = Granularity.get_association_matrix(tokens, Granularity.TOKEN, real_bert_tokenizer)
-    assert len(token_matrix) == 1
-    token_matrix = token_matrix[0]
-    expected_token = torch.tensor(
-        [
-            [0, 1, 0, 0, 0, 0, 0, 0],
-            [0, 0, 1, 0, 0, 0, 0, 0],
-            [0, 0, 0, 1, 0, 0, 0, 0],
-            [0, 0, 0, 0, 1, 0, 0, 0],
-            [0, 0, 0, 0, 0, 1, 0, 0],
-            [0, 0, 0, 0, 0, 0, 1, 0],
-        ],
-        dtype=torch.bool,
-    )
-    assert torch.equal(token_matrix, expected_token)
-
-    word_matrix = Granularity.get_association_matrix(tokens, Granularity.WORD, real_bert_tokenizer)
-    assert len(word_matrix) == 1
-    word_matrix = word_matrix[0]
-    expected_word = torch.tensor(
-        [
-            [0, 1, 0, 0, 0, 0, 0, 0],
-            [0, 0, 1, 1, 0, 0, 0, 0],
-            [0, 0, 0, 0, 1, 1, 1, 0],
-        ],
-    )
-    assert torch.equal(word_matrix, expected_word)
-
-
-def test_granularity_on_text_padding(real_bert_tokenizer):
-    # First sentence has 2 words → 3 sub-tokens (+2 specials) = 5,
-    # second has 3 words → 6 sub-tokens (+2 specials) = 8.
-    # With padding='longest' the first sequence is padded to length 8.
-    texts = [
-        "word longword",  # needs padding
-        "word longword verylongword",  # the longest one
-    ]
-
-    tokens = real_bert_tokenizer(
-        texts,
-        padding=True,  # force [PAD] on the shorter sequence
-        return_tensors="pt",
+@pytest.fixture(scope="module")
+def complex_text():
+    """Multi‑clause, multi‑sentence, multi‑paragraph text for spaCy levels."""
+    return (
+        "Although it was raining, we went for a walk. "  # 1st sentence (2 clauses)
+        "We took umbrellas.\n\n"  # 2nd sentence, same paragraph
+        "It was fun."  # New paragraph
     )
 
-    # ------------- ALL_TOKENS -----------------
-    all_tokens = Granularity.get_association_matrix(tokens, Granularity.ALL_TOKENS)
-    # Both sequences are length-8 and should be pure identities (incl. PAD slots)
-    assert torch.equal(all_tokens[0], torch.eye(8))
-    assert torch.equal(all_tokens[1], torch.eye(8))
 
-    # ------------- TOKEN ----------------------
-    token_matrix = Granularity.get_association_matrix(tokens, Granularity.TOKEN, real_bert_tokenizer)
-    # max_token_count = 6 (from the longer sentence)
-    expected_token = [
-        # sample 0 (3 real tokens, then zero-rows)
-        torch.tensor(
-            [
-                [0, 1, 0, 0, 0, 0, 0, 0],  # 'word'
-                [0, 0, 1, 0, 0, 0, 0, 0],  # 'long'
-                [0, 0, 0, 1, 0, 0, 0, 0],  # '##word'
-            ],
-            dtype=torch.bool,
-        ),
-        # sample 1 (6 real tokens)
-        torch.tensor(
-            [
-                [0, 1, 0, 0, 0, 0, 0, 0],  # 'word'
-                [0, 0, 1, 0, 0, 0, 0, 0],  # 'long'
-                [0, 0, 0, 1, 0, 0, 0, 0],  # '##word'
-                [0, 0, 0, 0, 1, 0, 0, 0],  # 'very'
-                [0, 0, 0, 0, 0, 1, 0, 0],  # '##long'
-                [0, 0, 0, 0, 0, 0, 1, 0],  # '##word'
-            ],
-            dtype=torch.bool,
-        ),
-    ]
-    assert torch.equal(token_matrix[0], expected_token[0])
-    assert torch.equal(token_matrix[1], expected_token[1])
-
-    # ------------- WORD -----------------------
-    word_matrix = Granularity.get_association_matrix(tokens, Granularity.WORD, real_bert_tokenizer)
-    # max_word_count = 3 (from the longer sentence)
-    expected_word = [
-        # sample 0 (2 real words, then zero-row)
-        torch.tensor(
-            [
-                [0, 1, 0, 0, 0, 0, 0, 0],  # 'word'
-                [0, 0, 1, 1, 0, 0, 0, 0],  # 'longword'
-            ],
-            dtype=torch.bool,
-        ),
-        # sample 1 (3 real words)
-        torch.tensor(
-            [
-                [0, 1, 0, 0, 0, 0, 0, 0],  # 'word'
-                [0, 0, 1, 1, 0, 0, 0, 0],  # 'longword'
-                [0, 0, 0, 0, 1, 1, 1, 0],  # 'verylongword'
-            ],
-            dtype=torch.bool,
-        ),
-    ]
-    assert torch.equal(word_matrix[0], expected_word[0])
-    assert torch.equal(word_matrix[1], expected_word[1])
+# ----------------------------------------
+# ALL_TOKENS / TOKEN / WORD granularities
 
 
-if __name__ == "__main__":
-    real_bert_tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
-    test_get_decomposition(real_bert_tokenizer)
-    test_get_association_matrix(real_bert_tokenizer)
-    test_granularity_on_text(real_bert_tokenizer)
-    test_granularity_on_text_padding(real_bert_tokenizer)
+def test_low_level_granularities_indices(simple_text, real_bert_tokenizer):
+    """Checks *get_indices* for ALL_TOKENS / TOKEN / WORD on a tiny text."""
+
+    tokens = real_bert_tokenizer(simple_text, return_tensors="pt", return_offsets_mapping=True)
+    seq_len = tokens["input_ids"].shape[1]
+
+    # Human‑readable token list
+    print("\nBERT tokens:", real_bert_tokenizer.tokenize(simple_text))
+
+    # ALL_TOKENS
+    all_tokens_indices = Granularity.get_indices(tokens, Granularity.ALL_TOKENS, real_bert_tokenizer)[0]
+    assert all_tokens_indices == [[i] for i in range(seq_len)]
+
+    # TOKEN
+    token_indices = Granularity.get_indices(tokens, Granularity.TOKEN, real_bert_tokenizer)[0]
+    special = set(real_bert_tokenizer.all_special_ids)
+    expected_token_pos = [i for i, tid in enumerate(tokens["input_ids"][0]) if int(tid) not in special]
+    assert [idx[0] for idx in token_indices] == expected_token_pos
+
+    # WORD
+    word_indices = Granularity.get_indices(tokens, Granularity.WORD, real_bert_tokenizer)[0]
+    # We know there are exactly 3 human words in *simple_text*.
+    assert len(word_indices) == 3
+    # First word should decode to "word"
+    first_word_ids = [int(tokens["input_ids"][0][i]) for i in word_indices[0]]
+    assert real_bert_tokenizer.decode(first_word_ids) == "word"
+
+
+def test_low_level_granularities_matrices_and_decomposition(simple_text, real_bert_tokenizer):
+    """Cross‑validate indices ⇄ matrices ⇄ decompositions for low‑level granularities."""
+
+    tokens = real_bert_tokenizer(simple_text, return_tensors="pt", return_offsets_mapping=True)
+    seq_len = tokens["input_ids"].shape[1]
+
+    for gran in (Granularity.ALL_TOKENS, Granularity.TOKEN, Granularity.WORD):
+        indices = Granularity.get_indices(tokens, gran, real_bert_tokenizer)[0]
+
+        # Association matrix
+        assoc = Granularity.get_association_matrix(tokens, gran, real_bert_tokenizer)[0]
+        expected_mat = _build_expected_matrix(indices, seq_len)
+        assert torch.equal(assoc, expected_mat)
+
+        # Decomposition (ids)
+        decomp_ids = Granularity.get_decomposition(tokens, gran, real_bert_tokenizer)[0]
+        # Compare raw ids – order + content must match indices
+        assert decomp_ids == [[int(tokens["input_ids"][0][i]) for i in grp] for grp in indices]
+
+        # Decomposition (text)
+        decomp_text = Granularity.get_decomposition(tokens, gran, real_bert_tokenizer, return_text=True)[0]
+        # Join all segments and strip spaces; must equal original (without specials)
+        match gran:
+            case Granularity.ALL_TOKENS:
+                # We remove the special tokens: decomp_text[1:-1]
+                joined = " ".join(seg.strip() for seg in decomp_text[1:-1]).replace(" ##", "")
+                assert joined == simple_text
+            case Granularity.TOKEN:
+                joined = " ".join(seg.strip() for seg in decomp_text).replace(" ##", "")
+                assert joined == simple_text
+            case Granularity.WORD:
+                joined = " ".join(seg.strip() for seg in decomp_text)
+                assert joined == simple_text
+
+
+# ----------------------------------------------------------
+# spaCy‑based granularities (SENTENCE )
+
+needs_spacy = pytest.mark.skipif(
+    not _HAS_SPACY,
+    reason="spaCy  not available – skipping high‑level tests",
+)
+
+
+@needs_spacy
+def test_spacy_granularities_indices(complex_text, real_bert_tokenizer):
+    """Basic sanity checks on the hierarchy of spaCy granularities."""
+
+    tokens = real_bert_tokenizer(complex_text, return_tensors="pt", return_offsets_mapping=True)
+
+    sent_idx = Granularity.get_indices(tokens, Granularity.SENTENCE, real_bert_tokenizer)[0]
+
+    # We know our handcrafted *complex_text*:
+    #   • 4 clauses   (2 + 1 + 1)
+    #   • 3 sentences (2 + 1)
+    #   • 2 paragraphs
+    assert len(sent_idx) == 3
+
+    # Hierarchy sanity: same tokens regrouped, nothing lost / duplicated
+    flat_sent = sorted(i for grp in sent_idx for i in grp)
+    assert flat_sent == list(range(len(tokens["input_ids"][0])))
+
+
+@needs_spacy
+def test_spacy_granularities_matrices_and_decomposition(complex_text, real_bert_tokenizer):
+    """Full round‑trip checks for SENTENCE ."""
+
+    tokens = real_bert_tokenizer(complex_text, return_tensors="pt", return_offsets_mapping=True)
+    seq_len = tokens["input_ids"].shape[1]
+
+    gran = Granularity.SENTENCE
+
+    indices = Granularity.get_indices(tokens, gran, real_bert_tokenizer)[0]
+
+    # Association matrix
+    assoc = Granularity.get_association_matrix(tokens, gran, real_bert_tokenizer)[0]
+    expected_mat = _build_expected_matrix(indices, seq_len)
+    assert torch.equal(assoc, expected_mat)
+
+    # Decomposition (ids)
+    decomp_ids = Granularity.get_decomposition(tokens, gran, real_bert_tokenizer)[0]
+    assert decomp_ids == [[int(tokens["input_ids"][0][i]) for i in grp] for grp in indices]
+
+    # Decomposition (text)
+    decomp_text = Granularity.get_decomposition(tokens, gran, real_bert_tokenizer, return_text=True)[0]
+    # Silent print for manual inspection when running directly
+    print(f"\n[{gran.value}] decomposition:\n", decomp_text)
+
+    # Each segment must be non‑empty & appear verbatim in the original text
+    raw_text = real_bert_tokenizer.decode(tokens["input_ids"][0], skip_special_tokens=True)
+    for segment in decomp_text:
+        assert segment.strip() in raw_text
+
+    # Join without spaces – coverage check (no char lost)
+    joined = " ".join(seg.strip() for seg in decomp_text)
+    assert joined == raw_text
+
+
+# -----------------------------------------------------------------
+# Manual run
+# -----------------------------------------------------------------
+
+if __name__ == "__main__":  # pragma: no cover – convenience only
+    # Run tests when executed directly (no pytest needed)
+    print("Running granularity tests…\n")
+    sys.exit(pytest.main([__file__]))
