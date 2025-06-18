@@ -27,13 +27,23 @@ Definition of different granularity levels for explainers (tokens, words, senten
 
 from __future__ import annotations
 
+import os
 from enum import Enum
+from functools import lru_cache
 
 import torch
 from beartype import beartype
 from jaxtyping import Bool, Int, jaxtyped
 from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_utils_base import BatchEncoding
+
+# Lazy spacy import for SENTENCE granularities
+try:
+    import spacy
+
+    _HAS_SPACY = True
+except ModuleNotFoundError:
+    _HAS_SPACY = False
 
 
 class NoWordIdsError(AttributeError):
@@ -58,6 +68,8 @@ class Granularity(Enum):
     ALL_TOKENS = "all_tokens"  # All tokens, including special tokens like padding, eos, cls, etc.
     TOKEN = "token"  # Strictly tokens of the input
     WORD = "word"  # Words of the input
+    SENTENCE = "sentence"  # Sentences of the input
+    # PARAGRAPH = "paragraph"  # Not supported yet, the "\n\n" characters are replaced by spaces in many tokenizers.
     DEFAULT = ALL_TOKENS
 
     @staticmethod
@@ -81,7 +93,7 @@ class Granularity(Enum):
 
         Args:
             inputs_mapping (BatchEncoding): Tokenized inputs, the output of
-                `self.tokenizer("some_text", return_tensors="pt")`
+                `self.tokenizer("some_text", return_tensors="pt", return_offsets_mapping=True)`
             granularity (Granularity | None, optional): Desired granularity level. Defaults to
                 :attr:`DEFAULT`.
             tokenizer (PreTrainedTokenizer): Hugging-Face tokenizer used downstream.
@@ -117,6 +129,33 @@ class Granularity(Enum):
                 else:
                     n_inputs = inputs["input_ids"].shape[0]  # type: ignore
                     return [Granularity.__word_get_indices(inputs.word_ids(i)) for i in range(n_inputs)]
+            # spaCy-based levels (require offset_mapping & fast tokenizer)
+            case Granularity.SENTENCE as level:
+                if not tokenizer or not tokenizer.is_fast:
+                    raise ValueError(f"{level.value} granularity needs a *fast* tokenizer.")
+                if "offset_mapping" not in inputs:
+                    raise ValueError(
+                        f"{level.value} granularity requires `return_offsets_mapping=True` "
+                        "when you call the tokenizer."
+                    )
+
+                if not _HAS_SPACY:
+                    raise ModuleNotFoundError(
+                        "spaCy is needed for sentence granularity.  Install with: `uv pip install spacy`"
+                    )
+
+                n_inputs = inputs["input_ids"].shape[0]  # type: ignore
+                offset_maps = inputs["offset_mapping"]  # (n, lp, 2)
+
+                return [
+                    Granularity.__spacy_get_indices(
+                        input_ids=inputs["input_ids"][i],  # type: ignore
+                        offsets=offset_maps[i],  # type: ignore
+                        tokenizer=tokenizer,
+                        level=level,
+                    )
+                    for i in range(n_inputs)
+                ]
             case _:
                 raise NotImplementedError(f"Granularity level {granularity} not implemented")
 
@@ -154,7 +193,7 @@ class Granularity(Enum):
         Creates the matrix to pass from one granularity level to ALL_TOKENS granularity level (finally used by the perturbator)
 
         Args:
-            inputs (BatchEncoding): Tokenized inputs, the output of `self.tokenizer("some_text", return_tensors="pt")`
+            inputs (BatchEncoding): Tokenized inputs, the output of `self.tokenizer("some_text", return_tensors="pt", return_offsets_mapping=True)`
             granularity (Granularity | None, optional): Desired granularity level. Defaults to
                 :attr:`DEFAULT`.
             tokenizer (PreTrainedTokenizer): Hugging-Face tokenizer used downstream.
@@ -203,7 +242,7 @@ class Granularity(Enum):
 
         Args:
             inputs (BatchEncoding): Tokenized inputs to decompose, the output of
-                `self.tokenizer("some_text", return_tensors="pt")`
+                `self.tokenizer("some_text", return_tensors="pt", return_offsets_mapping=True)`
             granularity (Granularity | None, optional): Desired granularity level. Defaults to
                 :attr:`DEFAULT`.
             tokenizer (PreTrainedTokenizer): Huggingface tokenizer used downstream.
@@ -241,3 +280,52 @@ class Granularity(Enum):
             all_decompositions.append(decomposition)
 
         return all_decompositions
+
+    @staticmethod
+    @lru_cache(maxsize=2)  # keep a model in cache to reuse easily
+    def __get_spacy(model: str = "en_core_web_sm"):
+        """
+        Lazily load a small spaCy pipeline.
+        The model name can be patched via `SPACY_MODEL` env-var if needed.
+        """
+
+        try:
+            nlp = spacy.load(model, disable=["ner", "tagger", "lemmatizer"])  # type: ignore
+        except OSError as e:
+            raise ModuleNotFoundError(
+                "Unable to load spaCy model. Please download it via `python -m spacy download en_core_web_sm`"
+            ) from e
+
+        # sentence boundaries
+        if "sentencizer" not in nlp.pipe_names:
+            nlp.add_pipe("sentencizer")
+        return nlp
+
+    @staticmethod
+    def __spacy_get_indices(input_ids, offsets, tokenizer, level) -> list[list[int]]:
+        """
+        Generic spaCy-based grouper turning char-span segments (sent/para)
+        into token-index groups.
+        """
+
+        # Build raw text (special tokens removed to keep offsets aligned)
+        text = tokenizer.decode(input_ids, skip_special_tokens=True)
+
+        # Run spaCy once per sample
+        nlp = Granularity.__get_spacy(os.environ.get("SPACY_MODEL", "en_core_web_sm"))
+        doc = nlp(text)
+
+        # Obtain character spans for each requested granularity
+        span_list = list(doc.sents)
+
+        # Map char spans → token indices using the HF offset mapping
+        groups: list[list[int]] = []
+        for span in span_list:
+            token_indices = [
+                i
+                for i, (s, e) in enumerate(offsets)
+                if s is not None and e is not None and s >= span.start_char and e <= span.end_char + 1
+            ]
+            if token_indices:  # skip empty groups (can happen on only-punct spans)
+                groups.append(token_indices)
+        return groups
