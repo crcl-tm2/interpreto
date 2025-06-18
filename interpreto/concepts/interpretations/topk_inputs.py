@@ -38,6 +38,7 @@ from jaxtyping import Float
 
 from interpreto import Granularity, ModelWithSplitPoints
 from interpreto.concepts.interpretations.base import BaseConceptInterpretationMethod
+from interpreto.model_wrapping.model_with_split_points import ActivationSelectionStrategy
 from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentActivations
 
 
@@ -90,12 +91,13 @@ class TopKInputs(BaseConceptInterpretationMethod):
         split_point (str): The split point to use for the interpretation.
         concept_model (ConceptModelProtocol): The concept model to use for the interpretation.
         granularity (Granularity): The granularity at which the interpretation is computed.
+            Allowed values are `TOKEN`, `WORD`, `SENTENCE`, and `SAMPLE`.
             Ignored for source `VOCABULARY`.
         source (InterpretationSources): The source of the inputs to use for the interpretation.
         k (int): The number of inputs to use for the interpretation.
     """
 
-    granularities = Granularity
+    granularities = ActivationSelectionStrategy
     sources = InterpretationSources
 
     def __init__(
@@ -103,7 +105,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
         *,
         model_with_split_points: ModelWithSplitPoints,
         concept_model: ConceptModelProtocol,
-        granularity: Granularity = Granularity.TOKEN,
+        granularity: ActivationSelectionStrategy = ActivationSelectionStrategy.WORD,
         source: InterpretationSources,
         split_point: str | None = None,
         k: int = 5,
@@ -114,6 +116,16 @@ class TopKInputs(BaseConceptInterpretationMethod):
 
         if source not in InterpretationSources:
             raise ValueError(f"The source {source} is not supported. Supported sources: {InterpretationSources}")
+
+        if granularity not in (
+            ActivationSelectionStrategy.TOKEN,
+            ActivationSelectionStrategy.WORD,
+            ActivationSelectionStrategy.SENTENCE,
+            ActivationSelectionStrategy.SAMPLE,
+        ):
+            raise ValueError(
+                f"The granularity {granularity} is not supported. Supported granularities: TOKEN, WORD, SENTENCE, and SAMPLE"
+            )
 
         self.granularity = granularity
         self.source = source
@@ -160,7 +172,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
         # inputs source: compute the latent activations from the inputs
         if source is InterpretationSources.INPUTS:
             activations_dict: dict[str, LatentActivations] = self.model_with_split_points.get_activations(
-                inputs, select_strategy=ModelWithSplitPoints.activation_strategies.TOKEN
+                inputs, select_strategy=self.granularity
             )
             latent_activations = self.model_with_split_points.get_split_activations(
                 activations_dict, split_point=self.split_point
@@ -183,7 +195,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
                 latent_activations = latent_activations.to(self.concept_model.device)  # type: ignore
             concepts_activations = self.concept_model.encode(latent_activations)
             if isinstance(concepts_activations, tuple):
-                concepts_activations = concepts_activations[1]
+                concepts_activations = concepts_activations[1]  # temporary fix, issue #65
 
         # concepts activation source: ensure that the concepts activations are provided
         if concepts_activations is None:
@@ -201,12 +213,18 @@ class TopKInputs(BaseConceptInterpretationMethod):
         tokens = self.model_with_split_points.tokenizer(
             inputs, return_tensors="pt", padding=True, return_offsets_mapping=True
         )
-        list_list_str: list[list[str]] = Granularity.get_decomposition(
-            tokens, granularity=self.granularity, tokenizer=self.model_with_split_points.tokenizer, return_text=True
-        )  # type: ignore
+        if self.granularity is ActivationSelectionStrategy.SAMPLE:
+            granular_inputs: list[str] = inputs
+        else:
+            list_list_str: list[list[str]] = Granularity.get_decomposition(
+                tokens,
+                granularity=self.granularity.value,  # type: ignore
+                tokenizer=self.model_with_split_points.tokenizer,
+                return_text=True,
+            )  # type: ignore
 
-        # flatten list of list of strings
-        granular_inputs = [string for list_str in list_list_str for string in list_str]
+            # flatten list of list of strings
+            granular_inputs: list[str] = [string for list_str in list_list_str for string in list_str]
 
         return granular_inputs
 
@@ -321,9 +339,20 @@ class TopKInputs(BaseConceptInterpretationMethod):
 
         granular_inputs: list[str]  # len: ng, inputs becomes a list of elements extracted from the examples
         granular_inputs = self._get_granular_inputs(sure_inputs)
-        assert len(granular_inputs) == len(sure_concepts_activations), (
-            f"The lengths of the granulated inputs do not match le number of concepts activations {len(granular_inputs)} != {len(sure_concepts_activations)}"
-        )
+        if len(granular_inputs) != len(sure_concepts_activations):
+            if latent_activations is not None and len(granular_inputs) != len(latent_activations):
+                raise ValueError(
+                    f"The lengths of the granulated inputs do not match le number of provided latent activations {len(granular_inputs)} != {len(latent_activations)}"
+                    "If you provide latent activations, make sure they have the same granularity as the inputs."
+                )
+            if concepts_activations is not None and len(granular_inputs) != len(concepts_activations):
+                raise ValueError(
+                    f"The lengths of the granulated inputs do not match le number of provided concepts activations {len(granular_inputs)} != {len(concepts_activations)}"
+                    "If you provide concepts activations, make sure they have the same granularity as the inputs."
+                )
+            raise ValueError(
+                f"The lengths of the granulated inputs do not match le number of concepts activations {len(granular_inputs)} != {len(sure_concepts_activations)}"
+            )
 
         return self._topk_inputs_from_concepts_activations(
             inputs=granular_inputs,

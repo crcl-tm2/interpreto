@@ -117,6 +117,55 @@ def test_topk_inputs_from_activations(splitted_encoder_ml: ModelWithSplitPoints)
     assert single_top_k_tokens[index] == all_top_k_tokens[index]
 
 
+@pytest.mark.parametrize(
+    "granularity",
+    [
+        ModelWithSplitPoints.activation_strategies.TOKEN,
+        ModelWithSplitPoints.activation_strategies.WORD,
+        ModelWithSplitPoints.activation_strategies.SENTENCE,
+        ModelWithSplitPoints.activation_strategies.SAMPLE,
+    ],
+)
+def test_topk_inputs_granularity(splitted_encoder_ml: ModelWithSplitPoints, huge_text: list[str], granularity):
+    """
+    Test that the `top_k_tokens_for_concept` method works as expected
+    Fake activations are given to the `NeuronsAsConcepts` explainer
+    """
+    # initializing the explainer
+    split = "bert.encoder.layer.1.output"
+    splitted_encoder_ml.split_points = split
+    concept_model = NeuronsAsConcepts(model_with_split_points=splitted_encoder_ml, split_point=split).concept_model
+
+    # getting the activations
+    activations = splitted_encoder_ml.get_activations(huge_text, select_strategy=granularity)[split]
+
+    # initializing the interpreter
+    interpretation_method = TopKInputs(
+        model_with_split_points=splitted_encoder_ml,
+        split_point=split,
+        concept_model=concept_model,
+        granularity=granularity,
+        source=TopKInputs.sources.LATENT_ACTIVATIONS,
+        k=2,
+    )
+
+    topk_inputs = interpretation_method.interpret(
+        concepts_indices=[0, 5, 13],
+        inputs=huge_text,
+        latent_activations=activations,
+    )
+
+    flattened_huge_text = ". ".join(huge_text).replace("\n", " ")
+
+    assert isinstance(topk_inputs, dict) and len(topk_inputs) == 3
+    for c in [0, 5, 13]:
+        assert c in topk_inputs
+        assert len(topk_inputs[c]) == 2
+        for key in topk_inputs[c].keys():
+            new_key = key[2:] if key.startswith("##") else key
+            assert new_key.lower().replace("\n", " ") in flattened_huge_text.lower()
+
+
 def test_interpret_via_topk_inputs(splitted_encoder_ml: ModelWithSplitPoints):
     """
     Test that the `top_k_tokens_for_concept` method works as expected
@@ -363,7 +412,7 @@ if __name__ == "__main__":
         model_autoclass=AutoModelForMaskedLM,  # type: ignore
     )
     sentences = [
-        "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+        "Lorem ipsum dolor sit amet, consectetur adipiscing elit. sed do eiusmod tempor incididunt\n\nut labore et dolore magna aliqua.",
         "Interpreto is magical",
         "Testing interpreto",
     ]
@@ -375,3 +424,6 @@ if __name__ == "__main__":
     test_interpret_via_topk_inputs(splitted_encoder_ml)
     test_topk_inputs_sources(splitted_encoder_ml)
     test_topk_inputs_error_raising(splitted_encoder_ml, activation_dict)  # type: ignore
+    test_topk_inputs_granularity(
+        splitted_encoder_ml, sentences * 10, ModelWithSplitPoints.activation_strategies.SAMPLE
+    )
