@@ -397,23 +397,41 @@ class ModelWithSplitPoints(LanguageModel):
             select_strategy (ActivationSelectionStrategy): Selection strategy for activations.
 
                 Options are:
-                * ``ModelWithSplitPoints.activation_strategies.ALL``:
+                - ``ModelWithSplitPoints.activation_strategies.ALL``:
                     the activations are returned as is ``(batch, seq_len, d_model)``.
                     They are padded manually so that each batch of activations can be concatenated.
-                * ``ModelWithSplitPoints.activation_strategies.CLS``:
+
+                - ``ModelWithSplitPoints.activation_strategies.CLS``:
                     only the first token (e.g. ``[CLS]``) activation is returned ``(batch, d_model)``.
-                * ``ModelWithSplitPoints.activation_strategies.ALL_TOKENS``:
+
+                - ``ModelWithSplitPoints.activation_strategies.ALL_TOKENS``:
                     every token activation is treated as a separate element ``(batch x seq_len, d_model)``.
-                * ``ModelWithSplitPoints.activation_strategies.TOKEN``:
-                    activations are aggregated according to :class:`~interpreto.commons.granularity.Granularity.TOKEN`.
-                * ``ModelWithSplitPoints.activation_strategies.WORD``:
-                    activations are aggregated according to :class:`~interpreto.commons.granularity.Granularity.WORD`.
-                * ``ModelWithSplitPoints.activation_strategies.SENTENCE``:
-                    activations are aggregated according to :class:`~interpreto.commons.granularity.Granularity.SENTENCE`.
-                * ``ModelWithSplitPoints.activation_strategies.SAMPLE``:
+
+                - ``ModelWithSplitPoints.activation_strategies.TOKEN``: remove special tokens.
+
+                - ``ModelWithSplitPoints.activation_strategies.WORD``:
+                    aggregate by words following the split defined by
+                    :class:`~interpreto.commons.granularity.Granularity.WORD`.
+
+                - ``ModelWithSplitPoints.activation_strategies.SENTENCE``:
+                    aggregate by sentences following the split defined by
+                    :class:`~interpreto.commons.granularity.Granularity.SENTENCE`.
+                    Requires `spacy` to be installed.
+
+                - ``ModelWithSplitPoints.activation_strategies.SAMPLE``:
                     activations are aggregated on the whole sample.
-            aggregation_strategy: Strategy to aggregate activations.
-                Applied for `WORD`, `SENTENCE` and `SAMPLE` strategies, to aggregate token-wise activations.
+
+            aggregation_strategy: Strategy to aggregate activations, applied for `WORD`, `SENTENCE` and `SAMPLE` activation strategies, to aggregate token-wise activations.
+                Existing strategies are:
+
+                - ``ModelWithSplitPoints.aggregation_strategies.SUM``:
+
+                - ``ModelWithSplitPoints.aggregation_strategies.MEAN``:
+
+                - ``ModelWithSplitPoints.aggregation_strategies.MAX``:
+
+                - ``ModelWithSplitPoints.aggregation_strategies.SIGNED_MAX``:
+
             pad_side (str): 'left' or 'right' — side on which to apply padding along dim=1 only for ALL strategy.
             **kwargs: Additional keyword arguments passed to the model forward pass.
 
