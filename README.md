@@ -96,10 +96,10 @@ Interpreto generalizes these methods through three core steps:
 **Available Concept Interpretation Techniques:**
 
 - Top-k tokens from tokenizer vocabulary
+- Top-k tokens/words/sentences/samples from specific datasets
 
 *Concept Interpretation Techniques Added Soon:*
 
-- Top-k tokens/words/clauses/sentences from specific datasets
 - Input-to-concept attribution from dataset examples ([Jourdan et al. 2023](https://aclanthology.org/2023.findings-acl.317/))
 - Theme prediction via LLMs from top-k tokens/sentences
 
