@@ -36,7 +36,7 @@ from interpreto.typing import LatentActivations
 @fixture(scope="session")
 def sentences():
     return [
-        "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+        "Interpreto is the latin for 'to interpret'. But it also sounds like a spell from the Harry Potter books.",
         "Interpreto is magical",
         "Testing interpreto",
     ]

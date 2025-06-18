@@ -91,7 +91,9 @@ def test_activation_equivalence_batched_text_token_inputs(multi_split_model: Mod
     """
     multi_split_model.split_points = BERT_SPLIT_POINTS  # type: ignore
     inputs_str = ["Hello, my dog is cute", "The cat is on the [MASK]"]
-    inputs_tensor = multi_split_model.tokenizer(inputs_str, return_tensors="pt", padding=True, truncation=True)
+    inputs_tensor = multi_split_model.tokenizer(
+        inputs_str, return_tensors="pt", padding=True, truncation=True, return_offsets_mapping=True
+    )
 
     activations_str = multi_split_model.get_activations(inputs_str)
     activations_tensor = multi_split_model.get_activations(inputs_tensor)
@@ -112,6 +114,7 @@ def test_get_activations_selection_strategies(
         return_tensors="pt",
         padding=True,
         truncation=True,
+        return_offsets_mapping=True,
     )
 
     batch, seq_len = tokens["input_ids"].shape  # type: ignore
@@ -125,6 +128,8 @@ def test_get_activations_selection_strategies(
         splitted_encoder_ml.activation_strategies.ALL_TOKENS: (batch * seq_len, hidden),
         splitted_encoder_ml.activation_strategies.TOKEN: (total_token_len, hidden),
         splitted_encoder_ml.activation_strategies.WORD: (total_word_len, hidden),
+        splitted_encoder_ml.activation_strategies.SENTENCE: (len(sentences) + 1, hidden),
+        splitted_encoder_ml.activation_strategies.SAMPLE: (batch, hidden),
     }
 
     split = splitted_encoder_ml.split_points[0]
@@ -142,6 +147,8 @@ def test_get_activations_selection_strategies(
         ModelWithSplitPoints.activation_strategies.ALL_TOKENS,
         ModelWithSplitPoints.activation_strategies.TOKEN,
         ModelWithSplitPoints.activation_strategies.WORD,
+        ModelWithSplitPoints.activation_strategies.SENTENCE,
+        ModelWithSplitPoints.activation_strategies.SAMPLE,
     ],
 )
 def test_batching(
@@ -219,6 +226,8 @@ STRATEGIES = [
     ModelWithSplitPoints.activation_strategies.ALL_TOKENS,
     ModelWithSplitPoints.activation_strategies.TOKEN,
     ModelWithSplitPoints.activation_strategies.WORD,
+    ModelWithSplitPoints.activation_strategies.SENTENCE,
+    ModelWithSplitPoints.activation_strategies.SAMPLE,
 ]
 
 
@@ -242,11 +251,6 @@ def evaluate_activations(model_name, huge_text: list[str]):
         tokenizer.add_special_tokens({"pad_token": "[PAD]"})
         model.resize_token_embeddings(len(tokenizer))
 
-    print(model_name)
-    print(model_name in ALL_MODEL_LOADERS.keys())
-    print(list(model.named_children()))
-    print(tokenizer.pad_token)
-
     splitted_model = ModelWithSplitPoints(
         model,
         tokenizer=tokenizer,
@@ -257,7 +261,6 @@ def evaluate_activations(model_name, huge_text: list[str]):
     )
 
     for strategy in STRATEGIES:
-        print(strategy)
         splitted_model.get_activations(huge_text, select_strategy=strategy)
 
 
@@ -265,7 +268,7 @@ if __name__ == "__main__":
     from transformers import AutoModelForMaskedLM
 
     sentences = [
-        "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+        "Interpreto is the latin for 'to interpret'. But it also sounds like a spell from the Harry Potter books.",
         "Interpreto is magical",
         "Testing interpreto",
     ]

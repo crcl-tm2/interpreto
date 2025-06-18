@@ -64,20 +64,22 @@ class ActivationSelectionStrategy(Enum):
     ALL_TOKENS = Granularity.ALL_TOKENS
     TOKEN = Granularity.TOKEN
     WORD = Granularity.WORD
+    SENTENCE = Granularity.SENTENCE
+    SAMPLE = "sample"
 
 
 class AggregationStrategy(Enum):
     """Aggregation strategies for :meth:`ModelWithSplitPoints.get_activations`.
 
-    The input x is a tensor of shape (sequence_length, model_dimension).
+    The input x is a tensor of shape (..., sequence_length, model_dimension).
 
-    The output is a tensor of shape (1, model_dimension,).
+    The output is a tensor of shape (..., 1, model_dimension).
     """
 
-    SUM = staticmethod(lambda x: x.sum(dim=0, keepdim=True))
-    MEAN = staticmethod(lambda x: x.mean(dim=0, keepdim=True))
-    MAX = staticmethod(lambda x: x.max(dim=0, keepdim=True))
-    SIGNED_MAX = staticmethod(lambda x: x.gather(0, x.abs().max(dim=0)[1].unsqueeze(0)))
+    SUM = staticmethod(lambda x: x.sum(dim=-2, keepdim=True))
+    MEAN = staticmethod(lambda x: x.mean(dim=-2, keepdim=True))
+    MAX = staticmethod(lambda x: x.max(dim=-2, keepdim=True))
+    SIGNED_MAX = staticmethod(lambda x: x.gather(-2, x.abs().max(dim=-2)[1].unsqueeze(-2)))
 
 
 class AggregationProtocol(Protocol):
@@ -339,17 +341,17 @@ class ModelWithSplitPoints(LanguageModel):
                 activation_list: list[Float[torch.Tensor, "g d"]] = []
 
                 # iterate over samples
-                for i in range(len(indices_list)):
-                    indices = torch.tensor(indices_list[i])[:, 0]
-                    activation_list.append(activations[i, indices])
+                for i, indices in enumerate(indices_list):
+                    indices_tensor = torch.tensor(indices).squeeze(1)
+                    activation_list.append(activations[i, indices_tensor])
 
                 # concat all activations
                 flatten_activations: Float[torch.Tensor, "ng d"] = torch.concat(activation_list, dim=0)
                 return flatten_activations
-            case ActivationSelectionStrategy.WORD:
+            case ActivationSelectionStrategy.WORD | ActivationSelectionStrategy.SENTENCE:
                 if not isinstance(inputs, BatchEncoding):
                     raise ValueError(
-                        "Cannot get indices without a tokenizer if granularity is TOKEN."
+                        "Cannot get indices without a tokenizer if granularity is WORD or SENTENCE."
                         + "Please provide a tokenizer or set granularity to ALL_TOKENS."
                         + f"Got: {type(inputs)}"
                     )
@@ -373,6 +375,9 @@ class ModelWithSplitPoints(LanguageModel):
                 # concat all activations
                 flatten_activations: Float[torch.Tensor, "ng d"] = torch.concat(activation_list, dim=0)
                 return flatten_activations
+            case ActivationSelectionStrategy.SAMPLE:
+                aggregated_activations: Float[torch.Tensor, "n d"] = aggregation_strategy(activations).squeeze(1)
+                return aggregated_activations
             case _:
                 raise ValueError(f"Invalid activation selection strategy: {select_strategy}")
 
@@ -392,7 +397,9 @@ class ModelWithSplitPoints(LanguageModel):
             select_strategy (ActivationSelectionStrategy): Selection strategy for activations.
 
                 Options are:
-
+                * ``ModelWithSplitPoints.activation_strategies.ALL``:
+                    the activations are returned as is ``(batch, seq_len, d_model)``.
+                    They are padded manually so that each batch of activations can be concatenated.
                 * ``ModelWithSplitPoints.activation_strategies.CLS``:
                     only the first token (e.g. ``[CLS]``) activation is returned ``(batch, d_model)``.
                 * ``ModelWithSplitPoints.activation_strategies.ALL_TOKENS``:
@@ -401,8 +408,12 @@ class ModelWithSplitPoints(LanguageModel):
                     activations are aggregated according to :class:`~interpreto.commons.granularity.Granularity.TOKEN`.
                 * ``ModelWithSplitPoints.activation_strategies.WORD``:
                     activations are aggregated according to :class:`~interpreto.commons.granularity.Granularity.WORD`.
+                * ``ModelWithSplitPoints.activation_strategies.SENTENCE``:
+                    activations are aggregated according to :class:`~interpreto.commons.granularity.Granularity.SENTENCE`.
+                * ``ModelWithSplitPoints.activation_strategies.SAMPLE``:
+                    activations are aggregated on the whole sample.
             aggregation_strategy: Strategy to aggregate activations.
-                Only necessary for WORDS `select_strategy`, ignored otherwise.
+                Applied for `WORD`, `SENTENCE` and `SAMPLE` strategies, to aggregate token-wise activations.
             pad_side (str): 'left' or 'right' — side on which to apply padding along dim=1 only for ALL strategy.
             **kwargs: Additional keyword arguments passed to the model forward pass.
 
@@ -434,13 +445,22 @@ class ModelWithSplitPoints(LanguageModel):
 
         # iterate over batch of inputs
         for batch_inputs in batch_generator:
+            # tokenize text inputs
             if isinstance(batch_inputs, list):
-                tokenized_inputs = self.tokenizer(batch_inputs, return_tensors="pt", padding=True, truncation=True)
+                tokenized_inputs = self.tokenizer(
+                    batch_inputs, return_tensors="pt", padding=True, truncation=True, return_offsets_mapping=True
+                )
             else:
                 tokenized_inputs = batch_inputs
 
+            # extract offset mapping not supported by forward but necessary for sentence selection strategy
+            if isinstance(tokenized_inputs, (BatchEncoding, dict)):  # noqa: UP038
+                offset_mapping = tokenized_inputs.pop("offset_mapping", None)
+            else:
+                offset_mapping = None
+
             # call model forward pass
-            with torch.no_grad():  # TODO: find a way to add this back
+            with torch.no_grad():  # TODO: find a way to add this back, at least optionally
                 with self.trace(tokenized_inputs, **kwargs):
                     # at each split point, get activations
                     for idx, split_point in enumerate(self.split_points):
@@ -462,22 +482,25 @@ class ModelWithSplitPoints(LanguageModel):
                                 "Often, adding '.mlp' to the split point path solves the issue."
                             ) from ex
 
-                        # apply selection strategy
-                        selected_activations = self._apply_selection_strategy(
-                            inputs=tokenized_inputs,
-                            activations=raw_activations,  # type: ignore
-                            select_strategy=select_strategy,
-                            aggregation_strategy=aggregation_strategy,
-                        ).save()  # type: ignore
-
                         # store activations
-                        activations[split_point].append(selected_activations)
+                        activations[split_point].append(raw_activations)
 
                         # Early stopping at the last splitting layer
                         if idx == len(self.split_points) - 1:
                             getattr(curr_module, module_out_name).stop()
 
             torch.cuda.empty_cache()
+            if offset_mapping is not None:
+                tokenized_inputs["offset_mapping"] = offset_mapping  # type: ignore
+
+            for split_point in self.split_points:
+                # apply selection strategy to the last activations
+                activations[split_point][-1] = self._apply_selection_strategy(
+                    inputs=tokenized_inputs,  # type: ignore
+                    activations=activations[split_point][-1],  # use the last batch of activations
+                    select_strategy=select_strategy,
+                    aggregation_strategy=aggregation_strategy,
+                )
 
         # concat activation batches
         for split_point in self.split_points:
