@@ -26,6 +26,7 @@
 Common fixtures for all tests
 """
 
+import torch
 from pytest import fixture
 from transformers import AutoModelForCausalLM, AutoModelForMaskedLM, AutoModelForSequenceClassification, AutoTokenizer
 
@@ -58,12 +59,13 @@ def multi_split_model() -> ModelWithSplitPoints:
 
 @fixture(scope="session")
 def splitted_encoder_ml() -> ModelWithSplitPoints:
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     return ModelWithSplitPoints(
         "hf-internal-testing/tiny-random-bert",
         split_points=["bert.encoder.layer.1.output"],
         model_autoclass=AutoModelForMaskedLM,  # type: ignore
         batch_size=4,
-        device_map="cuda",
+        device_map=device,
     )
 
 

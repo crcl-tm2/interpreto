@@ -256,7 +256,7 @@ def evaluate_activations(model_name, huge_text: list[str]):
         tokenizer=tokenizer,
         split_points=ALL_MODEL_SPLIT_POINTS[model_name],
         model_autoclass=ALL_MODEL_LOADERS[model_name],
-        device_map="cuda",
+        device_map="cuda" if torch.cuda.is_available() else "cpu",
         batch_size=8,
     )
 
