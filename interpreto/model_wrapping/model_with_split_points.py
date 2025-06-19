@@ -98,7 +98,7 @@ class AggregationProtocol(Protocol):
 
 
 class ModelWithSplitPoints(LanguageModel):
-    """Code: [:octicons-mark-github-24: model_wrapping/model_with_split_points.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/commons/model_wrapping/model_with_split_points.py)
+    """Code: [:octicons-mark-github-24: model_wrapping/model_with_split_points.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/model_wrapping/model_with_split_points.py)
 
     Generalized NNsight.LanguageModel wrapper around encoder-only, decoder-only and encoder-decoder language models.
     Handles splitting model at specified locations and activation extraction.
@@ -122,6 +122,51 @@ class ModelWithSplitPoints(LanguageModel):
         _model (transformers.PreTrainedModel): Huggingface transformers model wrapped by NNSight.
         _model_paths (list[str]): List of cached valid paths inside `_model`, used to validate `split_points`.
         _split_points (list[str]): List of split points, should be accessed with getter/setter.
+
+    Examples:
+        Load the model from its repository id, split it at the first layer,
+        and get the raw activations for the first layer.
+        >>> from datasets import load_dataset
+        >>> from interpreto import ModelWithSplitPoints
+        >>> # load and split the model
+        >>> model_with_split_points = ModelWithSplitPoints(
+        ...     "bert-base-uncased",
+        ...     split_points="bert.encoder.layer.1.output",
+        ...     model_autoclass=AutoModelForMaskedLM,
+        ...     batch_size=64,
+        ...     device_map="auto",
+        ... )
+        >>> # get activations
+        >>> dataset = load_dataset("cornell-movie-review-data/rotten_tomatoes")["train"]["text"]
+        >>> activations = model_with_split_points.get_activations(
+        ...     dataset,
+        ...     select_strategy=ModelWithSplitPoints.activation_strategies.TOKEN,
+        ... )
+
+        Load the model then pass it the `ModelWithSplitPoint`, split it at the first layer,
+        get the word activations for the first layer, skip special tokens, and aggregate tokens activations by mean into words.
+        >>> from transformers import AutoModelCausalLM, AutoTokenizer
+        >>> from datasets import load_dataset
+        >>> from interpreto import ModelWithSplitPoints
+        >>> # load the model
+        >>> model = AutoModelCausalLM.from_pretrained("gpt2")
+        >>> tokenizer = AutoTokenizer.from_pretrained("gpt2")
+        >>> # wrap and split the model
+        >>> model_with_split_points = ModelWithSplitPoints(
+        ...     model,
+        ...     tokenizer=tokenizer,
+        ...     split_points="transformer.h.1.mlp"],,
+        ...     model_autoclass=AutoModelForMaskedLM,
+        ...     batch_size=16,
+        ...     device_map="auto",
+        ... )
+        >>> # get activations
+        >>> dataset = load_dataset("cornell-movie-review-data/rotten_tomatoes")["train"]["text"]
+        >>> activations = model_with_split_points.get_activations(
+        ...     dataset,
+        ...     select_strategy=ModelWithSplitPoints.activation_strategies.WORD,
+        ...     aggregation_strategy=ModelWithSplitPoints.aggregation_strategies.MEAN,
+        ... )
     """
 
     _example_input = "hello"
@@ -420,7 +465,10 @@ class ModelWithSplitPoints(LanguageModel):
                 - ``ModelWithSplitPoints.activation_strategies.SAMPLE``:
                     activations are aggregated on the whole sample.
 
-            aggregation_strategy: Strategy to aggregate activations, applied for `WORD`, `SENTENCE` and `SAMPLE` activation strategies, to aggregate token-wise activations.
+            aggregation_strategy: Strategy to aggregate token activations into larger inputs granularities.
+                Applied for `WORD`, `SENTENCE` and `SAMPLE` activation strategies.
+                Token activations of shape  n * (l, d) are aggregated on the sequence length dimension.
+                The concatenated into (ng, d) tensors.
                 Existing strategies are:
 
                 - ``ModelWithSplitPoints.aggregation_strategies.SUM``:
@@ -430,6 +478,8 @@ class ModelWithSplitPoints(LanguageModel):
                 - ``ModelWithSplitPoints.aggregation_strategies.MAX``:
 
                 - ``ModelWithSplitPoints.aggregation_strategies.SIGNED_MAX``:
+                    The maximum of the absolute value of the activations multiplied by its initial sign.
+                    signed_max([[-1, 0, 1, 2], [-3, 1, -2, 0]]) = [-3, 1, -2, 2]
 
             pad_side (str): 'left' or 'right' — side on which to apply padding along dim=1 only for ALL strategy.
             **kwargs: Additional keyword arguments passed to the model forward pass.

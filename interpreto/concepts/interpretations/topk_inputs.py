@@ -77,6 +77,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
     """Code [:octicons-mark-github-24: `concepts/interpretations/topk_inputs.py`](https://github.com/FOR-sight-ai/interpreto/blob/main/interpreto/concepts/interpretations/topk_inputs.py)
 
     Implementation of the Top-K Inputs concept interpretation method also called MaxAct.
+    It associate to each concept the inputs that activates it the most.
     It is the most natural way to interpret a concept, as it is the most natural way to explain a concept.
     Hence several papers used it without describing it.
     Nonetheless, we can reference Bricken et al. (2023) [^1] from Anthropic for their post on transformer-circuits.
@@ -93,8 +94,46 @@ class TopKInputs(BaseConceptInterpretationMethod):
         granularity (Granularity): The granularity at which the interpretation is computed.
             Allowed values are `TOKEN`, `WORD`, `SENTENCE`, and `SAMPLE`.
             Ignored for source `VOCABULARY`.
-        source (InterpretationSources): The source of the inputs to use for the interpretation.
+        source (InterpretationSources): In any case, TopKInputs requires concept-activations and inputs.
+            But depending on the available variable, you will or will not have to recompute all of this activations.
+            The source correspond to starting from which activations should be computed.
+            Supported sources are
+
+                - `CONCEPTS_ACTIVATIONS`: if you already have the concept activations corresponding to the inputs, you can use this.
+
+                - `LATENT_ACTIVATIONS`: in most case you have computed latent activation to fit the concept explainer, if the granularity is the same, you can use them and not recompute the whole thing.
+
+                - `INPUTS`: activations are computed from the text inputs, you can specify the granularity freely.
+
+                - `VOCABULARY`: consider the tokenizer vocabulary tokens as inputs. It forces a `TOKEN` granularity.
         k (int): The number of inputs to use for the interpretation.
+
+    Examples:
+        >>> from datasets import load_dataset
+        >>> from interpreto import ModelWithSplitPoints
+        >>> from interpreto.concepts import NeuronsAsConcepts
+        >>> from interpreto.concepts.interpretations import TopKInputs
+        >>> # load and split the model
+        >>> split = "bert.encoder.layer.1.output"
+        >>> model_with_split_points = ModelWithSplitPoints(
+        ...     "hf-internal-testing/tiny-random-bert",
+        ...     split_points=[split],
+        ...     model_autoclass=AutoModelForMaskedLM,
+        ...     batch_size=4,
+        ... )
+        >>> # NeuronsAsConcepts do not need to be fitted
+        >>> concept_model = NeuronsAsConcepts(model_with_split_points=model_with_split_points, split_point=split)
+        >>> # extracting concept interpretations
+        >>> dataset = load_dataset("cornell-movie-review-data/rotten_tomatoes")["train"]["text"]
+        >>> all_top_k_words = concept_model.interpret(
+        ...     interpretation_method=TopKInputs,
+        ...     granularity=TopKInputs.granularities.WORD,
+        ...     source=TopKInputs.sources.INPUTS,
+        ...     k=2,
+        ...     concepts_indices="all",
+        ...     inputs=dataset,
+        ...     latent_activations=activations,
+        ... )
     """
 
     granularities = ActivationSelectionStrategy
