@@ -324,7 +324,7 @@ class ModelWithSplitPoints(LanguageModel):
                 return activations[:, 0, :]
             case ActivationSelectionStrategy.ALL_TOKENS:
                 return activations.flatten(0, 1)
-            case ActivationSelectionStrategy.TOKEN:
+            case ActivationSelectionStrategy.TOKEN | ActivationSelectionStrategy.SAMPLE:
                 if not isinstance(inputs, BatchEncoding):
                     raise ValueError(
                         "Cannot get indices without a tokenizer if granularity is TOKEN."
@@ -333,9 +333,7 @@ class ModelWithSplitPoints(LanguageModel):
                     )
 
                 # extract indices of activations to keep from inputs
-                # select_strategy and granularities correspond
-                granularity: Granularity = select_strategy.value
-                indices_list = Granularity.get_indices(inputs, granularity, self.tokenizer)
+                indices_list = Granularity.get_indices(inputs, Granularity.TOKEN, self.tokenizer)
 
                 # select activations based on indices
                 activation_list: list[Float[torch.Tensor, "g d"]] = []
@@ -344,6 +342,10 @@ class ModelWithSplitPoints(LanguageModel):
                 for i, indices in enumerate(indices_list):
                     indices_tensor = torch.tensor(indices).squeeze(1)
                     activation_list.append(activations[i, indices_tensor])
+
+                    # aggregate activations for SAMPLE strategy
+                    if select_strategy == ActivationSelectionStrategy.SAMPLE:
+                        activation_list[-1] = aggregation_strategy(activation_list[-1])
 
                 # concat all activations
                 flatten_activations: Float[torch.Tensor, "ng d"] = torch.concat(activation_list, dim=0)
@@ -375,9 +377,6 @@ class ModelWithSplitPoints(LanguageModel):
                 # concat all activations
                 flatten_activations: Float[torch.Tensor, "ng d"] = torch.concat(activation_list, dim=0)
                 return flatten_activations
-            case ActivationSelectionStrategy.SAMPLE:
-                aggregated_activations: Float[torch.Tensor, "n d"] = aggregation_strategy(activations).squeeze(1)
-                return aggregated_activations
             case _:
                 raise ValueError(f"Invalid activation selection strategy: {select_strategy}")
 
