@@ -73,7 +73,7 @@ def test_topk_inputs_from_activations(splitted_encoder_ml: ModelWithSplitPoints)
         model_with_split_points=splitted_encoder_ml,
         split_point=split,
         concept_model=concept_model,
-        granularity=TopKInputs.granularities.TOKEN,
+        activation_granularity=TopKInputs.activation_granularities.TOKEN,
         source=TopKInputs.sources.CONCEPTS_ACTIVATIONS,
         k=k,
     )
@@ -118,15 +118,17 @@ def test_topk_inputs_from_activations(splitted_encoder_ml: ModelWithSplitPoints)
 
 
 @pytest.mark.parametrize(
-    "granularity",
+    "activation_granularity",
     [
-        ModelWithSplitPoints.activation_strategies.TOKEN,
-        ModelWithSplitPoints.activation_strategies.WORD,
-        ModelWithSplitPoints.activation_strategies.SENTENCE,
-        ModelWithSplitPoints.activation_strategies.SAMPLE,
+        ModelWithSplitPoints.activation_granularities.TOKEN,
+        ModelWithSplitPoints.activation_granularities.WORD,
+        ModelWithSplitPoints.activation_granularities.SENTENCE,
+        ModelWithSplitPoints.activation_granularities.SAMPLE,
     ],
 )
-def test_topk_inputs_granularity(splitted_encoder_ml: ModelWithSplitPoints, huge_text: list[str], granularity):
+def test_topk_inputs_granularity(
+    splitted_encoder_ml: ModelWithSplitPoints, huge_text: list[str], activation_granularity
+):
     """
     Test that the `top_k_tokens_for_concept` method works as expected
     Fake activations are given to the `NeuronsAsConcepts` explainer
@@ -137,14 +139,14 @@ def test_topk_inputs_granularity(splitted_encoder_ml: ModelWithSplitPoints, huge
     concept_model = NeuronsAsConcepts(model_with_split_points=splitted_encoder_ml, split_point=split).concept_model
 
     # getting the activations
-    activations = splitted_encoder_ml.get_activations(huge_text, select_strategy=granularity)[split]
+    activations = splitted_encoder_ml.get_activations(huge_text, activation_granularity=activation_granularity)[split]
 
     # initializing the interpreter
     interpretation_method = TopKInputs(
         model_with_split_points=splitted_encoder_ml,
         split_point=split,
         concept_model=concept_model,
-        granularity=granularity,
+        activation_granularity=activation_granularity,
         source=TopKInputs.sources.LATENT_ACTIVATIONS,
         k=2,
     )
@@ -189,13 +191,13 @@ def test_interpret_via_topk_inputs(splitted_encoder_ml: ModelWithSplitPoints):
 
     # getting the activations
     activations = splitted_encoder_ml.get_activations(
-        joined_tokens_list, select_strategy=ModelWithSplitPoints.activation_strategies.TOKEN
+        joined_tokens_list, activation_granularity=ModelWithSplitPoints.activation_granularities.TOKEN
     )
 
     # extracting concept interpretations
     all_top_k_tokens = concept_explainer.interpret(
         interpretation_method=TopKInputs,
-        granularity=TopKInputs.granularities.TOKEN,
+        activation_granularity=TopKInputs.activation_granularities.TOKEN,
         source=TopKInputs.sources.LATENT_ACTIVATIONS,
         k=k,
         concepts_indices="all",
@@ -212,7 +214,7 @@ def test_interpret_via_topk_inputs(splitted_encoder_ml: ModelWithSplitPoints):
     indices = [0, 2, 4]
     subset_top_k_tokens = concept_explainer.interpret(
         interpretation_method=TopKInputs,
-        granularity=TopKInputs.granularities.TOKEN,
+        activation_granularity=TopKInputs.activation_granularities.TOKEN,
         source=TopKInputs.sources.LATENT_ACTIVATIONS,
         k=k,
         concepts_indices=indices,
@@ -227,7 +229,7 @@ def test_interpret_via_topk_inputs(splitted_encoder_ml: ModelWithSplitPoints):
     index = 0
     single_top_k_tokens = concept_explainer.interpret(
         interpretation_method=TopKInputs,
-        granularity=TopKInputs.granularities.TOKEN,
+        activation_granularity=TopKInputs.activation_granularities.TOKEN,
         source=TopKInputs.sources.LATENT_ACTIVATIONS,
         k=k,
         concepts_indices=index,
@@ -260,13 +262,13 @@ def test_topk_inputs_sources(splitted_encoder_ml: ModelWithSplitPoints):
 
     # getting the activations
     activations = splitted_encoder_ml.get_activations(
-        joined_tokens_list, select_strategy=ModelWithSplitPoints.activation_strategies.TOKEN
+        joined_tokens_list, activation_granularity=ModelWithSplitPoints.activation_granularities.TOKEN
     )
 
     # getting the top k tokens
     top_k_inputs = concept_explainer.interpret(
         interpretation_method=TopKInputs,
-        granularity=TopKInputs.granularities.TOKEN,
+        activation_granularity=TopKInputs.activation_granularities.TOKEN,
         source=TopKInputs.sources.INPUTS,
         k=k,
         concepts_indices="all",
@@ -274,7 +276,7 @@ def test_topk_inputs_sources(splitted_encoder_ml: ModelWithSplitPoints):
     )
     top_k_latent = concept_explainer.interpret(
         interpretation_method=TopKInputs,
-        granularity=TopKInputs.granularities.TOKEN,
+        activation_granularity=TopKInputs.activation_granularities.TOKEN,
         source=TopKInputs.sources.LATENT_ACTIVATIONS,
         k=k,
         concepts_indices="all",
@@ -283,7 +285,7 @@ def test_topk_inputs_sources(splitted_encoder_ml: ModelWithSplitPoints):
     )
     top_k_concept = concept_explainer.interpret(
         interpretation_method=TopKInputs,
-        granularity=TopKInputs.granularities.TOKEN,
+        activation_granularity=TopKInputs.activation_granularities.TOKEN,
         source=TopKInputs.sources.CONCEPTS_ACTIVATIONS,
         k=k,
         concepts_indices="all",
@@ -317,7 +319,7 @@ def test_topk_inputs_from_vocabulary(splitted_encoder_ml: ModelWithSplitPoints):
 
     top_k_vocabulary = concept_explainer.interpret(
         interpretation_method=TopKInputs,
-        granularity=TopKInputs.granularities.TOKEN,
+        activation_granularity=TopKInputs.activation_granularities.TOKEN,
         source=TopKInputs.sources.VOCABULARY,
         k=k,
         concepts_indices=torch.randperm(hidden_size)[:nb_concepts].tolist(),
@@ -351,7 +353,7 @@ def test_topk_inputs_error_raising(
             model_with_split_points=splitted_encoder_ml,
             concept_model=concept_model,
             source=TopKInputs.sources.INPUTS,
-            granularity=TopKInputs.granularities.TOKEN,
+            activation_granularity=TopKInputs.activation_granularities.TOKEN,
         )
         method.interpret(
             concepts_indices=0,
@@ -365,7 +367,7 @@ def test_topk_inputs_error_raising(
             model_with_split_points=splitted_encoder_ml,
             concept_model=concept_model,
             source=TopKInputs.sources.LATENT_ACTIVATIONS,
-            granularity=TopKInputs.granularities.TOKEN,
+            activation_granularity=TopKInputs.activation_granularities.TOKEN,
         )
         method.interpret(
             concepts_indices=0,
@@ -379,7 +381,7 @@ def test_topk_inputs_error_raising(
             model_with_split_points=splitted_encoder_ml,
             concept_model=concept_model,
             source=TopKInputs.sources.CONCEPTS_ACTIVATIONS,
-            granularity=TopKInputs.granularities.TOKEN,
+            activation_granularity=TopKInputs.activation_granularities.TOKEN,
         )
         method.interpret(
             concepts_indices=0,
@@ -394,7 +396,7 @@ def test_topk_inputs_error_raising(
                 model_with_split_points=splitted_encoder_ml,
                 concept_model=concept_model,
                 source=TopKInputs.sources.CONCEPTS_ACTIVATIONS,
-                granularity=TopKInputs.granularities.TOKEN,
+                activation_granularity=TopKInputs.activation_granularities.TOKEN,
             )
             method.interpret(
                 concepts_indices=wrong_indices,
@@ -417,7 +419,7 @@ if __name__ == "__main__":
         "Testing interpreto",
     ]
     activation_dict = splitted_encoder_ml.get_activations(
-        sentences, select_strategy=ModelWithSplitPoints.activation_strategies.TOKEN
+        sentences, activation_granularity=ModelWithSplitPoints.activation_granularities.TOKEN
     )
     test_topk_inputs_from_activations(splitted_encoder_ml)
     test_topk_inputs_from_vocabulary(splitted_encoder_ml)
@@ -425,5 +427,5 @@ if __name__ == "__main__":
     test_topk_inputs_sources(splitted_encoder_ml)
     test_topk_inputs_error_raising(splitted_encoder_ml, activation_dict)  # type: ignore
     test_topk_inputs_granularity(
-        splitted_encoder_ml, sentences * 10, ModelWithSplitPoints.activation_strategies.SAMPLE
+        splitted_encoder_ml, sentences * 10, ModelWithSplitPoints.activation_granularities.SAMPLE
     )

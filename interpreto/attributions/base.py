@@ -593,23 +593,24 @@ class GenerationAttributionExplainer(AttributionExplainer):
         # TODO: verify that inputs and targets have the same length
         sanitized_targets: list[torch.Tensor]
         if targets is None:
-            model_inputs_to_explain_basic, sanitized_targets = (
-                self.inference_wrapper.get_inputs_to_explain_and_targets(model_inputs, **model_kwargs)
+            model_inputs_to_explain, sanitized_targets = self.inference_wrapper.get_inputs_to_explain_and_targets(
+                model_inputs, **model_kwargs
             )
         else:
             sanitized_targets = self.process_targets(targets)
-            model_inputs_to_explain_basic = []
+            model_inputs_to_explain = []
             for model_input, target in zip(model_inputs, sanitized_targets, strict=True):
-                model_inputs_to_explain_basic.append(
+                model_inputs_to_explain.append(
                     {
                         "input_ids": torch.cat([model_input["input_ids"], target], dim=1),  # type: ignore
                         "attention_mask": torch.cat([model_input["attention_mask"], torch.ones_like(target)], dim=1),  # type: ignore
                     }
                 )
-        # Add offsets mapping and special tokens mask:
+
+        # Convert to a `BatchEncoding` object and add offsets mapping:
+        # TODO: see if it can be optimized, conversion might be necessary only for WORD and SENTENCE granularity
         model_inputs_to_explain_text = [
-            self.tokenizer.decode(elem["input_ids"][0], skip_special_tokens=True)
-            for elem in model_inputs_to_explain_basic
+            self.tokenizer.decode(elem["input_ids"][0], skip_special_tokens=True) for elem in model_inputs_to_explain
         ]
         model_inputs_to_explain = [
             self.tokenizer(

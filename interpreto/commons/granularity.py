@@ -84,12 +84,24 @@ class Granularity(Enum):
         granularity for each samples.
 
         The result is a *list[list[list[int]]]* where each inner list contains the
-        positions of the tokens that compose one granularity unit:
+        positions of the tokens that compose one granularity unit.
+        The list hierarchy is as follows:
 
-        * **ALL_TOKENS**  ``[[0], [1], ..., [Lp-1]]``
-        * **TOKEN**       same as above but *without* special-token positions
-        * **WORD**        one sub-list per word, e.g.
-                           ``[[1], [2, 3], [4]]`` for “a| beau|tiful| day”
+            - For each sample.
+
+            - For each element for the granularity level. Thus, tokens, words, or sentences.
+
+            - The inner list contains the positions of the tokens that compose one granularity unit.
+
+        The granularity levels are:
+
+            - ``ALL_TOKENS``: All tokens, including special tokens like [PAD], [EOS], [CLS], etc.
+
+            - ``TOKEN``: Strictly tokens of the input.
+
+            - ``WORD``: Tokens are grouped by word.
+
+            - ``SENTENCE``: Tokens are grouped by sentence.
 
         Args:
             inputs_mapping (BatchEncoding): Tokenized inputs, the output of
@@ -102,6 +114,31 @@ class Granularity(Enum):
             NoWordIdsError: if *WORD* granularity is requested with a slow
                             tokenizer.
             NotImplementedError: if an unknown granularity is supplied.
+
+        Examples:
+            >>> from interpreto.commons.granularity import Granularity
+            >>> raw_input_text = [
+            ...     "Interpreto is magical. Or is it?",
+            ...     "At least we try.",
+            ... ]
+            >>> input_text_with_special_tokens = [
+            ...     "[CLS]|Inter|preto| is| magic|al|.| Or| is| it|?|[EOS]",
+            ...     "[CLS]|At| least| we| try|.|[EOS]|[PAD]|[PAD]|[PAD]|[PAD]|[PAD]",
+            ... ]
+            >>> tokenizer = AutoTokenizer.from_pretrained("gpt2")
+            >>> input_ids = tokenizer(raw_input_text, return_tensors="pt")["input_ids"]
+            >>> Granularity.get_indices(input_ids, granularity=Granularity.ALL_TOKENS, tokenizer=tokenizer)
+            [[[0], [1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11]],
+             [[12], [13], [14], [15], [16], [17], [18], [19], [20], [21], [22], [23]]]
+            >>> Granularity.get_indices(input_ids, granularity=Granularity.TOKEN, tokenizer=tokenizer)
+            [[[1], [2], [3], [4], [5], [6], [7], [8], [9], [10]],
+             [[13], [14], [15], [16], [17]]]
+            >>> Granularity.get_indices(input_ids, granularity=Granularity.WORD, tokenizer=tokenizer)
+            [[[1, 2], [3], [4, 5], [6], [7], [8], [9], [10]],
+             [[13], [14], [15], [16], [17]]]
+            >>> Granularity.get_indices(input_ids, granularity=Granularity.SENTENCE, tokenizer=tokenizer)
+            [[[1, 2, 3, 4, 5, 6], [7, 8, 9, 10]],
+             [[13, 14, 15, 16, 17]]]
         """
 
         match granularity or Granularity.DEFAULT:
@@ -114,25 +151,32 @@ class Granularity(Enum):
                         "Cannot get indices without a tokenizer if granularity is TOKEN."
                         + "Please provide a tokenizer or set granularity to ALL_TOKENS."
                     )
-                else:
-                    special_ids = tokenizer.all_special_ids
-                    input_ids: Int[torch.Tensor, "n l"] = inputs["input_ids"]  # type: ignore
-                    return [Granularity.__token_get_indices(tokens_ids, special_ids) for tokens_ids in input_ids]
+
+                special_ids = tokenizer.all_special_ids
+                input_ids: Int[torch.Tensor, "n l"] = inputs["input_ids"]  # type: ignore
+                return [Granularity.__token_get_indices(tokens_ids, special_ids) for tokens_ids in input_ids]
             case Granularity.WORD:
                 if tokenizer is None:
                     raise ValueError(
                         "Cannot get indices without a tokenizer if granularity is WORD."
                         + "Please provide a tokenizer or set granularity to ALL_TOKENS."
                     )
-                elif not tokenizer.is_fast:
+
+                if not tokenizer.is_fast:
                     raise NoWordIdsError()
-                else:
-                    n_inputs = inputs["input_ids"].shape[0]  # type: ignore
-                    return [Granularity.__word_get_indices(inputs.word_ids(i)) for i in range(n_inputs)]
+
+                n_inputs = inputs["input_ids"].shape[0]  # type: ignore
+                return [Granularity.__word_get_indices(inputs.word_ids(i)) for i in range(n_inputs)]
             # spaCy-based levels (require offset_mapping & fast tokenizer)
             case Granularity.SENTENCE as level:
-                if not tokenizer or not tokenizer.is_fast:
-                    raise ValueError(f"{level.value} granularity needs a *fast* tokenizer.")
+                if tokenizer is None:
+                    raise ValueError(
+                        "Cannot get indices without a tokenizer if granularity is TOKEN."
+                        + "Please provide a tokenizer or set granularity to ALL_TOKENS."
+                    )
+
+                # if not tokenizer or not tokenizer.is_fast:
+                #     raise ValueError(f"{level.value} granularity needs a *fast* tokenizer.")
                 if "offset_mapping" not in inputs:
                     raise ValueError(
                         f"{level.value} granularity requires `return_offsets_mapping=True` "

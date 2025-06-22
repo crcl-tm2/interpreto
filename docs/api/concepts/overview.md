@@ -47,9 +47,9 @@ More details in the [`ModelWithSplitPoints` documentation](./model_with_split_po
 
 At this step, there are two important parameters:
 
-- `select_strategy`: specifies which of the `(n, l, d)` activations to return.
-It can be one of `ALL`, `CLS`, `ALL_TOKENS`, `TOKEN`, `WORD`, `SENTENCE`, `SAMPLE`.
-Use `select_strategy=ModelWithSplitPoints.activation_strategies.TOKEN` to specify it.
+- `activation_granularity`: specifies which of the `(n, l, d)` activations to return.
+It can be one of `ALL`, `CLS_TOKEN`, `ALL_TOKENS`, `TOKEN`, `WORD`, `SENTENCE`, `SAMPLE`.
+Use `activation_granularity=ModelWithSplitPoints.activation_granularities.TOKEN` to specify it.
 
 - `aggregation_strategy`: the mode used for inference.
 It can be one of `SUM`, `MEAN`, `MAX`, or `SIGNED_MAX`.

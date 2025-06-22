@@ -24,10 +24,16 @@
 
 import pytest
 import torch
-from transformers import AutoModelForCausalLM, AutoModelForMaskedLM, AutoModelForSequenceClassification, AutoTokenizer
+from transformers import (
+    AutoModelForCausalLM,
+    AutoModelForMaskedLM,
+    AutoModelForSeq2SeqLM,
+    AutoModelForSequenceClassification,
+    AutoTokenizer,
+)
 
 from interpreto import Granularity, ModelWithSplitPoints
-from interpreto.model_wrapping.model_with_split_points import ActivationSelectionStrategy, InitializationError
+from interpreto.model_wrapping.model_with_split_points import ActivationGranularity, InitializationError
 
 BERT_SPLIT_POINTS = [
     "cls.predictions.transform.LayerNorm",
@@ -55,12 +61,18 @@ def test_order_split_points(multi_split_model: ModelWithSplitPoints):
     )
 
 
-def test_loading_possibilities(bert_model, gpt2_model):
+def test_loading_possibilities(bert_model, bert_tokenizer, gpt2_model, gpt2_tokenizer):
     """
     Test loading model with and without split points
     """
+    # ----
+    # BERT
     # Load model with split points
-    model_with_split_points = ModelWithSplitPoints(bert_model, "bert.encoder.layer.1")
+    with pytest.raises(ValueError):  # tokenizer is not set
+        ModelWithSplitPoints(bert_model, "bert.encoder.layer.1")
+    model_with_split_points = ModelWithSplitPoints(
+        bert_model, split_points="bert.encoder.layer.1", tokenizer=bert_tokenizer
+    )
     assert model_with_split_points.split_points == ["bert.encoder.layer.1"]
     # Load model without split points
     model_without_split_points = ModelWithSplitPoints(
@@ -69,8 +81,15 @@ def test_loading_possibilities(bert_model, gpt2_model):
         split_points="bert.encoder.layer.1",
     )
     assert model_without_split_points.split_points == ["bert.encoder.layer.1"]
+
+    # ----
+    # GPT2
     # Load model with split points
-    model_with_split_points = ModelWithSplitPoints(gpt2_model, "transformer.h.1")
+    with pytest.raises(ValueError):  # tokenizer is not set
+        ModelWithSplitPoints(gpt2_model, "transformer.h.1")
+    model_with_split_points = ModelWithSplitPoints(
+        gpt2_model, split_points="transformer.h.1", tokenizer=gpt2_tokenizer
+    )
     assert model_with_split_points.split_points == ["transformer.h.1"]
     # Load model without split points
     model_without_split_points = ModelWithSplitPoints(
@@ -123,38 +142,36 @@ def test_get_activations_selection_strategies(
     total_word_len = sum([len(indices) for indices in Granularity.get_indices(tokens, Granularity.WORD, tokenizer)])
 
     expected_shapes = {
-        # splitted_encoder_ml.activation_strategies.ALL: (batch, seq_len, hidden),
-        splitted_encoder_ml.activation_strategies.CLS: (batch, hidden),
-        splitted_encoder_ml.activation_strategies.ALL_TOKENS: (batch * seq_len, hidden),
-        splitted_encoder_ml.activation_strategies.TOKEN: (total_token_len, hidden),
-        splitted_encoder_ml.activation_strategies.WORD: (total_word_len, hidden),
-        splitted_encoder_ml.activation_strategies.SENTENCE: (len(sentences) + 1, hidden),
-        splitted_encoder_ml.activation_strategies.SAMPLE: (batch, hidden),
+        # splitted_encoder_ml.activation_granularities.ALL: (batch, seq_len, hidden),
+        splitted_encoder_ml.activation_granularities.CLS_TOKEN: (batch, hidden),
+        splitted_encoder_ml.activation_granularities.ALL_TOKENS: (batch * seq_len, hidden),
+        splitted_encoder_ml.activation_granularities.TOKEN: (total_token_len, hidden),
+        splitted_encoder_ml.activation_granularities.WORD: (total_word_len, hidden),
+        splitted_encoder_ml.activation_granularities.SENTENCE: (len(sentences) + 1, hidden),
+        splitted_encoder_ml.activation_granularities.SAMPLE: (batch, hidden),
     }
 
     split = splitted_encoder_ml.split_points[0]
 
     for strategy, shape in expected_shapes.items():
-        activations = splitted_encoder_ml.get_activations(sentences, select_strategy=strategy)
+        activations = splitted_encoder_ml.get_activations(sentences, activation_granularity=strategy)
         assert activations[split].shape == shape
 
 
 @pytest.mark.parametrize(
     "strategy",
     [
-        # ModelWithSplitPoints.activation_strategies.ALL,
-        ModelWithSplitPoints.activation_strategies.CLS,
-        ModelWithSplitPoints.activation_strategies.ALL_TOKENS,
-        ModelWithSplitPoints.activation_strategies.TOKEN,
-        ModelWithSplitPoints.activation_strategies.WORD,
-        ModelWithSplitPoints.activation_strategies.SENTENCE,
-        ModelWithSplitPoints.activation_strategies.SAMPLE,
+        # ModelWithSplitPoints.activation_granularities.ALL,
+        ModelWithSplitPoints.activation_granularities.CLS_TOKEN,
+        ModelWithSplitPoints.activation_granularities.ALL_TOKENS,
+        ModelWithSplitPoints.activation_granularities.TOKEN,
+        ModelWithSplitPoints.activation_granularities.WORD,
+        ModelWithSplitPoints.activation_granularities.SENTENCE,
+        ModelWithSplitPoints.activation_granularities.SAMPLE,
     ],
 )
-def test_batching(
-    splitted_encoder_ml: ModelWithSplitPoints, huge_text: list[str], strategy: ActivationSelectionStrategy
-):
-    splitted_encoder_ml.get_activations(huge_text, select_strategy=strategy)
+def test_batching(splitted_encoder_ml: ModelWithSplitPoints, huge_text: list[str], strategy: ActivationGranularity):
+    splitted_encoder_ml.get_activations(huge_text, activation_granularity=strategy)
 
 
 # TODO: This test was removed because we do not currently handle splitting over layers that return
@@ -178,7 +195,7 @@ ALL_MODEL_LOADERS = {
     "hf-internal-testing/tiny-random-distilbert": AutoModelForSequenceClassification,
     "hf-internal-testing/tiny-random-ElectraModel": AutoModelForSequenceClassification,
     "hf-internal-testing/tiny-random-roberta": AutoModelForSequenceClassification,
-    "hf-internal-testing/tiny-random-t5": AutoModelForSequenceClassification,
+    "hf-internal-testing/tiny-random-t5": AutoModelForSeq2SeqLM,
     # "hf-internal-testing/tiny-xlm-roberta": AutoModelForSequenceClassification,
     "hf-internal-testing/tiny-random-gpt2": AutoModelForCausalLM,
     "hf-internal-testing/tiny-random-gpt_neo": AutoModelForCausalLM,
@@ -199,7 +216,7 @@ ALL_MODEL_SPLIT_POINTS = {
     "hf-internal-testing/tiny-random-distilbert": ["distilbert.transformer.layer.1.ffn"],
     "hf-internal-testing/tiny-random-ElectraModel": ["electra.encoder.layer.1.output"],
     "hf-internal-testing/tiny-random-roberta": ["roberta.encoder.layer.1.output"],
-    "hf-internal-testing/tiny-random-t5": ["transformer.decoder.block.1.layer.2"],
+    "hf-internal-testing/tiny-random-t5": ["decoder.block.1.layer.2"],
     "hf-internal-testing/tiny-xlm-roberta": ["roberta.encoder.layer.1.output"],
     "hf-internal-testing/tiny-random-gpt2": ["transformer.h.1.mlp"],
     "hf-internal-testing/tiny-random-gpt_neo": ["transformer.h.1.mlp"],
@@ -221,13 +238,13 @@ CI_MODEL_LOADERS = [
 ]
 
 STRATEGIES = [
-    ModelWithSplitPoints.activation_strategies.ALL,
-    ModelWithSplitPoints.activation_strategies.CLS,
-    ModelWithSplitPoints.activation_strategies.ALL_TOKENS,
-    ModelWithSplitPoints.activation_strategies.TOKEN,
-    ModelWithSplitPoints.activation_strategies.WORD,
-    ModelWithSplitPoints.activation_strategies.SENTENCE,
-    ModelWithSplitPoints.activation_strategies.SAMPLE,
+    ModelWithSplitPoints.activation_granularities.ALL,
+    ModelWithSplitPoints.activation_granularities.CLS_TOKEN,
+    ModelWithSplitPoints.activation_granularities.ALL_TOKENS,
+    ModelWithSplitPoints.activation_granularities.TOKEN,
+    ModelWithSplitPoints.activation_granularities.WORD,
+    ModelWithSplitPoints.activation_granularities.SENTENCE,
+    ModelWithSplitPoints.activation_granularities.SAMPLE,
 ]
 
 
@@ -244,6 +261,7 @@ def test_activations_long(model_name, huge_text: list[str]):
 
 def evaluate_activations(model_name, huge_text: list[str]):
     """Tests all combinations of models and loaders with an attribution method"""
+
     model = ALL_MODEL_LOADERS[model_name].from_pretrained(model_name)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
@@ -261,7 +279,13 @@ def evaluate_activations(model_name, huge_text: list[str]):
     )
 
     for strategy in STRATEGIES:
-        splitted_model.get_activations(huge_text, select_strategy=strategy)
+        if (
+            ALL_MODEL_LOADERS[model_name] != AutoModelForSequenceClassification
+            and strategy == ModelWithSplitPoints.activation_granularities.CLS_TOKEN
+        ):
+            # CLS_TOKEN is only supported for sequence classification models
+            continue
+        splitted_model.get_activations(huge_text, activation_granularity=strategy)
 
 
 if __name__ == "__main__":
@@ -276,7 +300,7 @@ if __name__ == "__main__":
     splitted_encoder_ml = ModelWithSplitPoints(
         "bert-base-uncased",
         split_points=["bert.encoder.layer.2.output"],
-        model_autoclass=AutoModelForMaskedLM,  # type: ignore
+        model_autoclass=AutoModelForSequenceClassification,  # type: ignore
         device_map="auto",
         batch_size=4,
     )
@@ -293,11 +317,13 @@ if __name__ == "__main__":
     )
 
     bert_model = AutoModelForSequenceClassification.from_pretrained("hf-internal-testing/tiny-random-bert")
+    bert_tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-bert")
     gpt2_model = AutoModelForCausalLM.from_pretrained("hf-internal-testing/tiny-random-gpt2")
+    gpt2_tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-gpt2")
 
     test_order_split_points(multi_split_model)
-    test_loading_possibilities(bert_model, gpt2_model)
+    test_loading_possibilities(bert_model, bert_tokenizer, gpt2_model, gpt2_tokenizer)
     test_activation_equivalence_batched_text_token_inputs(multi_split_model)
     test_get_activations_selection_strategies(splitted_encoder_ml, sentences)
-    test_batching(splitted_encoder_ml, sentences * 10, ModelWithSplitPoints.activation_strategies.WORD)
-    evaluate_activations("hf-internal-testing/tiny-random-bert", sentences * 100)
+    test_batching(splitted_encoder_ml, sentences * 10, ModelWithSplitPoints.activation_granularities.CLS_TOKEN)
+    evaluate_activations("hf-internal-testing/tiny-random-t5", sentences * 100)

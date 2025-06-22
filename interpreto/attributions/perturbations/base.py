@@ -134,7 +134,8 @@ class Perturbator:
         """
         Method called when we ask the perturbator to perturb a mapping of tensors, generally the output of a tokenizer
         The mapping should be similar to mappings returned by the tokenizer.
-        It should at least have "input_ids" and "attention_mask"
+        It should at least have "input_ids" and "attention_mask".
+        Optionally, it "offsets_mapping" might be required for the `SENTENCE` granularity.
         Give directly the output of the tokenizer without modifying it would be the best and most common way to use this method
 
         Args:

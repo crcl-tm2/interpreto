@@ -38,7 +38,7 @@ from jaxtyping import Float
 
 from interpreto import Granularity, ModelWithSplitPoints
 from interpreto.concepts.interpretations.base import BaseConceptInterpretationMethod
-from interpreto.model_wrapping.model_with_split_points import ActivationSelectionStrategy
+from interpreto.model_wrapping.model_with_split_points import ActivationGranularity
 from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentActivations
 
 
@@ -91,7 +91,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
         model_with_split_points (ModelWithSplitPoints): The model with split points to use for the interpretation.
         split_point (str): The split point to use for the interpretation.
         concept_model (ConceptModelProtocol): The concept model to use for the interpretation.
-        granularity (Granularity): The granularity at which the interpretation is computed.
+        activation_granularity (ActivationGranularity): The granularity at which the interpretation is computed.
             Allowed values are `TOKEN`, `WORD`, `SENTENCE`, and `SAMPLE`.
             Ignored for source `VOCABULARY`.
         source (InterpretationSources): In any case, TopKInputs requires concept-activations and inputs.
@@ -127,7 +127,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
         >>> dataset = load_dataset("cornell-movie-review-data/rotten_tomatoes")["train"]["text"]
         >>> all_top_k_words = concept_model.interpret(
         ...     interpretation_method=TopKInputs,
-        ...     granularity=TopKInputs.granularities.WORD,
+        ...     activation_granularity=TopKInputs.activation_granularities.WORD,
         ...     source=TopKInputs.sources.INPUTS,
         ...     k=2,
         ...     concepts_indices="all",
@@ -136,7 +136,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
         ... )
     """
 
-    granularities = ActivationSelectionStrategy
+    activation_granularities = ActivationGranularity
     sources = InterpretationSources
 
     def __init__(
@@ -144,7 +144,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
         *,
         model_with_split_points: ModelWithSplitPoints,
         concept_model: ConceptModelProtocol,
-        granularity: ActivationSelectionStrategy = ActivationSelectionStrategy.WORD,
+        activation_granularity: ActivationGranularity = ActivationGranularity.WORD,
         source: InterpretationSources,
         split_point: str | None = None,
         k: int = 5,
@@ -156,17 +156,17 @@ class TopKInputs(BaseConceptInterpretationMethod):
         if source not in InterpretationSources:
             raise ValueError(f"The source {source} is not supported. Supported sources: {InterpretationSources}")
 
-        if granularity not in (
-            ActivationSelectionStrategy.TOKEN,
-            ActivationSelectionStrategy.WORD,
-            ActivationSelectionStrategy.SENTENCE,
-            ActivationSelectionStrategy.SAMPLE,
+        if activation_granularity not in (
+            ActivationGranularity.TOKEN,
+            ActivationGranularity.WORD,
+            ActivationGranularity.SENTENCE,
+            ActivationGranularity.SAMPLE,
         ):
             raise ValueError(
-                f"The granularity {granularity} is not supported. Supported granularities: TOKEN, WORD, SENTENCE, and SAMPLE"
+                f"The granularity {activation_granularity} is not supported. Supported `activation_granularities`: TOKEN, WORD, SENTENCE, and SAMPLE"
             )
 
-        self.granularity = granularity
+        self.activation_granularity = activation_granularity
         self.source = source
         self.k = k
 
@@ -198,7 +198,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
             # compute the vocabulary's latent activations
             input_tensor: Float[torch.Tensor, "v 1"] = torch.tensor(input_ids).unsqueeze(1)
             activations_dict: dict[str, LatentActivations] = self.model_with_split_points.get_activations(
-                input_tensor, select_strategy=ModelWithSplitPoints.activation_strategies.ALL_TOKENS
+                input_tensor, activation_granularity=ModelWithSplitPoints.activation_granularities.ALL_TOKENS
             )
             latent_activations = self.model_with_split_points.get_split_activations(
                 activations_dict, split_point=self.split_point
@@ -211,7 +211,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
         # inputs source: compute the latent activations from the inputs
         if source is InterpretationSources.INPUTS:
             activations_dict: dict[str, LatentActivations] = self.model_with_split_points.get_activations(
-                inputs, select_strategy=self.granularity
+                inputs, activation_granularity=self.activation_granularity
             )
             latent_activations = self.model_with_split_points.get_split_activations(
                 activations_dict, split_point=self.split_point
@@ -246,18 +246,18 @@ class TopKInputs(BaseConceptInterpretationMethod):
 
     def _get_granular_inputs(self, inputs: list[str]) -> list[str]:
         if self.source is InterpretationSources.VOCABULARY:
-            # no granularity is needed
+            # no activation_granularity is needed
             return inputs
 
         tokens = self.model_with_split_points.tokenizer(
             inputs, return_tensors="pt", padding=True, return_offsets_mapping=True
         )
-        if self.granularity is ActivationSelectionStrategy.SAMPLE:
+        if self.activation_granularity is ActivationGranularity.SAMPLE:
             granular_inputs: list[str] = inputs
         else:
             list_list_str: list[list[str]] = Granularity.get_decomposition(
                 tokens,
-                granularity=self.granularity.value,  # type: ignore
+                granularity=self.activation_granularity.value,  # type: ignore
                 tokenizer=self.model_with_split_points.tokenizer,
                 return_text=True,
             )  # type: ignore
@@ -341,7 +341,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
         """
         Give the interpretation of the concepts dimensions in the latent space into a human-readable format.
         The interpretation is a mapping between the concepts indices and a list of inputs allowing to interpret them.
-        The granularity of input examples is determined by the `granularity` class attribute.
+        The granularity of input examples is determined by the `activation_granularity` class attribute.
 
         The returned inputs are the most activating inputs for the concepts.
 

@@ -63,7 +63,7 @@ def splitted_encoder_ml() -> ModelWithSplitPoints:
     return ModelWithSplitPoints(
         "hf-internal-testing/tiny-random-bert",
         split_points=["bert.encoder.layer.1.output"],
-        model_autoclass=AutoModelForMaskedLM,  # type: ignore
+        model_autoclass=AutoModelForSequenceClassification,  # type: ignore
         batch_size=4,
         device_map=device,
     )
@@ -72,7 +72,7 @@ def splitted_encoder_ml() -> ModelWithSplitPoints:
 @fixture(scope="session")
 def activations_dict(splitted_encoder_ml: ModelWithSplitPoints, sentences: list[str]) -> dict[str, LatentActivations]:
     return splitted_encoder_ml.get_activations(
-        sentences, select_strategy=ModelWithSplitPoints.activation_strategies.TOKEN
+        sentences, activation_granularity=ModelWithSplitPoints.activation_granularities.TOKEN
     )  # type: ignore
 
 

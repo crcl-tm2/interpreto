@@ -185,7 +185,7 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
         assert len(split_activations.shape) == 2, (
             f"Input activations should be a 2D tensor of shape (batch_size, n_features) but got {split_activations.shape}. "
             + "If you use `ModelWithSplitPoints.get_activations()`, "
-            + "make sure to set `select_strategy=ModelWithSplitPoints.activation_strategies.ALL_TOKENS` to get a 2D activation tensor."
+            + "make sure to set `activation_granularity=ModelWithSplitPoints.activation_granularities.ALL_TOKENS` to get a 2D activation tensor."
         )
         return split_activations
 
