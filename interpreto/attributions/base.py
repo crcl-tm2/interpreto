@@ -31,6 +31,7 @@ from __future__ import annotations
 import itertools
 from abc import abstractmethod
 from collections.abc import Callable, Iterable, MutableMapping
+from enum import Enum
 from typing import Any
 
 import torch
@@ -50,6 +51,16 @@ from interpreto.typing import ClassificationTarget, GeneratedTarget, ModelInputs
 SingleAttribution = (
     Float[torch.Tensor, "l"] | Float[torch.Tensor, "l c"] | Float[torch.Tensor, "l l_g"] | Float[torch.Tensor, "l l_t"]
 )
+
+
+class ModelTask(Enum):
+    """
+    Enum to represent the model task type.
+    """
+
+    SINGLE_CLASS_CLASSIFICATION = "single-class classification"
+    MULTI_CLASS_CLASSIFICATION = "multi-class classification"
+    GENERATION = "generation"
 
 
 def clone_tensor_mapping(tm: TensorMapping, detach: bool = False) -> TensorMapping:
@@ -77,7 +88,7 @@ class AttributionOutput:
         self,
         attributions: SingleAttribution,
         elements: list[str] | torch.Tensor,
-        model_task: str,
+        model_task: ModelTask,
         classes: torch.Tensor | None = None,
     ):
         """
@@ -100,7 +111,7 @@ class AttributionOutput:
                     - Token classification: `(l_t, l)`, where `l_t` is the number of token classes. When the tokens are disturbed, l = l_t.
             elements (Iterable[list[str]] | Iterable[torch.Tensor]): A list or tensor representing the elements for which attributions are computed.
                 - These elements can be tokens, words, sentences, or tensors of size `l`.
-            model_task (str): A string representing the task of the model explained, such as "single-class classification", "multi-class classification", or "generation".
+            model_task (ModelTask): An enum representing the task of the model explained, such as SINGLE_CLASS_CLASSIFICATION, MULTI_CLASS_CLASSIFICATION, or GENERATION.
             classes (torch.Tensor | None): Optional tensor of class labels.
                 - For single-class classification: tensor of shape `(1)`
                 - For multi-class classification: tensor of shape `(c)` where `c` is the number of classes
@@ -388,20 +399,20 @@ class AttributionExplainer:
             contributions, granular_inputs_texts, sanitized_targets, strict=True
         ):
             if self.inference_wrapper.__class__.__name__ == "GenerationInferenceWrapper":
-                model_task_str = "generation"
+                model_task = ModelTask.GENERATION
                 classes = None
             elif self.inference_wrapper.__class__.__name__ == "ClassificationInferenceWrapper":
                 classes = target
                 if contribution.dim() == 1:
-                    model_task_str = "single-class classification"
+                    model_task = ModelTask.SINGLE_CLASS_CLASSIFICATION
                 else:
-                    model_task_str = "multi-class classification"
+                    model_task = ModelTask.MULTI_CLASS_CLASSIFICATION
             else:
                 raise NotImplementedError(
                     f"Model type {self.inference_wrapper.model.__class__.__name__} not supported for AttributionExplainer."
                 )
             attribution_output = AttributionOutput(
-                attributions=contribution, elements=elements, model_task=model_task_str, classes=classes
+                attributions=contribution, elements=elements, model_task=model_task, classes=classes
             )
             results.append(attribution_output)
         return results
