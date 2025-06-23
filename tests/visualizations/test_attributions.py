@@ -7,8 +7,8 @@ from interpreto.attributions.base import (
     AttributionOutput,
     ModelTask
 )
-from interpreto.visualizations.attributions.classification_highlight import (
-    HightlightAttributionVisualization
+from interpreto.visualizations.attributions import (
+    AttributionVisualization
 )
 from interpreto.visualizations.concepts.concepts_highlight import (
     ConceptHighlightVisualization,
@@ -24,7 +24,7 @@ def test_attribution_monoclass():
     current_dir = os.path.dirname(os.path.abspath(__file__))
     output_file_path = os.path.join(current_dir, "test_attribution_monoclass.html")
 
-    viz = HightlightAttributionVisualization(attribution_output=single_class_classification_output)
+    viz = AttributionVisualization(attribution_output=single_class_classification_output)
 
     # remove the file if it already exists
     if os.path.exists(output_file_path):
@@ -47,7 +47,7 @@ def test_attribution_multiclass():
     attributions = torch.rand(nb_classes, len(sentence))  # (c, l)
     multi_class_classification_output = AttributionOutput(elements=sentence, attributions=attributions, model_task=ModelTask.MULTI_CLASS_CLASSIFICATION)
 
-    viz = HightlightAttributionVisualization(
+    viz = AttributionVisualization(
         attribution_output=multi_class_classification_output,
         class_names=["class1", "class2"],
     )
@@ -78,7 +78,7 @@ def test_attribution_generation():
 
     generation_output = make_attributions_outputs(inputs_sentence, outputs_sentence)
 
-    viz = HightlightAttributionVisualization(attribution_output=generation_output)
+    viz = AttributionVisualization(attribution_output=generation_output)
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     output_file_path = os.path.join(current_dir, "test_attribution_generation.html")

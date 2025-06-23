@@ -34,7 +34,7 @@ from interpreto.attributions.base import AttributionOutput, ModelTask
 from interpreto.visualizations.base import BaseAttributionVisualization, tensor_to_list
 
 
-class HightlightAttributionVisualization(BaseAttributionVisualization):
+class AttributionVisualization(BaseAttributionVisualization):
     """
     Class for attributions visualization
     """
