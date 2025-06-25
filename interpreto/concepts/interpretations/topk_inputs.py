@@ -101,6 +101,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
         activation_granularity: ActivationGranularity = ActivationGranularity.WORD,
         split_point: str | None = None,
         k: int = 5,
+        use_vocab: bool = False,
     ):
         super().__init__(
             model_with_split_points=model_with_split_points, concept_model=concept_model, split_point=split_point
@@ -118,6 +119,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
 
         self.activation_granularity = activation_granularity
         self.k = k
+        self.use_vocab = use_vocab
 
     def interpret(
         self,
@@ -125,7 +127,6 @@ class TopKInputs(BaseConceptInterpretationMethod):
         inputs: list[str] | None = None,
         latent_activations: LatentActivations | None = None,
         concepts_activations: ConceptsActivations | None = None,
-        use_vocab: bool = False,
     ) -> Mapping[int, Any]:
         """
         Give the interpretation of the concepts dimensions in the latent space into a human-readable format.
@@ -157,12 +158,15 @@ class TopKInputs(BaseConceptInterpretationMethod):
         # compute the concepts activations from the provided source, can also create inputs from the vocabulary
         sure_inputs: list[str]  # Verified by concepts_activations_from_source
         sure_concepts_activations: Float[torch.Tensor, "ng cpt"]  # Verified by concepts_activations_from_source
-        sure_inputs, sure_concepts_activations = self.concepts_activations_from_source(
-            inputs=inputs,
-            latent_activations=latent_activations,
-            concepts_activations=concepts_activations,
-            use_vocab=use_vocab,
-        )
+
+        if self.use_vocab:
+            sure_inputs, sure_concepts_activations = self.concepts_activations_from_vocab()
+        else:
+            sure_inputs, sure_concepts_activations = self.concepts_activations_from_source(
+                inputs=inputs,
+                latent_activations=latent_activations,
+                concepts_activations=concepts_activations,
+            )
 
         concepts_indices = verify_concepts_indices(
             concepts_activations=sure_concepts_activations, concepts_indices=concepts_indices
@@ -191,8 +195,8 @@ class TopKInputs(BaseConceptInterpretationMethod):
             concepts_indices=concepts_indices,
         )
 
-    def _get_granular_inputs(self, inputs: list[str], from_vocab: bool = False) -> list[str]:
-        if from_vocab:
+    def _get_granular_inputs(self, inputs: list[str]) -> list[str]:
+        if self.use_vocab:
             # no activation_granularity is needed
             return inputs
 

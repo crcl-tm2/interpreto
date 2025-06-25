@@ -85,7 +85,6 @@ class BaseConceptInterpretationMethod(ABC):
         inputs: list[str] | None = None,
         latent_activations: LatentActivations | None = None,
         concepts_activations: ConceptsActivations | None = None,
-        use_vocab: bool = False,
     ) -> Mapping[int, Any]:
         """
         Interpret the concepts dimensions in the latent space into a human-readable format.
@@ -110,11 +109,7 @@ class BaseConceptInterpretationMethod(ABC):
         inputs: list[str] | None = None,
         latent_activations: Float[torch.Tensor, "nl d"] | None = None,
         concepts_activations: Float[torch.Tensor, "nl cpt"] | None = None,
-        use_vocab: bool = False,
     ) -> tuple[list[str], Float[torch.Tensor, "nl cpt"]]:
-        if use_vocab:
-            return self._concepts_activations_from_vocab()
-
         if inputs is None:
             raise ValueError("Inputs are required to compute concept activations.")
 
@@ -140,7 +135,7 @@ class BaseConceptInterpretationMethod(ABC):
 
         return inputs, concepts_activations
 
-    def _concepts_activations_from_vocab(
+    def concepts_activations_from_vocab(
         self,
     ) -> tuple[list[str], Float[torch.Tensor, "nl cpt"]]:
         """
