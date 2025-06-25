@@ -32,10 +32,10 @@ from typing import NamedTuple
 import torch
 from jaxtyping import Float
 
-from interpreto.commons import ModelWithSplitPoints
-from interpreto.commons.model_wrapping.llm_interface import LLMInterface, Role
+from interpreto import ModelWithSplitPoints
 from interpreto.concepts.interpretations.base import BaseConceptInterpretationMethod, verify_concepts_indices
-from interpreto.concepts.interpretations.topk_inputs import Granularities
+from interpreto.model_wrapping.llm_interface import LLMInterface, Role
+from interpreto.model_wrapping.model_with_split_points import ActivationGranularity
 from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentActivations
 
 
@@ -69,7 +69,7 @@ class LLMLabels(BaseConceptInterpretationMethod):
         model_with_split_points: ModelWithSplitPoints,
         concept_model: ConceptModelProtocol,
         split_point: str | None = None,
-        granularity: Granularities,
+        activation_granularity: ActivationGranularity = ActivationGranularity.TOKEN,
         llm_interface: LLMInterface,
         sampling_method: SAMPLING_METHOD,
         k_examples: int = 30,
@@ -79,9 +79,10 @@ class LLMLabels(BaseConceptInterpretationMethod):
             model_with_split_points=model_with_split_points, split_point=split_point, concept_model=concept_model
         )
 
-        if granularity is not Granularities.TOKENS:
+        if activation_granularity is not ActivationGranularity.TOKEN:
             raise NotImplementedError("Only token granularity is currently supported for interpretation.")
-        self.granularity = granularity
+        self.activation_granularity = activation_granularity
+
         self.llm_interface = llm_interface
         self.sampling_method = sampling_method
         self.k_examples = k_examples
@@ -160,11 +161,6 @@ class LLMLabels(BaseConceptInterpretationMethod):
             # no granularity is needed
             return inputs, concepts_activations, list(range(len(inputs)))
 
-        if self.granularity is not Granularities.TOKENS:
-            raise NotImplementedError(
-                f"Granularity {self.granularity} is not yet implemented, only `TOKEN` is supported for now."
-            )
-
         max_seq_len = concepts_activations.shape[0] / len(inputs)
         if max_seq_len != int(max_seq_len):
             raise ValueError(
@@ -195,12 +191,9 @@ class LLMLabels(BaseConceptInterpretationMethod):
         concept_idx: int,
     ) -> list[Example]:
         """
+        Only token granularity suported for now
         Select self.k_examples from the tokens and get their context and text
         """
-        if self.granularity is not Granularities.TOKENS:
-            raise NotImplementedError(
-                f"Granularity {self.granularity} is not yet implemented, only `TOKEN` is supported for now."
-            )
 
         if self.sampling_method == SAMPLING_METHOD.TOP:
             _, token_indices = torch.topk(concepts_activations[:, concept_idx], k=self.k_examples)

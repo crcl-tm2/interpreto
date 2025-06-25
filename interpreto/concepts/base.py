@@ -35,13 +35,12 @@ from textwrap import dedent
 from typing import Any, Generic, Literal, TypeVar
 
 import torch
-from nnsight.intervention.graph import InterventionProxy
 from overcomplete.base import BaseDictionaryLearning
 
 from interpreto.attributions.base import AttributionExplainer
-from interpreto.commons.model_wrapping.model_with_split_points import ModelWithSplitPoints
 from interpreto.concepts.interpretations.base import BaseConceptInterpretationMethod
-from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentActivations, ModelInput
+from interpreto.model_wrapping.model_with_split_points import ModelWithSplitPoints
+from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentActivations, ModelInputs
 
 ConceptModel = TypeVar("ConceptModel", bound=ConceptModelProtocol)
 BDL = TypeVar("BDL", bound=BaseDictionaryLearning)
@@ -129,11 +128,11 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
             )""")
 
     @abstractmethod
-    def fit(self, activations: LatentActivations | InterventionProxy, *args, **kwargs) -> Any:
+    def fit(self, activations: LatentActivations | dict[str, LatentActivations], *args, **kwargs) -> Any:
         """Fits `concept_model` on the given activations.
 
         Args:
-            activations (dict[str, torch.Tensor]): A dictionary with model paths as keys and the corresponding
+            activations (torch.Tensor | dict[str, torch.Tensor]): A dictionary with model paths as keys and the corresponding
                 tensors as values.
 
         Returns:
@@ -177,22 +176,22 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
 
     def _sanitize_activations(
         self,
-        activations: LatentActivations | InterventionProxy,
+        activations: LatentActivations | dict[str, LatentActivations],
     ) -> LatentActivations:
-        if isinstance(activations, InterventionProxy):
-            split_activations: LatentActivations = self.model_with_split_points.get_split_activations(activations)
+        if isinstance(activations, dict):
+            split_activations: LatentActivations = self.model_with_split_points.get_split_activations(activations)  # type: ignore
         else:
             split_activations = activations
         assert len(split_activations.shape) == 2, (
             f"Input activations should be a 2D tensor of shape (batch_size, n_features) but got {split_activations.shape}. "
             + "If you use `ModelWithSplitPoints.get_activations()`, "
-            + "make sure to set `select_strategy=ActivationSelectionStrategy.FLATTEN` to get a 2D activation tensor."
+            + "make sure to set `activation_granularity=ModelWithSplitPoints.activation_granularities.ALL_TOKENS` to get a 2D activation tensor."
         )
         return split_activations
 
     def _prepare_fit(
         self,
-        activations: LatentActivations | InterventionProxy,
+        activations: LatentActivations | dict[str, LatentActivations],
         overwrite: bool,
     ) -> LatentActivations:
         if self.is_fitted and not overwrite:
@@ -208,7 +207,7 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
         interpretation_method: type[BaseConceptInterpretationMethod],
         concepts_indices: int | list[int] | Literal["all"],
         inputs: list[str] | None = None,
-        latent_activations: InterventionProxy | LatentActivations | None = None,
+        latent_activations: dict[str, LatentActivations] | LatentActivations | None = None,
         concepts_activations: ConceptsActivations | None = None,
         **kwargs,
     ) -> Mapping[int, Any]:
@@ -221,6 +220,13 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
             interpretation_method: The interpretation method to use to interpret the concepts.
             concepts_indices (int | list[int] | Literal["all"]): The indices of the concepts to interpret.
                 If "all", all concepts are interpreted.
+            inputs (list[str] | None): The inputs to use for the interpretation.
+                Necessary if the source is not `VOCABULARY`, as examples are extracted from the inputs.
+            latent_activations (LatentActivations | dict[str, LatentActivations] | None): The latent activations to use for the interpretation.
+                Necessary if the source is `LATENT_ACTIVATIONS`.
+                Otherwise, it is computed from the inputs or ignored if the source is `CONCEPT_ACTIVATIONS`.
+            concepts_activations (ConceptsActivations | None): The concepts activations to use for the interpretation.
+                Necessary if the source is not `CONCEPT_ACTIVATIONS`. Otherwise, it is computed from the latent activations.
             **kwargs: Additional keyword arguments to pass to the interpretation method.
 
         Returns:
@@ -254,7 +260,7 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
     @check_fitted
     def input_concept_attribution(
         self,
-        inputs: ModelInput,
+        inputs: ModelInputs,
         concept: int,
         attribution_method: type[AttributionExplainer],
         **attribution_kwargs,
@@ -262,7 +268,7 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
         """Attributes model inputs for a selected concept.
 
         Args:
-            inputs (ModelInput): The input data, which can be a string, a list of tokens/words/clauses/sentences
+            inputs (ModelInputs): The input data, which can be a string, a list of tokens/words/clauses/sentences
                 or a dataset.
             concept (int): Index identifying the position of the concept of interest (score in the
                 `ConceptsActivations` tensor) for which relevant input elements should be retrieved.
@@ -369,7 +375,7 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
     @check_fitted
     def concept_output_attribution(
         self,
-        inputs: ModelInput,
+        inputs: ModelInputs,
         concepts: ConceptsActivations,
         target: int,
         attribution_method: type[AttributionExplainer],
@@ -378,7 +384,7 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
         """Computes the attribution of each concept for the logit of a target output element.
 
         Args:
-            inputs (ModelInput): An input data-point for the model.
+            inputs (ModelInputs): An input data-point for the model.
             concepts (torch.Tensor): Concept activation tensor.
             target (int): The target class for which the concept output attribution should be computed.
             attribution_method: The attribution method to obtain importance scores for input elements.

@@ -28,7 +28,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "interpreto"
-version = "0.1.0"
+version = "0.3.0"
 description = "Interpretability toolbox for LLMs"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -70,6 +70,8 @@ dependencies = [
   "overcomplete>=0.2.3",
   "nnsight>=0.4.0",
   "jaxtyping<=0.2.36",
+  "beartype",
+  "mknotebooks",
   "nvidia-cublas-cu11>=11.10.3.66; sys_platform=='Linux'",
   "nvidia-cuda-cupti-cu11>=11.7.101; sys_platform=='Linux'",
   "nvidia-cuda-nvrtc-cu11>=11.7.99; sys_platform=='Linux'",
@@ -109,6 +111,10 @@ lint = [
 notebook = [
   "ipykernel>=6.29.2",
   "ipywidgets>=8.1.2"
+]
+spacy = [
+  "spacy>=3.8",
+  "pip"
 ]
 
 [project.urls]
@@ -209,6 +215,7 @@ ignore = [
   "PLR2004", # unnamed numerical constants used
   "PLR0913", # too many arguments
   "PLR0915", # too many statements
+  "UP037", # invalid type annotation (incompatible with single dimension jaxtyping)
   "W191", # indentation contains tabs (handled by format)
 ]
 select = [

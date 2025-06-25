@@ -22,6 +22,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from .topk_inputs import Granularities, TopKInputs
+from .topk_inputs import TopKInputs
 
-__all__ = ["Granularities", "TopKInputs"]
+__all__ = ["TopKInputs"]

@@ -34,10 +34,9 @@ from typing import Any
 
 import torch
 from jaxtyping import Float
-from nnsight.intervention.graph import InterventionProxy
 
-from interpreto.commons import ActivationSelectionStrategy, ModelWithSplitPoints
-from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentActivations, ModelInput
+from interpreto import ModelWithSplitPoints
+from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentActivations
 
 
 class BaseConceptInterpretationMethod(ABC):
@@ -83,7 +82,7 @@ class BaseConceptInterpretationMethod(ABC):
     def interpret(
         self,
         concepts_indices: int | list[int],
-        inputs: ModelInput | None = None,
+        inputs: list[str] | None = None,
         latent_activations: LatentActivations | None = None,
         concepts_activations: ConceptsActivations | None = None,
         use_vocab: bool = False,
@@ -123,16 +122,22 @@ class BaseConceptInterpretationMethod(ABC):
             return inputs, concepts_activations
 
         if latent_activations is not None:
-            concepts_activations = concept_model.encode(latent_activations)
+            concepts_activations = self.concept_model.encode(latent_activations)
+            if isinstance(concepts_activations, tuple):
+                concepts_activations = concepts_activations[1]  # temporary fix, issue #65
             return inputs, concepts_activations
 
-        activations_dict: InterventionProxy = self.model_with_split_points.get_activations(
-            inputs, select_strategy=ActivationSelectionStrategy.FLATTEN
+        activations_dict: dict[str, LatentActivations] = self.model_with_split_points.get_activations(
+            inputs,
+            activation_granularity=self.activation_granularity,  # TODO
         )
         latent_activations = self.model_with_split_points.get_split_activations(
             activations_dict, split_point=self.split_point
         )
         concepts_activations = self.concept_model.encode(latent_activations)
+        if isinstance(concepts_activations, tuple):
+            concepts_activations = concepts_activations[1]  # temporary fix, issue #65
+
         return inputs, concepts_activations
 
     def _concepts_activations_from_vocab(
@@ -152,16 +157,18 @@ class BaseConceptInterpretationMethod(ABC):
                 - The concept activations for each token
         """
         # extract and sort the vocabulary
+        # extract and sort the vocabulary
         vocab_dict: dict[str, int] = self.model_with_split_points.tokenizer.get_vocab()
         input_ids: list[int]
         inputs, input_ids = zip(*vocab_dict.items(), strict=True)  # type: ignore
 
+        # compute the vocabulary's latent activations
         input_tensor: Float[torch.Tensor, "v 1"] = torch.tensor(input_ids).unsqueeze(1)
-        activations_dict: InterventionProxy = self.model_with_split_points.get_activations(
-            input_tensor, select_strategy=ActivationSelectionStrategy.FLATTEN
-        )  # TODO: verify `ModelWithSplitPoints.get_activations()` can take in ids
+        activations_dict: dict[str, LatentActivations] = self.model_with_split_points.get_activations(
+            input_tensor, activation_granularity=ModelWithSplitPoints.activation_granularities.ALL_TOKENS
+        )
         latent_activations = self.model_with_split_points.get_split_activations(
-            activations_dict, split_point=split_point
+            activations_dict, split_point=self.split_point
         )
         concepts_activations = self.concept_model.encode(latent_activations)
         return inputs, concepts_activations  # type: ignore

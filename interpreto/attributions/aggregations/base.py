@@ -1,28 +1,53 @@
+# MIT License
+#
+# Copyright (c) 2025 IRT Antoine de Saint Exupéry et Université Paul Sabatier Toulouse III - All
+# rights reserved. DEEL and FOR are research programs operated by IVADO, IRT Saint Exupéry,
+# CRIAQ and ANITI - https://www.deel.ai/.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 """
 Aggregations used at the end of an attribution method
 """
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterable
-from typing import Any
+from collections.abc import Callable
 
 import torch
+from beartype import beartype
+from jaxtyping import Float, jaxtyped
+from torch import Tensor
 
 
-class Aggregator(ABC):
+class Aggregator:
     """
     Abstract class for aggregation made at the end of attribution methods
     """
 
-    @abstractmethod
-    def aggregate(self, results: Iterable[Any], mask) -> Any:
+    def aggregate(self, results: torch.Tensor, mask) -> torch.Tensor:
         """
         Get results from multiple "Inference wrappers", aggregate results and gives an explanation
         """
+        return results.squeeze(0)
 
-    def __call__(self, results: Iterable[Any], mask: Any):
+    def __call__(self, results: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
         return self.aggregate(results, mask)
 
 
@@ -31,11 +56,15 @@ class TorchAggregator(Aggregator):
     Basic aggregator using built-in torch methods to perform aggregation
     """
 
-    _method: Callable
+    _method: Callable[[torch.Tensor, int], torch.Tensor]
 
-    def aggregate(self, results: torch.Tensor, _) -> torch.Tensor:
-        # TODO: check dimension with explicit jax typing for results parameter
-        return self._method(results, dim=1)
+    @jaxtyped(typechecker=beartype)
+    def aggregate(
+        self,
+        results: Float[Tensor, "p t l"],
+        mask: torch.Tensor | None = None,
+    ) -> Float[Tensor, "t l"]:
+        return self._method(results, dim=0)  # type: ignore
 
 
 class MeanAggregator(TorchAggregator):
@@ -48,13 +77,12 @@ class MeanAggregator(TorchAggregator):
 
 class SquaredMeanAggregator(Aggregator):
     """
-    Square of mean of attributions
+    Mean of squares of attributions
     """
 
-    # TODO : remake this class with __method as a function chain of torch.mean and torch.square
-    # _method=torch.mean
-    def aggregate(self, results: torch.Tensor, _) -> Any:
-        return torch.mean(torch.square(results), _)
+    @staticmethod
+    def _method(results: torch.Tensor, dim: int = 0) -> torch.Tensor:
+        return torch.mean(torch.square(results), dim=dim)
 
 
 class SumAggregator(TorchAggregator):
@@ -71,3 +99,42 @@ class VarianceAggregator(TorchAggregator):
     """
 
     _method = torch.var
+
+
+class MaskwiseMeanAggregator(Aggregator):
+    """Average scores for each target weighted by their perturbation mask.
+
+    This aggregator assumes that ``results`` contains one score per
+    perturbation and target and that ``mask`` indicates which input elements were
+    perturbed. The returned tensor has one importance score per target and input
+    element.
+    """
+
+    @jaxtyped(typechecker=beartype)
+    def aggregate(
+        self,
+        results: Float[Tensor, "p t"],
+        mask: Float[Tensor, "p l"],
+    ) -> Float[Tensor, "t l"]:
+        return torch.einsum("pt,pl->tl", results, mask) / mask.sum(dim=0)
+
+
+class OcclusionAggregator(Aggregator):
+    """Aggregate occlusion scores using a reference prediction.
+
+    The first row in ``results`` must correspond to the unperturbed prediction.
+    Subsequent rows represent the prediction for each perturbation. The returned
+    tensor contains the mean difference between the reference and each
+    perturbation weighted by the corresponding mask.
+    """
+
+    @jaxtyped(typechecker=beartype)
+    def aggregate(
+        self,
+        results: Float[Tensor, "p t"],
+        mask: Float[Tensor, "p l"],
+    ) -> Float[Tensor, "t l"]:
+        # first prediction is reference, unmodified input
+        scores = results[..., 0, :] - results[..., 1:, :]
+        mask = mask[..., 1:, :]
+        return torch.einsum("pt,pl->tl", scores, mask) / mask.sum(dim=0)
