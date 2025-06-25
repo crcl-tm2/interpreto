@@ -57,7 +57,7 @@ class AttributionVisualization(BaseAttributionVisualization):
             attribution_output: AttributionOutput: The attribution outputs to visualize
             positive_color (str, optional): A hexadecimal color code in RGB format for positive activations. The default color is red (#ff0000)
             negative_color (str, optional): A hexadecimal color code in RGB format for negative activations. The default color is blue (#0000ff)
-            class_names (List[str], optional): A list of names for each class, in the case of multi class classification. Defaults to None
+            class_names (List[str], optional): A list of names for each class, in the case of mono & class classification. Defaults to None
             normalize (bool, optional): Whether to normalize the attributions. If False, then the attributions values range will be assumed to be [-1, 1]. Defaults to True
             highlight_border (bool, optional): Whether to highlight the border of the words. Defaults to False
             margin_right (str, optional): A custom CSS margin property to set the spacing between words. Defaults to '0.2em'
@@ -76,6 +76,10 @@ class AttributionVisualization(BaseAttributionVisualization):
             # of generated outputs (here set to 1 because no generation)
             # and the last the number of classes (here set to 1 because only one class)
             inputs_attribution = attribution_output.attributions.unsqueeze(0).unsqueeze(-1)
+            if class_names is None:
+                class_name = f"class #{attribution_output.classes[0]}"
+            else:
+                class_name = class_names[attribution_output.classes[0]]
 
             # compute the min and max values for the attributions to be used for normalization
             if normalize:
@@ -92,7 +96,7 @@ class AttributionVisualization(BaseAttributionVisualization):
                 output_words=None,
                 output_attributions=None,
                 classes_descriptions=self.make_classes_descriptions(
-                    positive_color, negative_color, min_value=min_value, max_value=max_value
+                    positive_color, negative_color, name=class_name, min_value=min_value, max_value=max_value
                 ),
                 custom_style=self.custom_style,
             )
@@ -213,7 +217,7 @@ class AttributionVisualization(BaseAttributionVisualization):
         """
         return [
             {
-                "name": f"class #{name}",
+                "name": f"{name}",
                 "description": f"This is the description of class #{name}",
                 "positive_color": positive_color,
                 "negative_color": negative_color,
@@ -262,10 +266,11 @@ class AttributionVisualization(BaseAttributionVisualization):
         json_data = json.dumps(self.data, default=tensor_to_list, indent=2)
         html = self.build_html_header()
         if self.model_task == ModelTask.SINGLE_CLASS_CLASSIFICATION:
+            html += f"<h3>Class</h3><div class='line-style'><div id='{self.unique_id_classes}'></div></div>\n"
             html += f"<h3>Inputs</h3><div id='{self.unique_id_inputs}'></div>\n"
             html += f"""
             <script>
-                var viz = new DataVisualizationAttribution(null, '{self.unique_id_inputs}', null, '{self.highlight_border}', {json.dumps(json_data)});
+                var viz = new DataVisualizationAttribution(0, '{self.unique_id_classes}', '{self.unique_id_inputs}', null, '{self.highlight_border}', {json.dumps(json_data)});
                 window.viz = viz;
             </script>
             </body></html>
@@ -275,7 +280,7 @@ class AttributionVisualization(BaseAttributionVisualization):
             html += f"<h3>Inputs</h3><div id='{self.unique_id_inputs}'></div>\n"
             html += f"""
             <script>
-                var viz = new DataVisualizationAttribution('{self.unique_id_classes}', '{self.unique_id_inputs}', null, '{self.highlight_border}', {json.dumps(json_data)});
+                var viz = new DataVisualizationAttribution(1, '{self.unique_id_classes}', '{self.unique_id_inputs}', null, '{self.highlight_border}', {json.dumps(json_data)});
                 window.viz = viz;
             </script>
             </body></html>
@@ -285,7 +290,7 @@ class AttributionVisualization(BaseAttributionVisualization):
             html += f"<h3>Outputs</h3><div class='line-style'><div id='{self.unique_id_outputs}'></div></div>\n"
             html += f"""
             <script>
-                var viz = new DataVisualizationAttribution(null, '{self.unique_id_inputs}', '{self.unique_id_outputs}', '{self.highlight_border}', {json.dumps(json_data)});
+                var viz = new DataVisualizationAttribution(2, null, '{self.unique_id_inputs}', '{self.unique_id_outputs}', '{self.highlight_border}', {json.dumps(json_data)});
                 window.viz = viz;
             </script>
             </body></html>
