@@ -243,7 +243,7 @@ class LLMLabels(BaseConceptInterpretationMethod):
         return tokens_examples
 
 
-def _sample_quantile(max_per_input: Float[torch.Tensor, n], k_examples: int, n_quantiles: int = 5) -> torch.Tensor:
+def _sample_quantile(max_per_input: Float[torch.Tensor, "n"], k_examples: int, n_quantiles: int = 5) -> torch.Tensor:
     # TODO : add some checks on number of samples vs number of quantiles ect
     if len(max_per_input.size()) > 1:
         raise ValueError(f"max_per_input should be a 1D tensor, got tensor of shape {max_per_input.size()}")
