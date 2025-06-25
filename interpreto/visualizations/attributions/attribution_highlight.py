@@ -44,7 +44,7 @@ class AttributionVisualization(BaseAttributionVisualization):
         attribution_output: AttributionOutput,
         positive_color: str = "#ff0000",
         negative_color: str = "#0000ff",
-        class_names: list[str] = None,
+        class_names: dict = None,
         normalize: bool = True,
         highlight_border: bool = False,
         margin_right: str = "0.2em",
@@ -57,7 +57,7 @@ class AttributionVisualization(BaseAttributionVisualization):
             attribution_output: AttributionOutput: The attribution outputs to visualize
             positive_color (str, optional): A hexadecimal color code in RGB format for positive activations. The default color is red (#ff0000)
             negative_color (str, optional): A hexadecimal color code in RGB format for negative activations. The default color is blue (#0000ff)
-            class_names (List[str], optional): A list of names for each class, in the case of mono & class classification. Defaults to None
+            class_names (dict, optional): A dict of names for each class, in the case of mono & class classification. Defaults to None
             normalize (bool, optional): Whether to normalize the attributions. If False, then the attributions values range will be assumed to be [-1, 1]. Defaults to True
             highlight_border (bool, optional): Whether to highlight the border of the words. Defaults to False
             margin_right (str, optional): A custom CSS margin property to set the spacing between words. Defaults to '0.2em'
@@ -76,10 +76,14 @@ class AttributionVisualization(BaseAttributionVisualization):
             # of generated outputs (here set to 1 because no generation)
             # and the last the number of classes (here set to 1 because only one class)
             inputs_attribution = attribution_output.attributions.unsqueeze(0).unsqueeze(-1)
+            class_id = int(attribution_output.classes[0])
             if class_names is None:
-                class_name = f"class #{attribution_output.classes[0]}"
+                class_name_str = f"class #{class_id}"
             else:
-                class_name = class_names[attribution_output.classes[0]]
+                if class_id in class_names:
+                    class_name_str = class_names[class_id]
+                else:
+                    class_name_str = f"class #{class_id}"
 
             # compute the min and max values for the attributions to be used for normalization
             if normalize:
@@ -96,7 +100,7 @@ class AttributionVisualization(BaseAttributionVisualization):
                 output_words=None,
                 output_attributions=None,
                 classes_descriptions=self.make_classes_descriptions(
-                    positive_color, negative_color, name=class_name, min_value=min_value, max_value=max_value
+                    positive_color, negative_color, name=class_name_str, min_value=min_value, max_value=max_value
                 ),
                 custom_style=self.custom_style,
             )
@@ -107,11 +111,26 @@ class AttributionVisualization(BaseAttributionVisualization):
             # format of attributions for multi class attribution:
             # nb_sentences * (1, nb_words, nb_classes) with the first dimension beeing the number
             # of generated outputs (here set to 1 because no generation)
-            # inputs_attributions = [output.attributions.T.unsqueeze(0) for output in attribution_output_list]
             nb_classes, _ = attribution_output.attributions.shape
             inputs_attributions = attribution_output.attributions.T.unsqueeze(0)
-            if class_names is None:
-                class_names = [f"class #{c}" for c in range(nb_classes)]
+
+            # populate the class names list
+            assert len(class_names.keys()) <= nb_classes, (
+                f"Too many class names provided: {len(class_names.keys())} for {nb_classes} classes. "
+                f"Each class index should be in the range [0, {nb_classes - 1}]."
+            )
+            assert max(class_names.keys()) < nb_classes, (
+                f"The class names keys should be in the range [0, {nb_classes - 1}]. "
+                f"Got keys: {list(class_names.keys())}."
+            )
+            assert min(class_names.keys()) >= 0, (
+                f"The class names keys should be in the range [0, {nb_classes - 1}]. "
+                f"Got keys: {list(class_names.keys())}."
+            )
+            class_names_list = [f"class #{c}" for c in range(nb_classes)]
+            if class_names is not None:
+                for i, class_name in class_names.items():
+                    class_names_list[i] = class_name
 
             # compute the min and max values for the attributions to be used for normalization
             if normalize:
@@ -133,7 +152,7 @@ class AttributionVisualization(BaseAttributionVisualization):
                 output_words=None,
                 output_attributions=None,
                 classes_descriptions=self.make_multiple_classes_descriptions(
-                    positive_color, negative_color, class_names, min_values=min_values, max_values=max_values
+                    positive_color, negative_color, class_names_list, min_values=min_values, max_values=max_values
                 ),
                 custom_style=self.custom_style,
             )
