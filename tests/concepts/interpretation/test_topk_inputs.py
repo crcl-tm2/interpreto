@@ -23,7 +23,7 @@
 # SOFTWARE.
 
 """
-Tests for `interpreto.concepts.interpretation` methods
+Tests for `interpreto.concepts.interpretation.topk_inputs` methods
 for `ConceptEncoderExplainer` and `ConceptAutoEncoderExplainer`
 using the `NeuronsAsConcepts` concept explainer
 """

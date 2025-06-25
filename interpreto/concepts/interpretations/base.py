@@ -96,7 +96,6 @@ class BaseConceptInterpretationMethod(ABC):
             inputs (ModelInput | None): The inputs to use for the interpretation.
             latent_activations (LatentActivations | None): The latent activations to use for the interpretation.
             concepts_activations (ConceptsActivations | None): The concepts activations to use for the interpretation.
-            use_vocab (bool): Whether to use the vocabulary for the interpretation.
 
         Returns:
             Mapping[int, Any]: The interpretation of each of the specified concepts.
@@ -109,31 +108,50 @@ class BaseConceptInterpretationMethod(ABC):
         inputs: list[str] | None = None,
         latent_activations: Float[torch.Tensor, "nl d"] | None = None,
         concepts_activations: Float[torch.Tensor, "nl cpt"] | None = None,
-    ) -> tuple[list[str], Float[torch.Tensor, "nl cpt"]]:
-        if inputs is None:
-            raise ValueError("Inputs are required to compute concept activations.")
+    ) -> Float[torch.Tensor, "nl cpt"]:
+        """
+        Computes the concepts activations from the given samples.
+        Samples can be provided as raw text (`inputs`), latent activations (`latent_activations`),
+        or directly concept activations (`concepts_activations`).
+
+        Args:
+            inputs (list[str] | None): The indices of the concepts to interpret.
+            latent_activations (Float[torch.Tensor, "nl d"] | None): The latent activations
+            concepts_activations (Float[torch.Tensor, "nl cpt"] | None): The concepts activations
+
+        Returns:
+            Float[torch.Tensor, "nl cpt"] :
+        """
 
         if concepts_activations is not None:
-            return inputs, concepts_activations
+            return concepts_activations
 
         if latent_activations is not None:
+            if hasattr(self.concept_model, "device"):
+                latent_activations = latent_activations.to(self.concept_model.device)  # type: ignore
             concepts_activations = self.concept_model.encode(latent_activations)
             if isinstance(concepts_activations, tuple):
                 concepts_activations = concepts_activations[1]  # temporary fix, issue #65
-            return inputs, concepts_activations
+            return concepts_activations
 
-        activations_dict: dict[str, LatentActivations] = self.model_with_split_points.get_activations(
-            inputs,
-            activation_granularity=self.activation_granularity,  # TODO
-        )
-        latent_activations = self.model_with_split_points.get_split_activations(
-            activations_dict, split_point=self.split_point
-        )
-        concepts_activations = self.concept_model.encode(latent_activations)
-        if isinstance(concepts_activations, tuple):
-            concepts_activations = concepts_activations[1]  # temporary fix, issue #65
+        if inputs is not None:
+            activations_dict: dict[str, LatentActivations] = self.model_with_split_points.get_activations(
+                inputs,
+                activation_granularity=self.activation_granularity,  # TODO
+            )
+            latent_activations = self.model_with_split_points.get_split_activations(
+                activations_dict, split_point=self.split_point
+            )
+            if hasattr(self.concept_model, "device"):
+                latent_activations = latent_activations.to(self.concept_model.device)  # type: ignore
+            concepts_activations = self.concept_model.encode(latent_activations)
+            if isinstance(concepts_activations, tuple):
+                concepts_activations = concepts_activations[1]  # temporary fix, issue #65
+            return concepts_activations
 
-        return inputs, concepts_activations
+        raise ValueError(
+            "No source provided. Please provide either `inputs`, `latent_activations`, or `concepts_activations`."
+        )
 
     def concepts_activations_from_vocab(
         self,
@@ -152,7 +170,6 @@ class BaseConceptInterpretationMethod(ABC):
                 - The concept activations for each token
         """
         # extract and sort the vocabulary
-        # extract and sort the vocabulary
         vocab_dict: dict[str, int] = self.model_with_split_points.tokenizer.get_vocab()
         input_ids: list[int]
         inputs, input_ids = zip(*vocab_dict.items(), strict=True)  # type: ignore
@@ -166,6 +183,8 @@ class BaseConceptInterpretationMethod(ABC):
             activations_dict, split_point=self.split_point
         )
         concepts_activations = self.concept_model.encode(latent_activations)
+        if isinstance(concepts_activations, tuple):
+            concepts_activations = concepts_activations[1]  # temporary fix, issue #65
         return inputs, concepts_activations  # type: ignore
 
 

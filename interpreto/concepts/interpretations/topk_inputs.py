@@ -61,8 +61,9 @@ class TopKInputs(BaseConceptInterpretationMethod):
         concept_model (ConceptModelProtocol): The concept model to use for the interpretation.
         activation_granularity (ActivationGranularity): The granularity at which the interpretation is computed.
             Allowed values are `TOKEN`, `WORD`, `SENTENCE`, and `SAMPLE`.
-            Ignored for source `VOCABULARY`.
+            Ignored when use_vocab=True.
         k (int): The number of inputs to use for the interpretation.
+        use_vocab (bool): If True, the interpretation will be computed from the vocabulary of the model.
 
     Examples:
         >>> from datasets import load_dataset
@@ -135,25 +136,18 @@ class TopKInputs(BaseConceptInterpretationMethod):
 
         The returned inputs are the most activating inputs for the concepts.
 
-        The required arguments depend on the `source` class attribute.
-
         If all activations are zero, the corresponding concept interpretation is set to `None`.
 
         Args:
             concepts_indices (int | list[int]): The indices of the concepts to interpret.
             inputs (list[str] | None): The inputs to use for the interpretation.
-                Necessary if the source is not `VOCABULARY`, as examples are extracted from the inputs.
-            latent_activations (Float[torch.Tensor, "nl d"] | None): The latent activations to use for the interpretation.
-                Necessary if the source is `LATENT_ACTIVATIONS`.
-                Otherwise, it is computed from the inputs or ignored if the source is `CONCEPT_ACTIVATIONS`.
-            concepts_activations (Float[torch.Tensor, "nl cpt"] | None): The concepts activations to use for the interpretation.
-                Necessary if the source is not `CONCEPT_ACTIVATIONS`. Otherwise, it is computed from the latent activations.
+                Necessary if not `use_vocab`, as examples are extracted from the inputs.
+            latent_activations (Float[torch.Tensor, "nl d"] | None): The latent activations matching the inputs. If not provided, it is computed from the inputs.
+            concepts_activations (Float[torch.Tensor, "nl cpt"] | None): The concepts activations matching the inputs. If not provided, it is computed from the inputs or latent activations.
 
         Returns:
             Mapping[int, Any]: The interpretation of the concepts indices.
 
-        Raises:
-            ValueError: If the arguments do not correspond to the specified source.
         """
         # compute the concepts activations from the provided source, can also create inputs from the vocabulary
         sure_inputs: list[str]  # Verified by concepts_activations_from_source
@@ -162,7 +156,10 @@ class TopKInputs(BaseConceptInterpretationMethod):
         if self.use_vocab:
             sure_inputs, sure_concepts_activations = self.concepts_activations_from_vocab()
         else:
-            sure_inputs, sure_concepts_activations = self.concepts_activations_from_source(
+            if inputs is None:
+                raise ValueError("No inputs provided. Please provide `inputs` if `use_vocab` is False")
+            sure_inputs = inputs
+            sure_concepts_activations = self.concepts_activations_from_source(
                 inputs=inputs,
                 latent_activations=latent_activations,
                 concepts_activations=concepts_activations,
@@ -177,16 +174,16 @@ class TopKInputs(BaseConceptInterpretationMethod):
         if len(granular_inputs) != len(sure_concepts_activations):
             if latent_activations is not None and len(granular_inputs) != len(latent_activations):
                 raise ValueError(
-                    f"The lengths of the granulated inputs do not match le number of provided latent activations {len(granular_inputs)} != {len(latent_activations)}"
+                    f"The lengths of the granulated inputs do not match the number of provided latent activations {len(granular_inputs)} != {len(latent_activations)}"
                     "If you provide latent activations, make sure they have the same granularity as the inputs."
                 )
             if concepts_activations is not None and len(granular_inputs) != len(concepts_activations):
                 raise ValueError(
-                    f"The lengths of the granulated inputs do not match le number of provided concepts activations {len(granular_inputs)} != {len(concepts_activations)}"
+                    f"The lengths of the granulated inputs do not match the number of provided concepts activations {len(granular_inputs)} != {len(concepts_activations)}"
                     "If you provide concepts activations, make sure they have the same granularity as the inputs."
                 )
             raise ValueError(
-                f"The lengths of the granulated inputs do not match le number of concepts activations {len(granular_inputs)} != {len(sure_concepts_activations)}"
+                f"The lengths of the granulated inputs do not match the number of concepts activations {len(granular_inputs)} != {len(sure_concepts_activations)}"
             )
 
         return self._topk_inputs_from_concepts_activations(
@@ -196,25 +193,22 @@ class TopKInputs(BaseConceptInterpretationMethod):
         )
 
     def _get_granular_inputs(self, inputs: list[str]) -> list[str]:
-        if self.use_vocab:
+        if self.use_vocab or self.activation_granularity is ActivationGranularity.SAMPLE:
             # no activation_granularity is needed
             return inputs
 
         tokens = self.model_with_split_points.tokenizer(
             inputs, return_tensors="pt", padding=True, return_offsets_mapping=True
         )
-        if self.activation_granularity is ActivationGranularity.SAMPLE:
-            granular_inputs: list[str] = inputs
-        else:
-            list_list_str: list[list[str]] = Granularity.get_decomposition(
-                tokens,
-                granularity=self.activation_granularity.value,  # type: ignore
-                tokenizer=self.model_with_split_points.tokenizer,
-                return_text=True,
-            )  # type: ignore
+        list_list_str: list[list[str]] = Granularity.get_decomposition(
+            tokens,
+            granularity=self.activation_granularity.value,  # type: ignore
+            tokenizer=self.model_with_split_points.tokenizer,
+            return_text=True,
+        )  # type: ignore
 
-            # flatten list of list of strings
-            granular_inputs: list[str] = [string for list_str in list_list_str for string in list_str]
+        # flatten list of list of strings
+        granular_inputs: list[str] = [string for list_str in list_list_str for string in list_str]
 
         return granular_inputs
 

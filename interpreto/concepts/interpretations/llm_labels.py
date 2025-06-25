@@ -32,7 +32,7 @@ from typing import NamedTuple
 import torch
 from jaxtyping import Float
 
-from interpreto import ModelWithSplitPoints
+from interpreto import Granularity, ModelWithSplitPoints
 from interpreto.concepts.interpretations.base import BaseConceptInterpretationMethod, verify_concepts_indices
 from interpreto.model_wrapping.llm_interface import LLMInterface, Role
 from interpreto.model_wrapping.model_with_split_points import ActivationGranularity
@@ -46,21 +46,33 @@ class SAMPLING_METHOD(Enum):
 
 
 class Example(NamedTuple):
-    tokens: list[str]
+    texts: list[str]
     activations: torch.Tensor
 
 
 class LLMLabels(BaseConceptInterpretationMethod):
     """Code [:octicons-mark-github-24: `concepts/interpretations/llm_labels.py`](https://github.com/FOR-sight-ai/interpreto/blob/main/interpreto/concepts/interpretations/llm_labels.py)
 
-    TODO : describe the method and cite
+    Implement the automatic labeling method using a language model (LLM) to provide a short textual description given some examples of what activate the concept.
+    This method was first introduced in [^1], we implement here the step 1 of the method.
+
+    [^1]:
+        Steven Bills*, Nick Cammarata*, Dan Mossing*, Henk Tillman*, Leo Gao*, Gabriel Goh, Ilya Sutskever, Jan Leike, Jeff Wu*, William Saunders*
+        [Language models can explain neurons in language models](https://openaipublic.blob.core.windows.net/neuron-explainer/paper/index.html)
+        2023.
 
     Attributes:
         model_with_split_points (ModelWithSplitPoints): The model with split points to use for the interpretation.
         split_point (str): The split point to use for the interpretation.
         concept_model (ConceptModelProtocol): The concept model to use for the interpretation.
-        granularity (Granularities): The granularity at which the interpretation is computed.
-        k (int): The number of inputs to use for the interpretation.
+        activation_granularity (ActivationGranularity): The granularity at which the interpretation is computed.
+            Allowed values are `TOKEN`, `WORD`, `SENTENCE`, and `SAMPLE`.
+            Ignored when use_vocab=True.
+        llm_interface (LLMInterface): The LLM interface to use for the interpretation.
+        sampling_method (SAMPLING_METHOD): The method to use for sampling the inputs provided to the LLM.
+        k_examples (int): The number of inputs to use for the interpretation.
+        k_context (int): The number of context tokens to use around the concept tokens.
+        use_vocab (bool): If True, the interpretation will be computed from the vocabulary of the model.
     """
 
     def __init__(
@@ -74,19 +86,28 @@ class LLMLabels(BaseConceptInterpretationMethod):
         sampling_method: SAMPLING_METHOD,
         k_examples: int = 30,
         k_context: int = 10,
+        use_vocab: bool = False,
     ):
         super().__init__(
             model_with_split_points=model_with_split_points, split_point=split_point, concept_model=concept_model
         )
 
-        if activation_granularity is not ActivationGranularity.TOKEN:
-            raise NotImplementedError("Only token granularity is currently supported for interpretation.")
+        if activation_granularity not in (
+            ActivationGranularity.TOKEN,
+            ActivationGranularity.WORD,
+            ActivationGranularity.SENTENCE,
+            ActivationGranularity.SAMPLE,
+        ):
+            raise ValueError(
+                f"The granularity {activation_granularity} is not supported. Supported `activation_granularities`: TOKEN, WORD, SENTENCE, and SAMPLE"
+            )
         self.activation_granularity = activation_granularity
 
         self.llm_interface = llm_interface
         self.sampling_method = sampling_method
         self.k_examples = k_examples
         self.k_context = k_context
+        self.use_vocab = use_vocab
 
     def interpret(
         self,
@@ -94,52 +115,49 @@ class LLMLabels(BaseConceptInterpretationMethod):
         inputs: list[str] | None = None,
         latent_activations: LatentActivations | None = None,
         concepts_activations: ConceptsActivations | None = None,
-        use_vocab: bool = False,
     ) -> Mapping[int, str | None]:
         """
         Give the interpretation of the concepts dimensions in the latent space into a human-readable format.
-        The interpretation is a mapping between the concepts indices and a list of inputs allowing to interpret them.
-        The granularity of input examples is determined by the `granularity` class attribute.
-
-        The returned inputs are the most activating inputs for the concepts.
-
-        The required arguments depend on the `source` class attribute.
+        The interpretation is a mapping between the concepts indices and a short textual description.
+        The granularity of input examples is determined by the `activation_granularity` class attribute.
 
         Args:
             concepts_indices (int | list[int]): The indices of the concepts to interpret.
             inputs (list[str] | None): The inputs to use for the interpretation.
-            latent_activations (Float[torch.Tensor, "nl d"] | None): The latent activations to use for the interpretation.
-            concepts_activations (Float[torch.Tensor, "nl cpt"] | None): The concepts activations to use for the interpretation.
-            use_vocab (bool): Whether to use the vocabulary for the interpretation.
+                Necessary if not `use_vocab`, as examples are extracted from the inputs.
+            latent_activations (Float[torch.Tensor, "nl d"] | None): The latent activations matching the inputs. If not provided, it is computed from the inputs.
+            concepts_activations (Float[torch.Tensor, "nl cpt"] | None): The concepts activations matching the inputs. If not provided, it is computed from the inputs or latent activations.
         Returns:
-            Mapping[int, Any]: The interpretation of the concepts indices.
-
-        Raises:
-            ValueError: If the arguments do not correspond to the specified source.
+            Mapping[int, str | None]: The textual labels of the concepts indices.
         """
-        sure_inputs, sure_concepts_activations = self.concepts_activations_from_source(
-            inputs=inputs,
-            latent_activations=latent_activations,
-            concepts_activations=concepts_activations,
-            use_vocab=use_vocab,
-        )
+
+        if self.use_vocab:
+            sure_inputs, sure_concepts_activations = self.concepts_activations_from_vocab()
+        else:
+            if inputs is None:
+                raise ValueError("Inputs must be provided when use_vocab is False.")
+            sure_inputs = inputs
+            sure_concepts_activations = self.concepts_activations_from_source(
+                inputs=inputs,
+                latent_activations=latent_activations,
+                concepts_activations=concepts_activations,
+            )
 
         concepts_indices = verify_concepts_indices(
             concepts_activations=sure_concepts_activations,
             concepts_indices=concepts_indices,
         )
 
-        granular_inputs, granular_concepts_activations, granular_sample_ids = self._get_granular_inputs(
+        granular_inputs, granular_sample_ids = self._get_granular_inputs(
             inputs=sure_inputs,
             concepts_activations=sure_concepts_activations,
-            from_vocab=use_vocab,
         )
 
         labels: Mapping[int, str | None] = {}
         for concept_idx in concepts_indices:
             examples = self._sample_examples(
                 inputs=granular_inputs,
-                concepts_activations=granular_concepts_activations,
+                concepts_activations=sure_concepts_activations,
                 sample_ids=granular_sample_ids,
                 concept_idx=concept_idx,
             )
@@ -151,37 +169,31 @@ class LLMLabels(BaseConceptInterpretationMethod):
         self,
         inputs: list[str],  # (n)
         concepts_activations: ConceptsActivations,  # (n*l, cpt)
-        from_vocab: bool,
-    ) -> tuple[list[str], Float[torch.Tensor, "ng cpt"], list[int]]:
-        """
-        Only token granularity for now : Gets sequences of tokens and corresponding activations for non-padding tokens
-        """
-
-        if from_vocab:
-            # no granularity is needed
-            return inputs, concepts_activations, list(range(len(inputs)))
-
+    ) -> tuple[list[str], list[int]]:
         max_seq_len = concepts_activations.shape[0] / len(inputs)
         if max_seq_len != int(max_seq_len):
             raise ValueError(
                 f"The number of inputs and activations should be the same. Got {len(inputs)} inputs and {concepts_activations.shape[0]} activations."
             )
 
-        # Select tokens that correspond to text (= no padding) and keep track of their sample id
-        max_seq_len = int(max_seq_len)
-        indices_mask = torch.zeros(size=(concepts_activations.shape[0],), dtype=torch.bool)
-        granular_flattened_inputs: list[str] = []
-        granular_flattened_sample_id: list[int] = []
-        for i, input_example in enumerate(inputs):
-            # TODO: check this treatment is correct, for now it has not really been tested
-            tokens = self.model_with_split_points.tokenizer.tokenize(input_example)
-            indices_mask[i * max_seq_len : i * max_seq_len + len(tokens)] = True
-            granular_flattened_inputs += tokens
-            granular_flattened_sample_id += [i] * len(tokens)
-        studied_inputs_concept_activations = concepts_activations[indices_mask]
+        if self.use_vocab or self.activation_granularity is ActivationGranularity.SAMPLE:
+            # no activation_granularity is needed
+            return inputs, list(range(len(inputs)))
 
-        assert len(granular_flattened_inputs) == len(studied_inputs_concept_activations)
-        return granular_flattened_inputs, studied_inputs_concept_activations, granular_flattened_sample_id
+        # Get granular texts from the inputs
+        tokens = self.model_with_split_points.tokenizer(
+            inputs, return_tensors="pt", padding=True, return_offsets_mapping=True
+        )
+        granular_texts: list[list[str]] = Granularity.get_decomposition(
+            tokens,
+            granularity=self.activation_granularity.value,  # type: ignore
+            tokenizer=self.model_with_split_points.tokenizer,
+            return_text=True,
+        )  # type: ignore
+
+        granular_flattened_texts = [text for sample_texts in granular_texts for text in sample_texts]
+        granular_flattened_sample_id = [i for i, sample_texts in enumerate(granular_texts) for _ in sample_texts]
+        return granular_flattened_texts, granular_flattened_sample_id
 
     def _sample_examples(
         self,
@@ -196,28 +208,27 @@ class LLMLabels(BaseConceptInterpretationMethod):
         """
 
         if self.sampling_method == SAMPLING_METHOD.TOP:
-            _, token_indices = torch.topk(concepts_activations[:, concept_idx], k=self.k_examples)
-            # TODO : verify that there is no non-zero
+            _, inputs_indices = torch.topk(concepts_activations[:, concept_idx], k=self.k_examples)
+            # TODO : verify that there is no zero values
         elif self.sampling_method == SAMPLING_METHOD.QUANTILE:
-            token_indices = _sample_quantile(concepts_activations[:, concept_idx], k_examples=self.k_examples)
+            inputs_indices = _sample_quantile(concepts_activations[:, concept_idx], k_examples=self.k_examples)
         elif self.sampling_method == SAMPLING_METHOD.RANDOM:
             non_zero_samples = torch.argwhere(concepts_activations[:, concept_idx] != 0).squeeze(-1)
-            token_indices = non_zero_samples[torch.randperm(len(non_zero_samples))][: self.k_examples]
+            inputs_indices = non_zero_samples[torch.randperm(len(non_zero_samples))][: self.k_examples]
         else:
             raise NotImplementedError(f"Sampling method {self.sampling_method} is not implemented.")
 
         max_act = concepts_activations[:, concept_idx].max().item()
-        tokens_examples: list[Example] = []
-        for token_idx in token_indices:
-            left_idx = max(0, token_idx.item() - self.k_context)
-            right_idx = token_idx + self.k_context + 1
-            # Select context tokens from the same sample
-            sample_idx = sample_ids[token_idx]
-
+        examples: list[Example] = []
+        for input_idx in inputs_indices:
+            left_idx = max(0, input_idx.item() - self.k_context)
+            right_idx = input_idx + self.k_context + 1
+            # Select context from the same sample
+            sample_idx = sample_ids[input_idx]
             example = Example(
-                tokens=[
-                    tok
-                    for tok, id in zip(inputs[left_idx:right_idx], sample_ids[left_idx:right_idx], strict=False)
+                texts=[
+                    text
+                    for text, id in zip(inputs[left_idx:right_idx], sample_ids[left_idx:right_idx], strict=False)
                     if id == sample_idx
                 ],
                 activations=torch.tensor(
@@ -232,20 +243,24 @@ class LLMLabels(BaseConceptInterpretationMethod):
                     ]
                 ).floor(),
             )
-            tokens_examples.append(example)
-        return tokens_examples
+            examples.append(example)
+        return examples
 
 
-def _sample_quantile(max_per_input: Float[torch.Tensor, "n"], k_examples: int, n_quantiles: int = 5) -> torch.Tensor:
+def _sample_quantile(
+    concept_activations: Float[torch.Tensor, "ng"], k_examples: int, n_quantiles: int = 5
+) -> torch.Tensor:
     # TODO : add some checks on number of samples vs number of quantiles ect
-    if len(max_per_input.size()) > 1:
-        raise ValueError(f"max_per_input should be a 1D tensor, got tensor of shape {max_per_input.size()}")
+    if len(concept_activations.size()) > 1:
+        raise ValueError(
+            f"concept_activations should be a 1D tensor, got tensor of shape {concept_activations.size()}"
+        )
 
-    non_zero_samples = torch.argwhere(max_per_input != 0)
+    non_zero_samples = torch.argwhere(concept_activations != 0)
     quantile_size = non_zero_samples.size(0) // n_quantiles  # TODO : some samples might be left out
     samples_per_quantile = k_examples // n_quantiles
 
-    sorted_indexes = torch.argsort(max_per_input, descending=True)[: non_zero_samples.size(0)]
+    sorted_indexes = torch.argsort(concept_activations, descending=True)[: non_zero_samples.size(0)]
     sample_indices = torch.zeros(samples_per_quantile * n_quantiles)
     for i in range(n_quantiles):
         quantile_samples = sorted_indexes[i * quantile_size : (i + 1) * quantile_size]
@@ -256,7 +271,7 @@ def _sample_quantile(max_per_input: Float[torch.Tensor, "n"], k_examples: int, n
 
 def _build_prompt(examples: list[Example]) -> list[tuple[Role, str]]:
     """
-    Examples are given like that :
+    Examples are given like that (example with tokens, but works similarly with words or sentences):
 
     Example 1:  the dog <<eats>> the cat
     Activations: ("the", 0), (" dog", 2), (" eats", 10), (" the", 2), (" cat", 0)
