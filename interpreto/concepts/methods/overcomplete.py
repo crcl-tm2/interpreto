@@ -210,7 +210,7 @@ class SAEExplainer(ConceptAutoEncoderExplainer[oc_sae.SAE], Generic[_SAE_co]):
         nb_epochs: int = 20,
         clip_grad: float | None = None,
         monitoring: int | None = None,
-        device: torch.device | str = "cpu",
+        device: torch.device | str | None = None,
         max_nan_fallbacks: int | None = 5,
         overwrite: bool = False,
     ) -> dict:
@@ -237,6 +237,8 @@ class SAEExplainer(ConceptAutoEncoderExplainer[oc_sae.SAE], Generic[_SAE_co]):
         Returns:
             A dictionary with training history logs.
         """
+        if device is None:
+            device = self.device
         split_activations = self._prepare_fit(activations, overwrite=overwrite)
         dataloader = DataLoader(TensorDataset(split_activations.detach()), batch_size=batch_size, shuffle=True)
         optimizer_kwargs = {"lr": lr}

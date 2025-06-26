@@ -35,11 +35,17 @@ from textwrap import dedent
 from typing import Any, Generic, Literal, TypeVar
 
 import torch
+from jaxtyping import Float
 from overcomplete.base import BaseDictionaryLearning
+from transformers.tokenization_utils_base import BatchEncoding
 
 from interpreto.attributions.base import AttributionExplainer
 from interpreto.concepts.interpretations.base import BaseConceptInterpretationMethod
-from interpreto.model_wrapping.model_with_split_points import ModelWithSplitPoints
+from interpreto.model_wrapping.model_with_split_points import (
+    ActivationGranularity,
+    AggregationStrategy,
+    ModelWithSplitPoints,
+)
 from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentActivations, ModelInputs
 
 ConceptModel = TypeVar("ConceptModel", bound=ConceptModelProtocol)
@@ -348,7 +354,7 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
         Returns:
             The encoded concept activations.
         """
-        self._sanitize_activations(activations)
+        # self._sanitize_activations(activations)
         return self.concept_model.encode(activations)  # type: ignore
 
     @check_fitted
@@ -393,3 +399,25 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
             A list of attribution scores for each concept.
         """
         raise NotImplementedError("Concept-to-output attribution method is not implemented yet.")
+
+    @check_fitted
+    def concept_output_gradient(
+        self,
+        inputs: torch.Tensor | list[str] | BatchEncoding,
+        targets: int | None = None,
+        split_point: str | None = None,
+        activation_granularity: ActivationGranularity = ActivationGranularity.TOKEN,
+        aggregation_strategy: AggregationStrategy = AggregationStrategy.MEAN,
+        concepts_x_gradients: bool = False,
+    ) -> Float[torch.Tensor, "ng c"]:
+        """ """
+        return self.model_with_split_points.get_concepts_output_gradients(
+            inputs=inputs,
+            targets=targets,
+            encode_activations=self.encode_activations,
+            decode_activations=self.decode_concepts,
+            split_point=split_point,
+            activation_granularity=activation_granularity,
+            aggregation_strategy=aggregation_strategy,
+            concepts_x_gradients=concepts_x_gradients,
+        )

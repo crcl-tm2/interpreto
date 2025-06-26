@@ -32,6 +32,8 @@ import nnsight
 import torch
 import torch.nn.functional as F
 from jaxtyping import Float
+from nnsight.intervention import Envoy
+from nnsight.intervention.graph import InterventionProxy
 from nnsight.modeling.language import LanguageModel
 from transformers import AutoModel, T5ForConditionalGeneration
 from transformers.configuration_utils import PretrainedConfig
@@ -274,18 +276,18 @@ class ModelWithSplitPoints(LanguageModel):
         self._model: PreTrainedModel
         if self.repo_id is None:
             self.repo_id = self._model.config.name_or_path
-        # self.generator: Envoy | None
+        self.generator: Envoy | None
         if self._model.__class__.__name__ not in get_supported_hf_transformer_generation_classes():
             self.generator = None  # type: ignore
         self.batch_size = batch_size
 
-        if not isinstance(model_or_repo_id, str) and device_map is not None:
+        if not isinstance(model_or_repo_id, str):
             if device_map == "auto":
                 raise ValueError(
                     "'auto' device_map is only supported when loading a model from a repository id. "
                     "Please specify a device_map, e.g. 'cuda' or 'cpu'."
                 )
-            self.to(device_map)  # type: ignore
+            self.to(device_map)
 
         if self.tokenizer is None:
             raise ValueError("Tokenizer is not set. When providing a model instance, the tokenizer must be set.")
@@ -652,7 +654,7 @@ class ModelWithSplitPoints(LanguageModel):
                 with self.trace(tokenized_inputs, **kwargs):
                     # at each split point, get activations
                     for idx, split_point in enumerate(self.split_points):
-                        curr_module = self.get(split_point)
+                        curr_module: Envoy = self.get(split_point)
                         # Handle case in which module has .output attribute, and .nns_output gets overridden instead
                         module_out_name = "nns_output" if hasattr(curr_module, "nns_output") else "output"
 
@@ -823,7 +825,7 @@ class ModelWithSplitPoints(LanguageModel):
 
             # call model forward pass and gradients on concept activations
             with self.trace(tokenized_inputs, **kwargs) as tracer:
-                curr_module = self.get(local_split_point)
+                curr_module: Envoy = self.get(local_split_point)
                 # Handle case in which module has .output attribute, and .nns_output gets overridden instead
                 module_out_name = "nns_output" if hasattr(curr_module, "nns_output") else "output"
 
@@ -856,10 +858,7 @@ class ModelWithSplitPoints(LanguageModel):
                 )
 
                 # raw_activations = reconstructed_activations
-                if hasattr(curr_module, "output"):
-                    curr_module.output = torch.zeros_like(raw_activations)  # TODO: remove, there for testing
-                else:
-                    curr_module.nns_output = torch.zeros_like(raw_activations)  # TODO: remove, there for testing
+                raw_activations = torch.zeros_like(raw_activations)  # TODO: remove, there for testing
 
                 outputs = self.output  # (n, t)
 
@@ -941,6 +940,6 @@ class ModelWithSplitPoints(LanguageModel):
             for split_point in self.split_points:
                 curr_module = self.get(split_point)
                 module_out_name = "nns_output" if hasattr(curr_module, "nns_output") else "output"
-                module = getattr(curr_module, module_out_name)
+                module: InterventionProxy = getattr(curr_module, module_out_name)
                 sizes[split_point] = module.shape
         return sizes
