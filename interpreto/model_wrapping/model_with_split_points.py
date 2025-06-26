@@ -627,68 +627,74 @@ class ModelWithSplitPoints(LanguageModel):
             activations[split_point] = []
 
         # iterate over batch of inputs
-        for batch_inputs in batch_generator:
-            # tokenize text inputs
-            if isinstance(batch_inputs, list):
-                if activation_granularity == ActivationGranularity.CLS_TOKEN:
-                    self.tokenizer.padding_side = "right"
-                tokenized_inputs = self.tokenizer(
-                    batch_inputs, return_tensors="pt", padding=True, truncation=True, return_offsets_mapping=True
-                )
-                if isinstance(self.args[0], T5ForConditionalGeneration):
-                    # TODO: find a way for this not to be necessary
-                    tokenized_inputs["decoder_input_ids"] = tokenized_inputs["input_ids"]
-            else:
-                tokenized_inputs = batch_inputs
+        with torch.no_grad():  # TODO: find a way to add this back, at least optionally
+            with self.session():
+                for batch_inputs in batch_generator:
+                    # tokenize text inputs
+                    if isinstance(batch_inputs, list):
+                        if activation_granularity == ActivationGranularity.CLS_TOKEN:
+                            self.tokenizer.padding_side = "right"
+                        tokenized_inputs = self.tokenizer(
+                            batch_inputs,
+                            return_tensors="pt",
+                            padding=True,
+                            truncation=True,
+                            return_offsets_mapping=True,
+                        )
+                        if isinstance(self.args[0], T5ForConditionalGeneration):
+                            # TODO: find a way for this not to be necessary
+                            tokenized_inputs["decoder_input_ids"] = tokenized_inputs["input_ids"]
+                    else:
+                        tokenized_inputs = batch_inputs
 
-            # extract offset mapping not supported by forward but necessary for sentence selection strategy
-            if isinstance(tokenized_inputs, (BatchEncoding, dict)):  # noqa: UP038
-                offset_mapping = tokenized_inputs.pop("offset_mapping", None)
-            else:
-                offset_mapping = None
+                    # extract offset mapping not supported by forward but necessary for sentence selection strategy
+                    if isinstance(tokenized_inputs, (BatchEncoding, dict)):  # noqa: UP038
+                        offset_mapping = tokenized_inputs.pop("offset_mapping", None)
+                    else:
+                        offset_mapping = None
 
-            # call model forward pass
-            with torch.no_grad():  # TODO: find a way to add this back, at least optionally
-                with self.trace(tokenized_inputs, **kwargs):
-                    # at each split point, get activations
-                    for idx, split_point in enumerate(self.split_points):
-                        curr_module = self.get(split_point)
-                        # Handle case in which module has .output attribute, and .nns_output gets overridden instead
-                        module_out_name = "nns_output" if hasattr(curr_module, "nns_output") else "output"
+                    # call model forward pass
+                    with self.trace(tokenized_inputs, **kwargs) as tracer:
+                        # at each split point, get activations
+                        for idx, split_point in enumerate(self.split_points):
+                            curr_module = self.get(split_point)
+                            # Handle case in which module has .output attribute, and .nns_output gets overridden instead
+                            module_out_name = "nns_output" if hasattr(curr_module, "nns_output") else "output"
 
-                        # get activations
-                        raw_activations = getattr(curr_module, module_out_name)
+                            # get activations
+                            raw_activations = getattr(curr_module, module_out_name)
 
-                        # move activations to cpu
-                        try:
-                            raw_activations = nnsight.apply(lambda x: x.cpu(), raw_activations).save()
-                        except nnsight.util.NNsightError as ex:
-                            raise RuntimeError(
-                                f"Failed to manipulate activations for split point '{split_point}'. "
-                                "If it comes from: ``nnsight.util.NNsightError: 'tuple' object has no attribute 'cpu'.'' "
-                                "Then the split point is not a valid path in the loaded model, because it has several outputs. "
-                                "Often, adding '.mlp' to the split point path solves the issue."
-                            ) from ex
+                            # move activations to cpu
+                            raw_activations = raw_activations.cpu()
+                            # try:
+                            #     raw_activations = nnsight.apply(lambda x: x.cpu(), raw_activations).save()
+                            # except nnsight.util.NNsightError as ex:
+                            #     raise RuntimeError(
+                            #         f"Failed to manipulate activations for split point '{split_point}'. "
+                            #         "If it comes from: ``nnsight.util.NNsightError: 'tuple' object has no attribute 'cpu'.'' "
+                            #         "Then the split point is not a valid path in the loaded model, because it has several outputs. "
+                            #         "Often, adding '.mlp' to the split point path solves the issue."
+                            #     ) from ex
 
-                        # store activations
-                        activations[split_point].append(raw_activations)
+                            # store activations
+                            activations[split_point].append(raw_activations)
 
-                        # Early stopping at the last splitting layer
-                        if idx == len(self.split_points) - 1:
-                            getattr(curr_module, module_out_name).stop()
+                            # Early stopping at the last splitting layer
+                            if idx == len(self.split_points) - 1:
+                                tracer.stop()
 
-            torch.cuda.empty_cache()
-            if offset_mapping is not None:
-                tokenized_inputs["offset_mapping"] = offset_mapping  # type: ignore
+                    torch.cuda.empty_cache()
+                    if offset_mapping is not None:
+                        tokenized_inputs["offset_mapping"] = offset_mapping  # type: ignore
 
-            for split_point in self.split_points:
-                # apply selection strategy to the last activations
-                activations[split_point][-1], _ = self._apply_selection_strategy(
-                    inputs=tokenized_inputs,  # type: ignore
-                    activations=activations[split_point][-1],  # use the last batch of activations
-                    activation_granularity=activation_granularity,
-                    aggregation_strategy=aggregation_strategy,
-                )
+                    for split_point in self.split_points:
+                        # apply selection strategy to the last activations
+                        activations[split_point][-1], _ = self._apply_selection_strategy(
+                            inputs=tokenized_inputs,  # type: ignore
+                            activations=activations[split_point][-1],  # use the last batch of activations
+                            activation_granularity=activation_granularity,
+                            aggregation_strategy=aggregation_strategy,
+                        )
 
         # concat activation batches
         for split_point in self.split_points:
@@ -789,14 +795,15 @@ class ModelWithSplitPoints(LanguageModel):
             local_split_point: str = self.split_points[0]
 
         # batch inputs
+        grad_batch_size = 1
         if isinstance(inputs, BatchEncoding):
             batch_generator = []
-            for i in range(0, len(inputs), self.batch_size):
-                end_idx = min(i + self.batch_size, len(inputs))
+            for i in range(0, len(inputs), grad_batch_size):
+                end_idx = min(i + grad_batch_size, len(inputs))
                 batch_generator.append({key: value[i:end_idx] for key, value in inputs.items()})
         else:
             batch_generator = (
-                inputs[i : min(i + self.batch_size, len(inputs))] for i in range(0, len(inputs), self.batch_size)
+                inputs[i : min(i + grad_batch_size, len(inputs))] for i in range(0, len(inputs), grad_batch_size)
             )
 
         gradients_list: list[Float[torch.Tensor, "ng c"]] = []
@@ -828,12 +835,13 @@ class ModelWithSplitPoints(LanguageModel):
                 module_out_name = "nns_output" if hasattr(curr_module, "nns_output") else "output"
 
                 # get activations
-                raw_activations: Float[torch.Tensor, "n l d"] = getattr(curr_module, module_out_name)
+                raw_activations: Float[torch.Tensor, "1 l d"] = getattr(curr_module, module_out_name)
 
                 if offset_mapping is not None:
                     tokenized_inputs["offset_mapping"] = offset_mapping  # type: ignore
 
-                selected_activations: Float[torch.Tensor, "ng d"]
+                # apply selection strategy
+                selected_activations: Float[torch.Tensor, "g d"]
                 selected_activations, granularity_indices = self._apply_selection_strategy(
                     inputs=tokenized_inputs,  # type: ignore
                     activations=raw_activations,  # use the last batch of activations
@@ -841,13 +849,14 @@ class ModelWithSplitPoints(LanguageModel):
                     aggregation_strategy=aggregation_strategy,
                 )
 
-                concept_activations: Float[torch.Tensor, "ng c"] = encode_activations(selected_activations)
-                concept_activations.requires_grad_(True)
-                concept_activations_grad: Float[torch.Tensor, "ng c"] = concept_activations.grad.save()
+                # encode activations into concepts
+                concept_activations: Float[torch.Tensor, "g c"] = encode_activations(selected_activations)
 
-                decoded_activations: Float[torch.Tensor, "ng d"] = decode_activations(concept_activations)
+                # decode concepts back into activations
+                decoded_activations: Float[torch.Tensor, "g d"] = decode_activations(concept_activations)
 
-                reconstructed_activations: Float[torch.Tensor, "n l d"] = self._reintegrate_selected_activations(
+                # reintegrate decoded activations into the original activations
+                reconstructed_activations: Float[torch.Tensor, "1 l d"] = self._reintegrate_selected_activations(
                     initial_activations=raw_activations,
                     new_activations=decoded_activations,
                     granularity_indices=granularity_indices,
@@ -855,26 +864,29 @@ class ModelWithSplitPoints(LanguageModel):
                     aggregation_strategy=aggregation_strategy,
                 )
 
-                # raw_activations = reconstructed_activations
-                if hasattr(curr_module, "output"):
-                    curr_module.output = torch.zeros_like(raw_activations)  # TODO: remove, there for testing
+                if hasattr(curr_module, "nns_output"):
+                    curr_module.nns_output = reconstructed_activations
                 else:
-                    curr_module.nns_output = torch.zeros_like(raw_activations)  # TODO: remove, there for testing
+                    curr_module.output = reconstructed_activations
 
-                outputs = self.output  # (n, t)
+                # get logits
+                # TODO: allow target specification
+                outputs = self.output  # (n, t, v)
+                max_logits, _ = outputs.logits.max(dim=-1)
 
-                if targets is not None:
-                    logits_indices = outputs.logits.argmax(dim=-1)
-                    logits = outputs.logits.gather(dim=-1, index=logits_indices.unsqueeze(-1))
-                else:
-                    logits = outputs.logits.gather(dim=-1, index=targets.unsqueeze(-1))
-                logits.backward()
-                tracer.log("logits", logits)
+                # compute gradients for each target
+                target_gradient = []
+                for t in range(max_logits.shape[1]):
+                    with max_logits[:, t].backward(retain_graph=True):
+                        concept_activations_grad: Float[torch.Tensor, "g c"] = concept_activations.grad.squeeze(dim=0)
 
-            if concepts_x_gradients:
-                concept_activations_grad *= concept_activations
+                        # for gradient x concepts, multiply by concepts
+                        if concepts_x_gradients:
+                            concept_activations_grad *= concept_activations
+                    target_gradient.append(concept_activations_grad)
+                target_gradient = torch.cat(target_gradient, dim=0).save()
 
-            gradients_list.append(concept_activations_grad.detach().cpu())
+            gradients_list.append(target_gradient)
             torch.cuda.empty_cache()
 
         gradients = torch.cat(gradients_list, dim=0)
@@ -936,8 +948,8 @@ class ModelWithSplitPoints(LanguageModel):
         inputs: str | list[str] | BatchEncoding | None = None,
     ) -> dict[str, torch.Size]:
         """Get the shape of the latent activations at the specified split point."""
+        sizes = {}
         with self.scan(self._example_input if inputs is None else inputs):
-            sizes = {}
             for split_point in self.split_points:
                 curr_module = self.get(split_point)
                 module_out_name = "nns_output" if hasattr(curr_module, "nns_output") else "output"
