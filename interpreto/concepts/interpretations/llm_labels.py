@@ -74,6 +74,8 @@ class LLMLabels(BaseConceptInterpretationMethod):
         k_examples (int): The number of inputs to use for the interpretation.
         k_context (int): The number of context tokens to use around the concept tokens.
         use_vocab (bool): If True, the interpretation will be computed from the vocabulary of the model.
+        k_quantile (int): The number of quantiles to use for sampling the inputs, if `sampling_method` is `QUANTILE`.
+        system_prompt (str | None): The system prompt to use for the LLM. If None, a default prompt is used.
     """
 
     def __init__(
@@ -89,6 +91,7 @@ class LLMLabels(BaseConceptInterpretationMethod):
         k_context: int = 0,
         use_vocab: bool = False,
         k_quantile: int = 5,
+        system_prompt: str | None = None,
     ):
         super().__init__(
             model_with_split_points=model_with_split_points, split_point=split_point, concept_model=concept_model
@@ -111,6 +114,14 @@ class LLMLabels(BaseConceptInterpretationMethod):
         self.k_context = k_context
         self.use_vocab = use_vocab
         self.k_quantile = k_quantile
+
+        if system_prompt is None:
+            if self.k_context > 0:
+                self.system_prompt = SYSTEM_PROMPT_WITH_CONTEXT
+            else:
+                self.system_prompt = SYSTEM_PROMPT_WITHOUT_CONTEXT
+        else:
+            self.system_prompt = system_prompt
 
     def interpret(
         self,
@@ -167,8 +178,9 @@ class LLMLabels(BaseConceptInterpretationMethod):
                 k_context=self.k_context,
             )
             example_prompt = _build_example_prompt(examples)
-            prompt = [(Role.SYSTEM, SYSTEM_PROMPT), (Role.USER, example_prompt), (Role.ASSISTANT, "")]
-            labels[concept_idx] = self.llm_interface.generate(prompt)
+            prompt = [(Role.SYSTEM, self.system_prompt), (Role.USER, example_prompt), (Role.ASSISTANT, "")]
+            label = self.llm_interface.generate(prompt)
+            labels[concept_idx] = label
         return labels
 
     def _get_granular_inputs(
@@ -376,7 +388,7 @@ def _build_example_prompt(examples: list[Example]) -> str:
 
 
 # From https://github.com/EleutherAI/delphi/blob/article_version/sae_auto_interp/explainers/default/prompts.py
-SYSTEM_PROMPT = """You are a meticulous AI researcher conducting an important investigation into patterns found in language.
+SYSTEM_PROMPT_WITH_CONTEXT = """You are a meticulous AI researcher conducting an important investigation into patterns found in language.
 Your task is to analyze text and provide an explanation that thoroughly encapsulates possible patterns found in it.
 Guidelines:
 
@@ -386,6 +398,19 @@ How important each token is for the behavior is listed after each example in par
 - Try to produce a concise final description. Simply describe the text features that are common in the examples, and what patterns you found.
 - If the examples are uninformative, you don't need to mention them. Don't focus on giving examples of important tokens, but try to summarize the patterns found in the examples.
 - Do not mention the marker tokens (<< >>) in your explanation.
+- Do not make lists of possible explanations.
+- Keep your explanations short and concise, with no more that 15 words, for example "reference to blue objects" or "word before a comma"
+"""
+
+SYSTEM_PROMPT_WITHOUT_CONTEXT = """You are a meticulous AI researcher conducting an important investigation into patterns found in language.
+Your task is to analyze text and provide an explanation that thoroughly encapsulates possible patterns found in it.
+Guidelines:
+
+You will be given a list of text examples.
+How important each text is for the behavior is listed after each example in parentheses, with importance from 0 to 10.
+
+- Try to produce a concise final description. Simply describe the text features that are common in the examples, and what patterns you found.
+- If the examples are uninformative, you don't need to mention them. Don't focus on giving examples, but try to summarize the patterns found in the examples.
 - Do not make lists of possible explanations.
 - Keep your explanations short and concise, with no more that 15 words, for example "reference to blue objects" or "word before a comma"
 """
