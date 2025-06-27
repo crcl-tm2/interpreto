@@ -538,12 +538,32 @@ class ModelWithSplitPoints(LanguageModel):
             case _:
                 raise ValueError(f"Invalid activation selection strategy: {activation_granularity}")
 
+    @staticmethod
+    def _manage_output_tuple(
+        activations: torch.Tensor | tuple[torch.Tensor], output_tuple_index: int | None, split_point: str
+    ) -> tuple[torch.Tensor, int | None]:
+        """Handles the case in which the model has a tuple of outputs, and we need to know which element is the hidden state.
+
+        Args:
+            activations (torch.Tensor | tuple[torch.Tensor]): The activations to manage.
+            output_tuple_index (int | None): The index of the hidden state in the tuple.
+
+        Returns:
+            torch.Tensor: The managed activations.
+            int | None: The index of the hidden state in the tuple.
+
+        Raises:
+            TypeError: If the activations are not a `torch.tensor` or a valid tuple.
+            RuntimeError: If the activations are a tuple, but we were not able to determine which element is the hidden state.
+        """
+
     def get_activations(
         self,
         inputs: list[str] | torch.Tensor | BatchEncoding,
         activation_granularity: ActivationGranularity = ActivationGranularity.ALL_TOKENS,
         aggregation_strategy: AggregationStrategy = AggregationStrategy.MEAN,
         pad_side: str = "left",
+        output_tuple_index: int | None = None,
         **kwargs,
     ) -> dict[str, LatentActivations]:
         """Get intermediate activations for all model split points
@@ -598,6 +618,9 @@ class ModelWithSplitPoints(LanguageModel):
                     signed_max([[-1, 0, 1, 2], [-3, 1, -2, 0]]) = [-3, 1, -2, 2]
 
             pad_side (str): 'left' or 'right' — side on which to apply padding along dim=1 only for ALL strategy.
+            output_tuple_index (int | None): If the output at the split point is a tuple, this is the index of the hidden state.
+                If `None`, an element with 3 dimensions is searched for. If not found, an error is raised. If several elements are found,
+                an error is raised.
             **kwargs: Additional keyword arguments passed to the model forward pass.
 
         Returns:
@@ -662,9 +685,63 @@ class ModelWithSplitPoints(LanguageModel):
                             module_out_name = "nns_output" if hasattr(curr_module, "nns_output") else "output"
 
                             # get activations
-                            raw_activations = getattr(curr_module, module_out_name)
+                            layer_outputs = getattr(curr_module, module_out_name)
 
+                            # treat part of cases with multiple outputs, I cannot put this as a function for obscure reasons
+                            # TODO: pyt back as function when bug is fixed
+                            # if isinstance(raw_activations, torch.Tensor):
+                            #     pass
+
+                            # elif isinstance(raw_activations, tuple):
+                            #     if output_tuple_index is None:
+                            #         for i, output in enumerate(raw_activations):
+                            #             if not isinstance(output, torch.Tensor):
+                            #                 raise TypeError(
+                            #                     f"Failed to manipulate activations for split point '{split_point}'. "
+                            #                     f"Wrong type of activations. Expected torch.Tensor or tuple[torch.Tensor], got tuple."
+                            #                     f"With element {i} of the tuple: {type(output)}: {output}"
+                            #                 )
+                            #             if output.dim() == 3:
+                            #                 if output_tuple_index is not None:
+                            #                     raise RuntimeError(
+                            #                         f"Failed to manipulate activations for split point '{split_point}'. "
+                            #                         "Activations are tuples, and we were not able to determine which element was the hidden state. "
+                            #                         "Then the split point is not a valid path in the loaded model, because it has several outputs. "
+                            #                         "Often, adding '.mlp' to the split point path solves the issue."
+                            #                     )
+                            #                 output_tuple_index = i
+                            #         if output_tuple_index is None:
+                            #             raise RuntimeError(
+                            #                 f"Failed to manipulate activations for split point '{split_point}'. "
+                            #                 "Activations are tuples, which are not supported. "
+                            #                 "Then the split point is not a valid path in the loaded model, because it has several outputs. "
+                            #                 "Often, adding '.mlp' to the split point path solves the issue."
+                            #             )
+                            #     raw_activations = raw_activations[output_tuple_index]
+
+                            # else:
+                            #     raise TypeError(
+                            #         f"Failed to manipulate activations for split point '{split_point}'. "
+                            #         f"Wrong type of activations. Expected torch.Tensor or tuple[torch.Tensor], got {type(raw_activations)}: {raw_activations}"
+                            #     )
                             # move activations to cpu
+                            if isinstance(layer_outputs, tuple):
+                                found = False
+                                for candidate in layer_outputs:
+                                    if candidate.dim() == 3:
+                                        raw_activations = candidate
+                                        found = True
+                                        break
+                                if not found:
+                                    raise RuntimeError(
+                                        f"Failed to manipulate activations for split point '{split_point}'. "
+                                        "Activations are tuples, which are not supported. "
+                                        "Then the split point is not a valid path in the loaded model, because it has several outputs. "
+                                        "Often, adding '.mlp' to the split point path solves the issue."
+                                    )
+                            else:
+                                raw_activations = layer_outputs
+
                             raw_activations = raw_activations.cpu()
                             # try:
                             #     raw_activations = nnsight.apply(lambda x: x.cpu(), raw_activations).save()
@@ -795,7 +872,7 @@ class ModelWithSplitPoints(LanguageModel):
             local_split_point: str = self.split_points[0]
 
         # batch inputs
-        grad_batch_size = 1
+        grad_batch_size = 1  # TODO: find a way to batch calls
         if isinstance(inputs, BatchEncoding):
             batch_generator = []
             for i in range(0, len(inputs), grad_batch_size):
@@ -835,7 +912,24 @@ class ModelWithSplitPoints(LanguageModel):
                 module_out_name = "nns_output" if hasattr(curr_module, "nns_output") else "output"
 
                 # get activations
-                raw_activations: Float[torch.Tensor, "1 l d"] = getattr(curr_module, module_out_name)
+                layer_outputs = getattr(curr_module, module_out_name)
+                if isinstance(layer_outputs, tuple):
+                    found = False
+                    for i, candidate in enumerate(layer_outputs):
+                        if candidate.dim() == 3:
+                            raw_activations = candidate
+                            found = True
+                            candidate_idx = i
+                            break
+                    if not found:
+                        raise RuntimeError(
+                            f"Failed to manipulate activations for split point '{split_point}'. "
+                            "Activations are tuples, which are not supported. "
+                            "Then the split point is not a valid path in the loaded model, because it has several outputs. "
+                            "Often, adding '.mlp' to the split point path solves the issue."
+                        )
+                else:
+                    raw_activations = layer_outputs
 
                 if offset_mapping is not None:
                     tokenized_inputs["offset_mapping"] = offset_mapping  # type: ignore
@@ -864,27 +958,48 @@ class ModelWithSplitPoints(LanguageModel):
                     aggregation_strategy=aggregation_strategy,
                 )
 
-                if hasattr(curr_module, "nns_output"):
-                    curr_module.nns_output = reconstructed_activations
+                if isinstance(layer_outputs, tuple):
+                    layer_outputs = list(layer_outputs)
+                    layer_outputs[candidate_idx] = reconstructed_activations
                 else:
-                    curr_module.output = reconstructed_activations
+                    layer_outputs = reconstructed_activations
+
+                if hasattr(curr_module, "nns_output"):
+                    curr_module.nns_output = layer_outputs
+                else:
+                    curr_module.output = layer_outputs
 
                 # get logits
                 # TODO: allow target specification
                 outputs = self.output  # (n, t, v)
-                max_logits, _ = outputs.logits.max(dim=-1)
 
-                # compute gradients for each target
-                target_gradient = []
-                for t in range(max_logits.shape[1]):
-                    with max_logits[:, t].backward(retain_graph=True):
-                        concept_activations_grad: Float[torch.Tensor, "g c"] = concept_activations.grad.squeeze(dim=0)
+                if len(max_logits.shape) == 3:  # generation
+                    max_logits, _ = outputs.logits.max(dim=-1)
 
-                        # for gradient x concepts, multiply by concepts
-                        if concepts_x_gradients:
-                            concept_activations_grad *= concept_activations
-                    target_gradient.append(concept_activations_grad)
-                target_gradient = torch.cat(target_gradient, dim=0).save()
+                    # compute gradients for each target
+                    target_gradient = []
+                    for t in range(max_logits.shape[1]):
+                        with max_logits[:, t].backward(retain_graph=True):
+                            concept_activations_grad = concept_activations.grad.squeeze(dim=0)
+
+                            # for gradient x concepts, multiply by concepts
+                            if concepts_x_gradients:
+                                concept_activations_grad *= concept_activations
+                        target_gradient.append(concept_activations_grad)
+                    target_gradient = torch.cat(target_gradient, dim=0).save()
+                else:  # classification
+                    logits = outputs.logits
+                    # compute gradients for each class
+                    target_gradient = []
+                    for t in range(logits.shape[1]):
+                        with logits[:, t].backward(retain_graph=True):
+                            concept_activations_grad = concept_activations.grad.squeeze(dim=0)
+
+                            # for gradient x concepts, multiply by concepts
+                            if concepts_x_gradients:
+                                concept_activations_grad *= concept_activations
+                        target_gradient.append(concept_activations_grad)
+                    target_gradient = torch.cat(target_gradient, dim=0).save()
 
             gradients_list.append(target_gradient)
             torch.cuda.empty_cache()
@@ -954,5 +1069,10 @@ class ModelWithSplitPoints(LanguageModel):
                 curr_module = self.get(split_point)
                 module_out_name = "nns_output" if hasattr(curr_module, "nns_output") else "output"
                 module = getattr(curr_module, module_out_name)
+                if isinstance(module, tuple):
+                    for candidate in module:
+                        if candidate.dim() == 3:
+                            module = candidate
+                            break
                 sizes[split_point] = module.shape
         return sizes
