@@ -61,14 +61,13 @@ class LLMInterface(ABC):
 
 
 class OpenAILLM(LLMInterface):
-    def __init__(self, api_key: str, model: str = "gpt-3.5-turbo", num_try: int = 5):
+    def __init__(self, api_key: str, model: str = "o4-mini", num_try: int = 5):
         try:
             import openai
         except ImportError as e:
             raise ImportError("Install openai to use OpenAI API.") from e
 
-        openai.api_key = api_key
-        self.client = openai.OpenAI()
+        self.client = openai.OpenAI(api_key=api_key)
         self.model = model
         self.num_try = num_try
 

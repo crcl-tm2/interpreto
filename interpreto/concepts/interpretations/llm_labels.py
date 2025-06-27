@@ -25,7 +25,7 @@
 
 from __future__ import annotations
 
-import logging
+import warnings
 from collections.abc import Mapping
 from enum import Enum
 from typing import NamedTuple
@@ -259,7 +259,10 @@ def _sample_quantile(
 
     non_zero_samples = torch.argwhere(concept_activations != 0).squeeze(-1)
     if non_zero_samples.size(0) < k_quantile:
-        logging.warning("Not enough non-zero samples to compute quantiles. Using all non-zero samples.")
+        warnings.warn(
+            "Not enough non-zero samples to compute quantiles. Using all non-zero samples.",
+            stacklevel=2,
+        )
         return non_zero_samples.tolist()
 
     quantile_size = non_zero_samples.size(0) // k_quantile
