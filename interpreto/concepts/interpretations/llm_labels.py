@@ -86,7 +86,7 @@ class LLMLabels(BaseConceptInterpretationMethod):
         llm_interface: LLMInterface,
         sampling_method: SAMPLING_METHOD,
         k_examples: int = 30,
-        k_context: int = 10,
+        k_context: int = 0,
         use_vocab: bool = False,
         k_quantile: int = 5,
     ):
@@ -151,10 +151,7 @@ class LLMLabels(BaseConceptInterpretationMethod):
             concepts_indices=concepts_indices,
         )
 
-        granular_inputs, granular_sample_ids = self._get_granular_inputs(
-            inputs=sure_inputs,
-            concepts_activations=sure_concepts_activations,
-        )
+        granular_inputs, granular_sample_ids = self._get_granular_inputs(sure_inputs)
 
         labels: Mapping[int, str | None] = {}
         for concept_idx in concepts_indices:
@@ -177,14 +174,7 @@ class LLMLabels(BaseConceptInterpretationMethod):
     def _get_granular_inputs(
         self,
         inputs: list[str],  # (n)
-        concepts_activations: ConceptsActivations,  # (n*l, cpt)
-    ) -> tuple[list[str], list[int]]:
-        max_seq_len = concepts_activations.shape[0] / len(inputs)
-        if max_seq_len != int(max_seq_len):
-            raise ValueError(
-                f"The number of inputs and activations should be the same. Got {len(inputs)} inputs and {concepts_activations.shape[0]} activations."
-            )
-
+    ) -> tuple[list[str], list[int]]:  # (ng,)
         if self.use_vocab or self.activation_granularity is ActivationGranularity.SAMPLE:
             # no activation_granularity is needed
             return inputs, list(range(len(inputs)))
