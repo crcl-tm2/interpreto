@@ -25,6 +25,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
 from enum import Enum
 from typing import NamedTuple
@@ -46,8 +47,8 @@ class SAMPLING_METHOD(Enum):
 
 
 class Example(NamedTuple):
-    texts: list[str]
-    activations: torch.Tensor
+    texts: list[str] | str
+    activations: list[int] | int
 
 
 class LLMLabels(BaseConceptInterpretationMethod):
@@ -87,6 +88,7 @@ class LLMLabels(BaseConceptInterpretationMethod):
         k_examples: int = 30,
         k_context: int = 10,
         use_vocab: bool = False,
+        k_quantile: int = 5,
     ):
         super().__init__(
             model_with_split_points=model_with_split_points, split_point=split_point, concept_model=concept_model
@@ -108,6 +110,7 @@ class LLMLabels(BaseConceptInterpretationMethod):
         self.k_examples = k_examples
         self.k_context = k_context
         self.use_vocab = use_vocab
+        self.k_quantile = k_quantile
 
     def interpret(
         self,
@@ -155,13 +158,19 @@ class LLMLabels(BaseConceptInterpretationMethod):
 
         labels: Mapping[int, str | None] = {}
         for concept_idx in concepts_indices:
-            examples = self._sample_examples(
-                inputs=granular_inputs,
+            example_idx = self._sample_examples(
                 concepts_activations=sure_concepts_activations,
-                sample_ids=granular_sample_ids,
                 concept_idx=concept_idx,
             )
-            prompt = _build_prompt(examples)
+            examples = _format_examples(
+                example_ids=example_idx,
+                inputs=granular_inputs,
+                concept_activations=sure_concepts_activations[:, concept_idx],
+                sample_ids=granular_sample_ids,
+                k_context=self.k_context,
+            )
+            example_prompt = _build_example_prompt(examples)
+            prompt = [(Role.SYSTEM, SYSTEM_PROMPT), (Role.USER, example_prompt), (Role.ASSISTANT, "")]
             labels[concept_idx] = self.llm_interface.generate(prompt)
         return labels
 
@@ -197,108 +206,180 @@ class LLMLabels(BaseConceptInterpretationMethod):
 
     def _sample_examples(
         self,
-        inputs: list[str],  # (ng)
         concepts_activations: ConceptsActivations,  # (ng, cpt)
-        sample_ids: list[int],  # (ng)
         concept_idx: int,
-    ) -> list[Example]:
-        """
-        Only token granularity suported for now
-        Select self.k_examples from the tokens and get their context and text
-        """
-
+    ) -> list[int]:
         if self.sampling_method == SAMPLING_METHOD.TOP:
-            _, inputs_indices = torch.topk(concepts_activations[:, concept_idx], k=self.k_examples)
-            # TODO : verify that there is no zero values
+            inputs_idx = _sample_top(
+                concept_activations=concepts_activations[:, concept_idx],
+                k_examples=self.k_examples,
+            )
         elif self.sampling_method == SAMPLING_METHOD.QUANTILE:
-            inputs_indices = _sample_quantile(concepts_activations[:, concept_idx], k_examples=self.k_examples)
+            inputs_idx = _sample_quantile(
+                concept_activations=concepts_activations[:, concept_idx],
+                k_examples=self.k_examples,
+                k_quantile=self.k_quantile,
+            )
         elif self.sampling_method == SAMPLING_METHOD.RANDOM:
-            non_zero_samples = torch.argwhere(concepts_activations[:, concept_idx] != 0).squeeze(-1)
-            inputs_indices = non_zero_samples[torch.randperm(len(non_zero_samples))][: self.k_examples]
+            inputs_idx = _sample_random(
+                concept_activations=concepts_activations[:, concept_idx],
+                k_examples=self.k_examples,
+            )
         else:
             raise NotImplementedError(f"Sampling method {self.sampling_method} is not implemented.")
+        return inputs_idx
 
-        max_act = concepts_activations[:, concept_idx].max().item()
-        examples: list[Example] = []
-        for input_idx in inputs_indices:
-            left_idx = max(0, input_idx.item() - self.k_context)
-            right_idx = input_idx + self.k_context + 1
-            # Select context from the same sample
-            sample_idx = sample_ids[input_idx]
+
+def _sample_top(
+    concept_activations: Float[torch.Tensor, "ng"],
+    k_examples: int,
+) -> list[int]:
+    if len(concept_activations.size()) > 1:
+        raise ValueError(
+            f"concept_activations should be a 1D tensor, got tensor of shape {concept_activations.size()}"
+        )
+    non_zero_samples = torch.argwhere(concept_activations != 0).squeeze(-1)
+    k_examples = min(k_examples, non_zero_samples.size(0))
+    inputs_indices = non_zero_samples[torch.topk(concept_activations[non_zero_samples], k=k_examples).indices]
+    return inputs_indices.tolist()
+
+
+def _sample_random(
+    concept_activations: Float[torch.Tensor, "ng"],
+    k_examples: int,
+) -> list[int]:
+    if len(concept_activations.size()) > 1:
+        raise ValueError(
+            f"concept_activations should be a 1D tensor, got tensor of shape {concept_activations.size()}"
+        )
+    non_zero_samples = torch.argwhere(concept_activations != 0).squeeze(-1)
+    inputs_indices = non_zero_samples[torch.randperm(len(non_zero_samples))][:k_examples]
+    return inputs_indices.tolist()
+
+
+def _sample_quantile(
+    concept_activations: Float[torch.Tensor, "ng"], k_examples: int, k_quantile: int = 5
+) -> list[int]:
+    if k_examples < k_quantile:
+        raise ValueError(f"k_examples ({k_examples}) should be greater than k_quantile ({k_quantile}).")
+    if len(concept_activations.size()) > 1:
+        raise ValueError(
+            f"concept_activations should be a 1D tensor, got tensor of shape {concept_activations.size()}"
+        )
+
+    non_zero_samples = torch.argwhere(concept_activations != 0).squeeze(-1)
+    if non_zero_samples.size(0) < k_quantile:
+        logging.warning("Not enough non-zero samples to compute quantiles. Using all non-zero samples.")
+        return non_zero_samples.tolist()
+
+    quantile_size = non_zero_samples.size(0) // k_quantile
+    samples_per_quantile = k_examples // k_quantile
+
+    sorted_indexes = torch.argsort(concept_activations, descending=True)[: non_zero_samples.size(0)]
+    sample_indices = []
+    for i in range(k_quantile):
+        if i == k_quantile - 1:
+            # Last quantile (minimally activating samples) may have more samples
+            quantile_samples = sorted_indexes[i * quantile_size :]
+        else:
+            quantile_samples = sorted_indexes[i * quantile_size : (i + 1) * quantile_size]
+        selected_samples = quantile_samples[torch.randperm(len(quantile_samples))[:samples_per_quantile]]
+        sample_indices.extend(selected_samples.tolist())
+    return sample_indices
+
+
+def _format_examples(
+    example_ids: list[int],
+    inputs: list[str],
+    concept_activations: Float[torch.Tensor, "ng"],
+    sample_ids: list[int],  # (ng)
+    k_context: int,
+) -> list[Example]:
+    if len(concept_activations.size()) > 1:
+        raise ValueError(
+            f"concept_activations should be a 1D tensor, got tensor of shape {concept_activations.size()}"
+        )
+    if len(inputs) != len(sample_ids) or len(inputs) != concept_activations.size(0):
+        raise ValueError(
+            f"The number of inputs ({len(inputs)}), sample_ids ({len(sample_ids)}), and concept_activations ({concept_activations.size(0)}) should be the same."
+        )
+
+    max_act = concept_activations.max().item()
+    examples: list[Example] = []
+    for example_id in example_ids:
+        if k_context > 0:
+            left_idx = max(0, example_id - k_context)
+            right_idx = example_id + k_context + 1
+            # Select context from the same sample, it won't select tokens/sentences/texts from other samples
+            sample_idx = sample_ids[example_id]
             example = Example(
                 texts=[
                     text
                     for text, id in zip(inputs[left_idx:right_idx], sample_ids[left_idx:right_idx], strict=False)
                     if id == sample_idx
                 ],
-                activations=torch.tensor(
-                    [
-                        act / max_act * 10
-                        for act, id in zip(
-                            concepts_activations[left_idx:right_idx, concept_idx],
-                            sample_ids[left_idx:right_idx],
-                            strict=False,
-                        )
-                        if id == sample_idx
-                    ]
-                ).floor(),
+                activations=[
+                    round(act.item() / max_act * 10)
+                    for act, id in zip(
+                        concept_activations[left_idx:right_idx],
+                        sample_ids[left_idx:right_idx],
+                        strict=False,
+                    )
+                    if id == sample_idx
+                ],
             )
-            examples.append(example)
-        return examples
+        else:
+            example = Example(
+                texts=inputs[example_id],
+                activations=round(concept_activations[example_id].item() / max_act * 10),
+            )
+        examples.append(example)
+    return examples
 
 
-def _sample_quantile(
-    concept_activations: Float[torch.Tensor, "ng"], k_examples: int, n_quantiles: int = 5
-) -> torch.Tensor:
-    # TODO : add some checks on number of samples vs number of quantiles ect
-    if len(concept_activations.size()) > 1:
-        raise ValueError(
-            f"concept_activations should be a 1D tensor, got tensor of shape {concept_activations.size()}"
-        )
-
-    non_zero_samples = torch.argwhere(concept_activations != 0)
-    quantile_size = non_zero_samples.size(0) // n_quantiles  # TODO : some samples might be left out
-    samples_per_quantile = k_examples // n_quantiles
-
-    sorted_indexes = torch.argsort(concept_activations, descending=True)[: non_zero_samples.size(0)]
-    sample_indices = torch.zeros(samples_per_quantile * n_quantiles)
-    for i in range(n_quantiles):
-        quantile_samples = sorted_indexes[i * quantile_size : (i + 1) * quantile_size]
-        selected_samples = quantile_samples[torch.randperm(len(quantile_samples))[:samples_per_quantile]]
-        sample_indices[i * samples_per_quantile : (i + 1) * samples_per_quantile] = selected_samples
-    return sample_indices.long()
-
-
-def _build_prompt(examples: list[Example]) -> list[tuple[Role, str]]:
+def _build_example_prompt(examples: list[Example]) -> str:
     """
-    Examples are given like that (example with tokens, but works similarly with words or sentences):
+    For examples provided with a context, the format is:
 
     Example 1:  the dog <<eats>> the cat
     Activations: ("the", 0), (" dog", 2), (" eats", 10), (" the", 2), (" cat", 0)
     Example 2:  it was a <<delicious>> meal, but
     Activations: ("it", 0), (" was", 0), (" a", 1), (" delicious", 9), (" meal", 8), (",", 0), (" but", 0)
 
+    For examples without context, the format is:
+
+    Example 1:  The dog eats the cat (activation : 6)
+    Example 2:  it was a delicious meal (activation : 4)
+
     """
     example_prompts: list[str] = []
     for i, example in enumerate(examples):
-        max_token = torch.argmax(example.activations)
-        example_prompts.append(
-            f"Example {i + 1}: "
-            + "".join(example.tokens[:max_token])
-            + f" <<{example.tokens[max_token]}>> "
-            + "".join(example.tokens[max_token + 1 :])
-        )
-        example_prompts.append(
-            "Activations: "
-            + ", ".join(
-                [
-                    f'("{token}", {activation})'
-                    for token, activation in zip(example.tokens, example.activations, strict=False)
-                ]
+        if isinstance(example.texts, str) and isinstance(example.activations, int):
+            # Text without context
+            example_prompts.append(f"Example {i + 1}: {example.texts} (activation: {example.activations})")
+        elif isinstance(example.texts, list) and isinstance(example.activations, list):
+            # Text with context
+            max_text_pos = example.activations.index(max(example.activations))
+            example_prompts.append(
+                f"Example {i + 1}: "
+                + "".join(example.texts[:max_text_pos])
+                + f" <<{example.texts[max_text_pos]}>> "
+                + "".join(example.texts[max_text_pos + 1 :])
             )
-        )
-    example_prompt = "\n".join(example_prompts)
-    return [(Role.SYSTEM, SYSTEM_PROMPT), (Role.USER, example_prompt), (Role.ASSISTANT, "")]
+            example_prompts.append(
+                "Activations: "
+                + ", ".join(
+                    [
+                        f'("{text}", {activation})'
+                        for text, activation in zip(example.texts, example.activations, strict=False)
+                    ]
+                )
+            )
+        else:
+            raise ValueError(
+                f"example.text is {type(example)} and example.activations is {example.texts}, expected str with int or list[str] with list[int]."
+            )
+    return "\n".join(example_prompts)
 
 
 # From https://github.com/EleutherAI/delphi/blob/article_version/sae_auto_interp/explainers/default/prompts.py

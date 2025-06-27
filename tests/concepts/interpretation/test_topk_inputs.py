@@ -45,7 +45,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 def test_topk_inputs_from_activations(splitted_encoder_ml: ModelWithSplitPoints):
     """
-    Test that the `top_k_tokens_for_concept_from_activations` method works as expected
+    Test that the `_topk_inputs_from_concepts_activations` method works as expected
     Fake activations are given to the `NeuronsAsConcepts` explainer
     """
     nb_concepts = 10
@@ -130,7 +130,7 @@ def test_topk_inputs_granularity(
     splitted_encoder_ml: ModelWithSplitPoints, huge_text: list[str], activation_granularity: ActivationGranularity
 ):
     """
-    Test that the `top_k_tokens_for_concept` method works as expected
+    Test that the `interpret` method works as expected for different activation granularities
     Fake activations are given to the `NeuronsAsConcepts` explainer
     """
     # initializing the explainer
@@ -167,9 +167,9 @@ def test_topk_inputs_granularity(
             assert new_key.lower().replace("\n", " ") in flattened_huge_text.lower()
 
 
-def test_interpret_via_topk_inputs(splitted_encoder_ml: ModelWithSplitPoints):
+def test_topk_inputs_concepts_selection(splitted_encoder_ml: ModelWithSplitPoints):
     """
-    Test that the `top_k_tokens_for_concept` method works as expected
+    Test that the concept selection works as expected
     Fake activations are given to the `NeuronsAsConcepts` explainer
     """
     hidden_size = 32
@@ -383,9 +383,10 @@ if __name__ == "__main__":
     activation_dict = splitted_encoder_ml.get_activations(
         sentences, activation_granularity=ModelWithSplitPoints.activation_granularities.TOKEN
     )
+
     test_topk_inputs_from_activations(splitted_encoder_ml)
     test_topk_inputs_from_vocabulary(splitted_encoder_ml)
-    test_interpret_via_topk_inputs(splitted_encoder_ml)
+    test_topk_inputs_concepts_selection(splitted_encoder_ml)
     test_topk_inputs_sources(splitted_encoder_ml)
     test_topk_inputs_error_raising(splitted_encoder_ml, activation_dict)  # type: ignore
     test_topk_inputs_granularity(
