@@ -167,8 +167,7 @@ class LLMLabels(BaseConceptInterpretationMethod):
         labels: Mapping[int, str | None] = {}
         for concept_idx in concepts_indices:
             example_idx = self._sample_examples(
-                concepts_activations=sure_concepts_activations,
-                concept_idx=concept_idx,
+                concept_activations=sure_concepts_activations[:, concept_idx],
             )
             examples = _format_examples(
                 example_ids=example_idx,
@@ -187,6 +186,17 @@ class LLMLabels(BaseConceptInterpretationMethod):
         self,
         inputs: list[str],  # (n)
     ) -> tuple[list[str], list[int]]:  # (ng,)
+        """Split texts from the inputs based on the target granularity
+        (for instance into tokens, words, sentences, ...)
+
+        Args:
+            inputs (list[str]): n text samples
+
+        Returns:
+            tuple[list[str], list[int]]:
+                - list[str]: The granular texts from the inputs, flatened
+                - list[int]: The sample id for each granular text, to keep track of which sample the text belongs to.
+        """
         if self.use_vocab or self.activation_granularity is ActivationGranularity.SAMPLE:
             # no activation_granularity is needed
             return inputs, list(range(len(inputs)))
@@ -208,23 +218,35 @@ class LLMLabels(BaseConceptInterpretationMethod):
 
     def _sample_examples(
         self,
-        concepts_activations: ConceptsActivations,  # (ng, cpt)
-        concept_idx: int,
+        concept_activations: Float[torch.Tensor, "ng"],
     ) -> list[int]:
+        """Select examples to provide to the LLM for labeling a concept, based on the
+        concept activations and the sampling method.
+
+        Args:
+            concept_activations (Float[torch.Tensor, "ng"]): concepts activations for each granular
+                text, first dimension is number of texts, second is number of concepts.
+
+        Raises:
+            NotImplementedError: when `self.sampling_method` is not one of the supported methods.
+
+        Returns:
+            list[int]: the indexes of the examples to provide to the LLM for labeling the concept.
+        """
         if self.sampling_method == SAMPLING_METHOD.TOP:
             inputs_idx = _sample_top(
-                concept_activations=concepts_activations[:, concept_idx],
+                concept_activations=concept_activations,
                 k_examples=self.k_examples,
             )
         elif self.sampling_method == SAMPLING_METHOD.QUANTILE:
             inputs_idx = _sample_quantile(
-                concept_activations=concepts_activations[:, concept_idx],
+                concept_activations=concept_activations,
                 k_examples=self.k_examples,
                 k_quantile=self.k_quantile,
             )
         elif self.sampling_method == SAMPLING_METHOD.RANDOM:
             inputs_idx = _sample_random(
-                concept_activations=concepts_activations[:, concept_idx],
+                concept_activations=concept_activations,
                 k_examples=self.k_examples,
             )
         else:
@@ -236,6 +258,19 @@ def _sample_top(
     concept_activations: Float[torch.Tensor, "ng"],
     k_examples: int,
 ) -> list[int]:
+    """Select the k_examples that most activate the concept. The number of selected
+    sample might be lower than k_examples if there are not enough non-zero activations.
+
+    Args:
+        concept_activations (Float[torch.Tensor, &quot;ng&quot;]): concept activation values for each granular text
+        k_examples (int): number of examples to select, when possible
+
+    Raises:
+        ValueError: if concept_activations is not a 1D tensor.
+
+    Returns:
+        list[int]: the indexes of the examples to provide to the LLM for labeling the concept.
+    """
     if len(concept_activations.size()) > 1:
         raise ValueError(
             f"concept_activations should be a 1D tensor, got tensor of shape {concept_activations.size()}"
@@ -250,6 +285,18 @@ def _sample_random(
     concept_activations: Float[torch.Tensor, "ng"],
     k_examples: int,
 ) -> list[int]:
+    """Select k_examples randomly from the non-zero activations of the concept.
+
+    Args:
+        concept_activations (Float[torch.Tensor, &quot;ng&quot;]): concept activation values for each granular text
+        k_examples (int): number of examples to select, when possible
+
+    Raises:
+        ValueError: if concept_activations is not a 1D tensor.
+
+    Returns:
+        list[int]: the indexes of the examples to provide to the LLM for labeling the concept.
+    """
     if len(concept_activations.size()) > 1:
         raise ValueError(
             f"concept_activations should be a 1D tensor, got tensor of shape {concept_activations.size()}"
@@ -262,6 +309,20 @@ def _sample_random(
 def _sample_quantile(
     concept_activations: Float[torch.Tensor, "ng"], k_examples: int, k_quantile: int = 5
 ) -> list[int]:
+    """Select k_examples/k_quantile examples from each quantile of the concept activations.
+
+    Args:
+        concept_activations (Float[torch.Tensor, &quot;ng&quot;]): concept activation values for each granular text
+        k_examples (int): number of examples to select, when possible. Should be higher than k_quantile.
+        k_quantile (int, optional): number of quantiles. Defaults to 5.
+
+    Raises:
+        ValueError: if k_examples is lower than k_quantile.
+        ValueError: if concept_activations is not a 1D tensor.
+
+    Returns:
+        list[int]: the indexes of the examples to provide to the LLM for labeling the concept.
+    """
     if k_examples < k_quantile:
         raise ValueError(f"k_examples ({k_examples}) should be greater than k_quantile ({k_quantile}).")
     if len(concept_activations.size()) > 1:
@@ -300,6 +361,25 @@ def _format_examples(
     sample_ids: list[int],  # (ng)
     k_context: int,
 ) -> list[Example]:
+    """Format examples for the LLM input. If k_context > 0, it will add context around
+    the selected text (for instance tokens befor and after the selected token). Concept
+    activations are normalized to a scale of 0 to 10, 10 being the maximum activation
+    for the concept in the set of inputs.
+
+    Args:
+        example_ids (list[int]): selected example ids to provide to the LLM.
+        inputs (list[str]): the list of all granular texts from the inputs, flatened.
+        concept_activations (Float[torch.Tensor, &quot;ng&quot;]): the concept activations for each granular text.
+        sample_ids (list[int]): the id of which sample each granular text belongs to.
+
+    Raises:
+        ValueError: if concept_activations is not a 1D tensor
+        ValueError: if the lenght of inputs, sample_ids, and concept_activations do not match.
+
+    Returns:
+        list[Example]: list of Example objects, each containing the texts and normalized concept
+        activations for the LLM input.
+    """
     if len(concept_activations.size()) > 1:
         raise ValueError(
             f"concept_activations should be a 1D tensor, got tensor of shape {concept_activations.size()}"
@@ -343,7 +423,8 @@ def _format_examples(
 
 
 def _build_example_prompt(examples: list[Example]) -> str:
-    """
+    """The prompt containing the examples of text activating a concept, formatted for the LLM.
+
     For examples provided with a context, the format is:
 
     Example 1:  the dog <<eats>> the cat
@@ -356,6 +437,14 @@ def _build_example_prompt(examples: list[Example]) -> str:
     Example 1:  The dog eats the cat (activation : 6)
     Example 2:  it was a delicious meal (activation : 4)
 
+    Args:
+        examples (list[Example]): List of Example objects containing the texts and activations.
+
+    Raises:
+        ValueError: if the types of texts and activations in the Example objects are not as expected.
+
+    Returns:
+        str: prompt containing the formatted examples for the LLM.
     """
     example_prompts: list[str] = []
     for i, example in enumerate(examples):
