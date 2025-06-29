@@ -650,7 +650,7 @@ class ModelWithSplitPoints(LanguageModel):
             activations[split_point] = []
 
         # iterate over batch of inputs
-        with torch.no_grad():  # TODO: find a way to add this back, at least optionally
+        with torch.no_grad():  # TODO: find a way to add this back, to merge gradient and forward
             with self.session():
                 for batch_inputs in batch_generator:
                     # tokenize text inputs
@@ -678,100 +678,123 @@ class ModelWithSplitPoints(LanguageModel):
 
                     # call model forward pass
                     with self.trace(tokenized_inputs, **kwargs) as tracer:
-                        # at each split point, get activations
-                        for idx, split_point in enumerate(self.split_points):
-                            curr_module = self.get(split_point)
-                            # Handle case in which module has .output attribute, and .nns_output gets overridden instead
-                            module_out_name = "nns_output" if hasattr(curr_module, "nns_output") else "output"
+                        batch_activations = tracer.cache(modules=[self.get(sp) for sp in self.split_points])
 
-                            # get activations
-                            layer_outputs = getattr(curr_module, module_out_name)
+                    for sp in self.split_points:
+                        sp_module = batch_activations["model." + sp]
+                        output_name = "nns_output" if hasattr(sp_module, "nns_output") else "output"
+                        batch_outputs = getattr(sp_module, output_name)
+                        if isinstance(batch_outputs, tuple):
+                            found = False
+                            for candidate in batch_outputs:
+                                if candidate.dim() == 3:
+                                    batch_activations = candidate
+                                    found = True
+                                    break
+                            if not found:
+                                raise RuntimeError(
+                                    f"Failed to manipulate activations for split point '{sp}'. "
+                                    "Activations are tuples, which are not supported. "
+                                    "Then the split point is not a valid path in the loaded model, because it has several outputs. "
+                                    "Often, adding '.mlp' to the split point path solves the issue."
+                                )
+                        else:
+                            batch_activations = batch_outputs
+                        all_activation_dict[sp].append(batch_activations)
+                    #     # at each split point, get activations
+                    #     for idx, split_point in enumerate(self.split_points):
+                    #         curr_module = self.get(split_point)
+                    #         # Handle case in which module has .output attribute, and .nns_output gets overridden instead
+                    #         module_out_name = "nns_output" if hasattr(curr_module, "nns_output") else "output"
 
-                            # treat part of cases with multiple outputs, I cannot put this as a function for obscure reasons
-                            # TODO: pyt back as function when bug is fixed
-                            # if isinstance(raw_activations, torch.Tensor):
-                            #     pass
+                    #         # get activations
+                    #         layer_outputs = getattr(curr_module, module_out_name)
 
-                            # elif isinstance(raw_activations, tuple):
-                            #     if output_tuple_index is None:
-                            #         for i, output in enumerate(raw_activations):
-                            #             if not isinstance(output, torch.Tensor):
-                            #                 raise TypeError(
-                            #                     f"Failed to manipulate activations for split point '{split_point}'. "
-                            #                     f"Wrong type of activations. Expected torch.Tensor or tuple[torch.Tensor], got tuple."
-                            #                     f"With element {i} of the tuple: {type(output)}: {output}"
-                            #                 )
-                            #             if output.dim() == 3:
-                            #                 if output_tuple_index is not None:
-                            #                     raise RuntimeError(
-                            #                         f"Failed to manipulate activations for split point '{split_point}'. "
-                            #                         "Activations are tuples, and we were not able to determine which element was the hidden state. "
-                            #                         "Then the split point is not a valid path in the loaded model, because it has several outputs. "
-                            #                         "Often, adding '.mlp' to the split point path solves the issue."
-                            #                     )
-                            #                 output_tuple_index = i
-                            #         if output_tuple_index is None:
-                            #             raise RuntimeError(
-                            #                 f"Failed to manipulate activations for split point '{split_point}'. "
-                            #                 "Activations are tuples, which are not supported. "
-                            #                 "Then the split point is not a valid path in the loaded model, because it has several outputs. "
-                            #                 "Often, adding '.mlp' to the split point path solves the issue."
-                            #             )
-                            #     raw_activations = raw_activations[output_tuple_index]
+                    #         # treat part of cases with multiple outputs, I cannot put this as a function for obscure reasons
+                    #         # TODO: put back as function when bug is fixed
+                    #         # if isinstance(raw_activations, torch.Tensor):
+                    #         #     pass
 
-                            # else:
-                            #     raise TypeError(
-                            #         f"Failed to manipulate activations for split point '{split_point}'. "
-                            #         f"Wrong type of activations. Expected torch.Tensor or tuple[torch.Tensor], got {type(raw_activations)}: {raw_activations}"
-                            #     )
-                            # move activations to cpu
-                            if isinstance(layer_outputs, tuple):
-                                found = False
-                                for candidate in layer_outputs:
-                                    if candidate.dim() == 3:
-                                        raw_activations = candidate
-                                        found = True
-                                        break
-                                if not found:
-                                    raise RuntimeError(
-                                        f"Failed to manipulate activations for split point '{split_point}'. "
-                                        "Activations are tuples, which are not supported. "
-                                        "Then the split point is not a valid path in the loaded model, because it has several outputs. "
-                                        "Often, adding '.mlp' to the split point path solves the issue."
-                                    )
-                            else:
-                                raw_activations = layer_outputs
+                    #         # elif isinstance(raw_activations, tuple):
+                    #         #     if output_tuple_index is None:
+                    #         #         for i, output in enumerate(raw_activations):
+                    #         #             if not isinstance(output, torch.Tensor):
+                    #         #                 raise TypeError(
+                    #         #                     f"Failed to manipulate activations for split point '{split_point}'. "
+                    #         #                     f"Wrong type of activations. Expected torch.Tensor or tuple[torch.Tensor], got tuple."
+                    #         #                     f"With element {i} of the tuple: {type(output)}: {output}"
+                    #         #                 )
+                    #         #             if output.dim() == 3:
+                    #         #                 if output_tuple_index is not None:
+                    #         #                     raise RuntimeError(
+                    #         #                         f"Failed to manipulate activations for split point '{split_point}'. "
+                    #         #                         "Activations are tuples, and we were not able to determine which element was the hidden state. "
+                    #         #                         "Then the split point is not a valid path in the loaded model, because it has several outputs. "
+                    #         #                         "Often, adding '.mlp' to the split point path solves the issue."
+                    #         #                     )
+                    #         #                 output_tuple_index = i
+                    #         #         if output_tuple_index is None:
+                    #         #             raise RuntimeError(
+                    #         #                 f"Failed to manipulate activations for split point '{split_point}'. "
+                    #         #                 "Activations are tuples, which are not supported. "
+                    #         #                 "Then the split point is not a valid path in the loaded model, because it has several outputs. "
+                    #         #                 "Often, adding '.mlp' to the split point path solves the issue."
+                    #         #             )
+                    #         #     raw_activations = raw_activations[output_tuple_index]
 
-                            raw_activations = raw_activations.cpu()
-                            # try:
-                            #     raw_activations = nnsight.apply(lambda x: x.cpu(), raw_activations).save()
-                            # except nnsight.util.NNsightError as ex:
-                            #     raise RuntimeError(
-                            #         f"Failed to manipulate activations for split point '{split_point}'. "
-                            #         "If it comes from: ``nnsight.util.NNsightError: 'tuple' object has no attribute 'cpu'.'' "
-                            #         "Then the split point is not a valid path in the loaded model, because it has several outputs. "
-                            #         "Often, adding '.mlp' to the split point path solves the issue."
-                            #     ) from ex
+                    #         # else:
+                    #         #     raise TypeError(
+                    #         #         f"Failed to manipulate activations for split point '{split_point}'. "
+                    #         #         f"Wrong type of activations. Expected torch.Tensor or tuple[torch.Tensor], got {type(raw_activations)}: {raw_activations}"
+                    #         #     )
+                    #         # move activations to cpu
+                    #         if isinstance(layer_outputs, tuple):
+                    #             found = False
+                    #             for candidate in layer_outputs:
+                    #                 if candidate.dim() == 3:
+                    #                     raw_activations = candidate
+                    #                     found = True
+                    #                     break
+                    #             if not found:
+                    #                 raise RuntimeError(
+                    #                     f"Failed to manipulate activations for split point '{split_point}'. "
+                    #                     "Activations are tuples, which are not supported. "
+                    #                     "Then the split point is not a valid path in the loaded model, because it has several outputs. "
+                    #                     "Often, adding '.mlp' to the split point path solves the issue."
+                    #                 )
+                    #         else:
+                    #             raw_activations = layer_outputs
 
-                            # store activations
-                            activations[split_point].append(raw_activations)
+                    #         raw_activations = raw_activations.cpu()
+                    #         # try:
+                    #         #     raw_activations = nnsight.apply(lambda x: x.cpu(), raw_activations).save()
+                    #         # except nnsight.util.NNsightError as ex:
+                    #         #     raise RuntimeError(
+                    #         #         f"Failed to manipulate activations for split point '{split_point}'. "
+                    #         #         "If it comes from: ``nnsight.util.NNsightError: 'tuple' object has no attribute 'cpu'.'' "
+                    #         #         "Then the split point is not a valid path in the loaded model, because it has several outputs. "
+                    #         #         "Often, adding '.mlp' to the split point path solves the issue."
+                    #         #     ) from ex
 
-                            # Early stopping at the last splitting layer
-                            if idx == len(self.split_points) - 1:
-                                tracer.stop()
+                    #         # store activations
+                    #         activations[split_point].append(raw_activations)
 
-                    torch.cuda.empty_cache()
-                    if offset_mapping is not None:
-                        tokenized_inputs["offset_mapping"] = offset_mapping  # type: ignore
+                    #         # Early stopping at the last splitting layer
+                    #         if idx == len(self.split_points) - 1:
+                    #             tracer.stop()
 
-                    for split_point in self.split_points:
-                        # apply selection strategy to the last activations
-                        activations[split_point][-1], _ = self._apply_selection_strategy(
-                            inputs=tokenized_inputs,  # type: ignore
-                            activations=activations[split_point][-1],  # use the last batch of activations
-                            activation_granularity=activation_granularity,
-                            aggregation_strategy=aggregation_strategy,
-                        )
+                    # torch.cuda.empty_cache()
+                    # if offset_mapping is not None:
+                    #     tokenized_inputs["offset_mapping"] = offset_mapping  # type: ignore
+
+                    # for split_point in self.split_points:
+                    #     # apply selection strategy to the last activations
+                    #     activations[split_point][-1], _ = self._apply_selection_strategy(
+                    #         inputs=tokenized_inputs,  # type: ignore
+                    #         activations=activations[split_point][-1],  # use the last batch of activations
+                    #         activation_granularity=activation_granularity,
+                    #         aggregation_strategy=aggregation_strategy,
+                    #     )
 
         # concat activation batches
         for split_point in self.split_points:
