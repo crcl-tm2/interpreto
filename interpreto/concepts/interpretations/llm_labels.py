@@ -49,6 +49,47 @@ class SamplingMethod(Enum):
     QUANTILE = "quantile"
     RANDOM = "random"
 
+    def sample_examples(
+        self,
+        concept_activations: Float[torch.Tensor, "ng"],
+        k_examples: int,
+        k_quantile: int = 5,
+    ) -> list[int]:
+        """Select examples to provide to the LLM for labeling a concept, based on the
+        concept activations and the sampling method.
+
+        Args:
+            concept_activations (Float[torch.Tensor, "ng"]): concepts activations for each granular
+                text, first dimension is number of texts, second is number of concepts.
+            k_examples (int): number of examples to select, when possible.
+            k_quantile (int, optional): number of quantiles to use for sampling the inputs, if `sampling_method` is `QUANTILE`. Defaults to 5.
+
+        Raises:
+            NotImplementedError: when `self.sampling_method` is not one of the supported methods.
+
+        Returns:
+            list[int]: the indexes of the examples to provide to the LLM for labeling the concept.
+        """
+        if self == SamplingMethod.TOP:
+            inputs_idx = _sample_top(
+                concept_activations=concept_activations,
+                k_examples=k_examples,
+            )
+        elif self == SamplingMethod.QUANTILE:
+            inputs_idx = _sample_quantile(
+                concept_activations=concept_activations,
+                k_examples=k_examples,
+                k_quantile=k_quantile,
+            )
+        elif self == SamplingMethod.RANDOM:
+            inputs_idx = _sample_random(
+                concept_activations=concept_activations,
+                k_examples=k_examples,
+            )
+        else:
+            raise NotImplementedError(f"Sampling method {self} is not implemented.")
+        return inputs_idx
+
 
 class Example(NamedTuple):
     texts: list[str] | str
@@ -179,8 +220,10 @@ class LLMLabels(BaseConceptInterpretationMethod):
 
         labels: Mapping[int, str | None] = {}
         for concept_idx in concepts_indices:
-            example_idx = self._sample_examples(
+            example_idx = self.sampling_method.sample_examples(
                 concept_activations=sure_concepts_activations[:, concept_idx],
+                k_examples=self.k_examples,
+                k_quantile=self.k_quantile,
             )
             examples = _format_examples(
                 example_ids=example_idx,
@@ -198,43 +241,6 @@ class LLMLabels(BaseConceptInterpretationMethod):
             label = self.llm_interface.generate(prompt)
             labels[concept_idx] = label
         return labels
-
-    def _sample_examples(
-        self,
-        concept_activations: Float[torch.Tensor, "ng"],
-    ) -> list[int]:
-        """Select examples to provide to the LLM for labeling a concept, based on the
-        concept activations and the sampling method.
-
-        Args:
-            concept_activations (Float[torch.Tensor, "ng"]): concepts activations for each granular
-                text, first dimension is number of texts, second is number of concepts.
-
-        Raises:
-            NotImplementedError: when `self.sampling_method` is not one of the supported methods.
-
-        Returns:
-            list[int]: the indexes of the examples to provide to the LLM for labeling the concept.
-        """
-        if self.sampling_method == SamplingMethod.TOP:
-            inputs_idx = _sample_top(
-                concept_activations=concept_activations,
-                k_examples=self.k_examples,
-            )
-        elif self.sampling_method == SamplingMethod.QUANTILE:
-            inputs_idx = _sample_quantile(
-                concept_activations=concept_activations,
-                k_examples=self.k_examples,
-                k_quantile=self.k_quantile,
-            )
-        elif self.sampling_method == SamplingMethod.RANDOM:
-            inputs_idx = _sample_random(
-                concept_activations=concept_activations,
-                k_examples=self.k_examples,
-            )
-        else:
-            raise NotImplementedError(f"Sampling method {self.sampling_method} is not implemented.")
-        return inputs_idx
 
 
 def _sample_top(
@@ -261,6 +267,7 @@ def _sample_top(
     non_zero_samples = torch.argwhere(concept_activations != 0).squeeze(-1)
     k_examples = min(k_examples, non_zero_samples.size(0))
     inputs_indices = non_zero_samples[torch.topk(concept_activations[non_zero_samples], k=k_examples).indices]
+
     return inputs_indices.tolist()
 
 
@@ -286,7 +293,7 @@ def _sample_random(
         )
     non_zero_samples = torch.argwhere(concept_activations != 0).squeeze(-1)
     inputs_indices = non_zero_samples[torch.randperm(len(non_zero_samples))][:k_examples]
-    return inputs_indices.tolist()
+    return inputs_indices.tolist()  # type: ignore
 
 
 def _sample_quantile(
@@ -319,13 +326,13 @@ def _sample_quantile(
             "Not enough non-zero samples to compute quantiles. Using all non-zero samples.",
             stacklevel=2,
         )
-        return non_zero_samples.tolist()
+        return non_zero_samples.tolist()  # type: ignore
 
     quantile_size = non_zero_samples.size(0) // k_quantile
     samples_per_quantile = k_examples // k_quantile
 
     sorted_indexes = torch.argsort(concept_activations, descending=True)[: non_zero_samples.size(0)]
-    sample_indices = []
+    sample_indices: list[int] = []
     for i in range(k_quantile):
         if i == k_quantile - 1:
             # Last quantile (minimally activating samples) may have more samples
@@ -333,7 +340,7 @@ def _sample_quantile(
         else:
             quantile_samples = sorted_indexes[i * quantile_size : (i + 1) * quantile_size]
         selected_samples = quantile_samples[torch.randperm(len(quantile_samples))[:samples_per_quantile]]
-        sample_indices.extend(selected_samples.tolist())
+        sample_indices.extend(selected_samples.tolist())  # type: ignore
     return sample_indices
 
 
