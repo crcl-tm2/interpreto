@@ -36,6 +36,7 @@ import torch
 from jaxtyping import Float
 
 from interpreto import ModelWithSplitPoints
+from interpreto.model_wrapping.model_with_split_points import ActivationGranularity
 from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentActivations
 
 
@@ -105,6 +106,7 @@ class BaseConceptInterpretationMethod(ABC):
     def concepts_activations_from_source(
         self,
         *,
+        activation_granularity: ActivationGranularity,
         inputs: list[str] | None = None,
         latent_activations: Float[torch.Tensor, "nl d"] | None = None,
         concepts_activations: Float[torch.Tensor, "nl cpt"] | None = None,
@@ -115,6 +117,7 @@ class BaseConceptInterpretationMethod(ABC):
         or directly concept activations (`concepts_activations`).
 
         Args:
+            activation_granularity (ActivationGranularity): The granularity to use.
             inputs (list[str] | None): The indices of the concepts to interpret.
             latent_activations (Float[torch.Tensor, "nl d"] | None): The latent activations
             concepts_activations (Float[torch.Tensor, "nl cpt"] | None): The concepts activations
@@ -137,7 +140,7 @@ class BaseConceptInterpretationMethod(ABC):
         if inputs is not None:
             activations_dict: dict[str, LatentActivations] = self.model_with_split_points.get_activations(
                 inputs,
-                activation_granularity=self.activation_granularity,  # TODO
+                activation_granularity=activation_granularity,
             )
             latent_activations = self.model_with_split_points.get_split_activations(
                 activations_dict, split_point=self.split_point

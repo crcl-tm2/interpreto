@@ -160,6 +160,7 @@ class TopKInputs(BaseConceptInterpretationMethod):
                 raise ValueError("No inputs provided. Please provide `inputs` if `use_vocab` is False")
             sure_inputs = inputs
             sure_concepts_activations = self.concepts_activations_from_source(
+                activation_granularity=self.activation_granularity,
                 inputs=inputs,
                 latent_activations=latent_activations,
                 concepts_activations=concepts_activations,
