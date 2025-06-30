@@ -33,14 +33,18 @@ from typing import NamedTuple
 import torch
 from jaxtyping import Float
 
-from interpreto import Granularity, ModelWithSplitPoints
-from interpreto.concepts.interpretations.base import BaseConceptInterpretationMethod, verify_concepts_indices
+from interpreto import ModelWithSplitPoints
+from interpreto.concepts.interpretations.base import (
+    BaseConceptInterpretationMethod,
+    verify_concepts_indices,
+    verify_granular_inputs,
+)
 from interpreto.model_wrapping.llm_interface import LLMInterface, Role
 from interpreto.model_wrapping.model_with_split_points import ActivationGranularity
 from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentActivations
 
 
-class SAMPLING_METHOD(Enum):
+class SamplingMethod(Enum):
     TOP = "top"
     QUANTILE = "quantile"
     RANDOM = "random"
@@ -86,7 +90,7 @@ class LLMLabels(BaseConceptInterpretationMethod):
         split_point: str | None = None,
         activation_granularity: ActivationGranularity = ActivationGranularity.TOKEN,
         llm_interface: LLMInterface,
-        sampling_method: SAMPLING_METHOD,
+        sampling_method: SamplingMethod = SamplingMethod.TOP,
         k_examples: int = 30,
         k_context: int = 0,
         use_vocab: bool = False,
@@ -94,7 +98,10 @@ class LLMLabels(BaseConceptInterpretationMethod):
         system_prompt: str | None = None,
     ):
         super().__init__(
-            model_with_split_points=model_with_split_points, split_point=split_point, concept_model=concept_model
+            model_with_split_points=model_with_split_points,
+            split_point=split_point,
+            concept_model=concept_model,
+            activation_granularity=activation_granularity,
         )
 
         if activation_granularity not in (
@@ -106,7 +113,6 @@ class LLMLabels(BaseConceptInterpretationMethod):
             raise ValueError(
                 f"The granularity {activation_granularity} is not supported. Supported `activation_granularities`: TOKEN, WORD, SENTENCE, and SAMPLE"
             )
-        self.activation_granularity = activation_granularity
 
         self.llm_interface = llm_interface
         self.sampling_method = sampling_method
@@ -147,23 +153,29 @@ class LLMLabels(BaseConceptInterpretationMethod):
 
         if self.use_vocab:
             sure_inputs, sure_concepts_activations = self.concepts_activations_from_vocab()
+            granular_inputs = sure_inputs
+            granular_sample_ids = list(range(len(sure_inputs)))
         else:
             if inputs is None:
-                raise ValueError("Inputs must be provided when use_vocab is False.")
+                raise ValueError("Inputs must be provided when `use_vocab` is False.")
             sure_inputs = inputs
             sure_concepts_activations = self.concepts_activations_from_source(
-                activation_granularity=self.activation_granularity,
                 inputs=inputs,
                 latent_activations=latent_activations,
                 concepts_activations=concepts_activations,
             )
+            granular_inputs, granular_sample_ids = self.get_granular_inputs(sure_inputs)
 
         concepts_indices = verify_concepts_indices(
             concepts_activations=sure_concepts_activations,
             concepts_indices=concepts_indices,
         )
-
-        granular_inputs, granular_sample_ids = self._get_granular_inputs(sure_inputs)
+        verify_granular_inputs(
+            granular_inputs=granular_inputs,
+            sure_concepts_activations=sure_concepts_activations,
+            latent_activations=latent_activations,
+            concepts_activations=concepts_activations,
+        )
 
         labels: Mapping[int, str | None] = {}
         for concept_idx in concepts_indices:
@@ -178,44 +190,14 @@ class LLMLabels(BaseConceptInterpretationMethod):
                 k_context=self.k_context,
             )
             example_prompt = _build_example_prompt(examples)
-            prompt = [(Role.SYSTEM, self.system_prompt), (Role.USER, example_prompt), (Role.ASSISTANT, "")]
+            prompt: list[tuple[Role, str]] = [
+                (Role.SYSTEM, self.system_prompt),
+                (Role.USER, example_prompt),
+                (Role.ASSISTANT, ""),
+            ]
             label = self.llm_interface.generate(prompt)
             labels[concept_idx] = label
         return labels
-
-    def _get_granular_inputs(
-        self,
-        inputs: list[str],  # (n)
-    ) -> tuple[list[str], list[int]]:  # (ng,)
-        """Split texts from the inputs based on the target granularity
-        (for instance into tokens, words, sentences, ...)
-
-        Args:
-            inputs (list[str]): n text samples
-
-        Returns:
-            tuple[list[str], list[int]]:
-                - list[str]: The granular texts from the inputs, flatened
-                - list[int]: The sample id for each granular text, to keep track of which sample the text belongs to.
-        """
-        if self.use_vocab or self.activation_granularity is ActivationGranularity.SAMPLE:
-            # no activation_granularity is needed
-            return inputs, list(range(len(inputs)))
-
-        # Get granular texts from the inputs
-        tokens = self.model_with_split_points.tokenizer(
-            inputs, return_tensors="pt", padding=True, return_offsets_mapping=True
-        )
-        granular_texts: list[list[str]] = Granularity.get_decomposition(
-            tokens,
-            granularity=self.activation_granularity.value,  # type: ignore
-            tokenizer=self.model_with_split_points.tokenizer,
-            return_text=True,
-        )  # type: ignore
-
-        granular_flattened_texts = [text for sample_texts in granular_texts for text in sample_texts]
-        granular_flattened_sample_id = [i for i, sample_texts in enumerate(granular_texts) for _ in sample_texts]
-        return granular_flattened_texts, granular_flattened_sample_id
 
     def _sample_examples(
         self,
@@ -234,18 +216,18 @@ class LLMLabels(BaseConceptInterpretationMethod):
         Returns:
             list[int]: the indexes of the examples to provide to the LLM for labeling the concept.
         """
-        if self.sampling_method == SAMPLING_METHOD.TOP:
+        if self.sampling_method == SamplingMethod.TOP:
             inputs_idx = _sample_top(
                 concept_activations=concept_activations,
                 k_examples=self.k_examples,
             )
-        elif self.sampling_method == SAMPLING_METHOD.QUANTILE:
+        elif self.sampling_method == SamplingMethod.QUANTILE:
             inputs_idx = _sample_quantile(
                 concept_activations=concept_activations,
                 k_examples=self.k_examples,
                 k_quantile=self.k_quantile,
             )
-        elif self.sampling_method == SAMPLING_METHOD.RANDOM:
+        elif self.sampling_method == SamplingMethod.RANDOM:
             inputs_idx = _sample_random(
                 concept_activations=concept_activations,
                 k_examples=self.k_examples,

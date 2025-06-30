@@ -38,8 +38,8 @@ from interpreto import ModelWithSplitPoints
 from interpreto.concepts import NeuronsAsConcepts
 from interpreto.concepts.interpretations import LLMLabels
 from interpreto.concepts.interpretations.llm_labels import (
-    SAMPLING_METHOD,
     Example,
+    SamplingMethod,
     _build_example_prompt,
     _format_examples,
     _sample_quantile,
@@ -311,7 +311,7 @@ def test_llm_labels_concept_selection(splitted_encoder: ModelWithSplitPoints):
         concept_model=concept_model,
         activation_granularity=ActivationGranularity.TOKEN,
         llm_interface=LLMInterfaceMock(),
-        sampling_method=SAMPLING_METHOD.TOP,
+        sampling_method=SamplingMethod.TOP,
         k_examples=2,
     )
 
@@ -356,7 +356,7 @@ def test_llm_labels_granularity(splitted_encoder: ModelWithSplitPoints, activati
         concept_model=concept_model,
         activation_granularity=activation_granularity,
         llm_interface=LLMInterfaceMock(),
-        sampling_method=SAMPLING_METHOD.TOP,
+        sampling_method=SamplingMethod.TOP,
         k_examples=2,
     )
 
@@ -402,7 +402,7 @@ def test_llm_labels_sources(splitted_encoder: ModelWithSplitPoints):
         concept_model=concept_explainer.concept_model,
         activation_granularity=ActivationGranularity.TOKEN,
         llm_interface=LLMInterfaceMock(),
-        sampling_method=SAMPLING_METHOD.TOP,
+        sampling_method=SamplingMethod.TOP,
         k_examples=2,
     )
 
@@ -464,7 +464,7 @@ def test_llm_labels_from_vocabulary(splitted_encoder: ModelWithSplitPoints):
         concept_model=concept_explainer.concept_model,
         activation_granularity=ActivationGranularity.TOKEN,
         llm_interface=LLMInterfaceMock(),
-        sampling_method=SAMPLING_METHOD.TOP,
+        sampling_method=SamplingMethod.TOP,
         k_examples=2,
         use_vocab=True,
     )
@@ -490,7 +490,7 @@ def test_llm_labels_call_from_concept_module(splitted_encoder: ModelWithSplitPoi
         concepts_indices=torch.randperm(hidden_size)[:nb_concepts].tolist(),
         use_vocab=False,
         inputs=["This is a sentence", "This is another sentence"],
-        sampling_method=SAMPLING_METHOD.TOP,
+        sampling_method=SamplingMethod.TOP,
         k_context=0,
         llm_interface=LLMInterfaceMock(),
     )
@@ -513,7 +513,7 @@ def test_llm_labels_error_raising(splitted_encoder: ModelWithSplitPoints):
         activation_granularity=ActivationGranularity.TOKEN,
         use_vocab=False,
         llm_interface=LLMInterfaceMock(),
-        sampling_method=SAMPLING_METHOD.TOP,
+        sampling_method=SamplingMethod.TOP,
     )
 
     # When use_vocab=False and inputs is not provided

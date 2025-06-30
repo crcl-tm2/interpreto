@@ -35,7 +35,7 @@ from typing import Any
 import torch
 from jaxtyping import Float
 
-from interpreto import ModelWithSplitPoints
+from interpreto import Granularity, ModelWithSplitPoints
 from interpreto.model_wrapping.model_with_split_points import ActivationGranularity
 from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentActivations
 
@@ -53,6 +53,7 @@ class BaseConceptInterpretationMethod(ABC):
         self,
         model_with_split_points: ModelWithSplitPoints,
         concept_model: ConceptModelProtocol,
+        activation_granularity: ActivationGranularity,
         split_point: str | None = None,
     ):
         if not hasattr(concept_model, "encode"):
@@ -78,6 +79,7 @@ class BaseConceptInterpretationMethod(ABC):
         self.model_with_split_points: ModelWithSplitPoints = model_with_split_points
         self.split_point: str = split_point
         self.concept_model: ConceptModelProtocol = concept_model
+        self.activation_granularity: ActivationGranularity = activation_granularity
 
     @abstractmethod
     def interpret(
@@ -106,7 +108,6 @@ class BaseConceptInterpretationMethod(ABC):
     def concepts_activations_from_source(
         self,
         *,
-        activation_granularity: ActivationGranularity,
         inputs: list[str] | None = None,
         latent_activations: Float[torch.Tensor, "nl d"] | None = None,
         concepts_activations: Float[torch.Tensor, "nl cpt"] | None = None,
@@ -117,7 +118,6 @@ class BaseConceptInterpretationMethod(ABC):
         or directly concept activations (`concepts_activations`).
 
         Args:
-            activation_granularity (ActivationGranularity): The granularity to use.
             inputs (list[str] | None): The indices of the concepts to interpret.
             latent_activations (Float[torch.Tensor, "nl d"] | None): The latent activations
             concepts_activations (Float[torch.Tensor, "nl cpt"] | None): The concepts activations
@@ -140,7 +140,7 @@ class BaseConceptInterpretationMethod(ABC):
         if inputs is not None:
             activations_dict: dict[str, LatentActivations] = self.model_with_split_points.get_activations(
                 inputs,
-                activation_granularity=activation_granularity,
+                activation_granularity=self.activation_granularity,
             )
             latent_activations = self.model_with_split_points.get_split_activations(
                 activations_dict, split_point=self.split_point
@@ -190,6 +190,40 @@ class BaseConceptInterpretationMethod(ABC):
             concepts_activations = concepts_activations[1]  # temporary fix, issue #65
         return inputs, concepts_activations  # type: ignore
 
+    def get_granular_inputs(
+        self,
+        inputs: list[str],  # (n)
+    ) -> tuple[list[str], list[int]]:  # (ng,)
+        """Split texts from the inputs based on the target granularity
+        (for instance into tokens, words, sentences, ...)
+
+        Args:
+            inputs (list[str]): n text samples
+
+        Returns:
+            tuple[list[str], list[int]]:
+                - list[str]: The granular texts from the inputs, flatened
+                - list[int]: The sample id for each granular text, to keep track of which sample the text belongs to.
+        """
+        if self.activation_granularity is ActivationGranularity.SAMPLE:
+            # no activation_granularity is needed
+            return inputs, list(range(len(inputs)))
+
+        # Get granular texts from the inputs
+        tokens = self.model_with_split_points.tokenizer(
+            inputs, return_tensors="pt", padding=True, return_offsets_mapping=True
+        )
+        granular_texts: list[list[str]] = Granularity.get_decomposition(
+            tokens,
+            granularity=self.activation_granularity.value,  # type: ignore
+            tokenizer=self.model_with_split_points.tokenizer,
+            return_text=True,
+        )  # type: ignore
+
+        granular_flattened_texts = [text for sample_texts in granular_texts for text in sample_texts]
+        granular_flattened_sample_id = [i for i, sample_texts in enumerate(granular_texts) for _ in sample_texts]
+        return granular_flattened_texts, granular_flattened_sample_id
+
 
 def verify_concepts_indices(
     concepts_activations: ConceptsActivations,
@@ -208,3 +242,25 @@ def verify_concepts_indices(
         )
 
     return concepts_indices
+
+
+def verify_granular_inputs(
+    granular_inputs: list[str],
+    sure_concepts_activations: ConceptsActivations,
+    latent_activations: LatentActivations | None = None,
+    concepts_activations: ConceptsActivations | None = None,
+):
+    if len(granular_inputs) != len(sure_concepts_activations):
+        if latent_activations is not None and len(granular_inputs) != len(latent_activations):
+            raise ValueError(
+                f"The lengths of the granulated inputs do not match the number of provided latent activations {len(granular_inputs)} != {len(latent_activations)}"
+                "If you provide latent activations, make sure they have the same granularity as the inputs."
+            )
+        if concepts_activations is not None and len(granular_inputs) != len(concepts_activations):
+            raise ValueError(
+                f"The lengths of the granulated inputs do not match the number of provided concepts activations {len(granular_inputs)} != {len(concepts_activations)}"
+                "If you provide concepts activations, make sure they have the same granularity as the inputs."
+            )
+        raise ValueError(
+            f"The lengths of the granulated inputs do not match the number of concepts activations {len(granular_inputs)} != {len(sure_concepts_activations)}"
+        )

@@ -33,10 +33,13 @@ from collections.abc import Mapping
 from typing import Any
 
 import torch
-from jaxtyping import Float
 
-from interpreto import Granularity, ModelWithSplitPoints
-from interpreto.concepts.interpretations.base import BaseConceptInterpretationMethod, verify_concepts_indices
+from interpreto import ModelWithSplitPoints
+from interpreto.concepts.interpretations.base import (
+    BaseConceptInterpretationMethod,
+    verify_concepts_indices,
+    verify_granular_inputs,
+)
 from interpreto.model_wrapping.model_with_split_points import ActivationGranularity
 from interpreto.typing import ConceptModelProtocol, ConceptsActivations, LatentActivations
 
@@ -105,7 +108,10 @@ class TopKInputs(BaseConceptInterpretationMethod):
         use_vocab: bool = False,
     ):
         super().__init__(
-            model_with_split_points=model_with_split_points, concept_model=concept_model, split_point=split_point
+            model_with_split_points=model_with_split_points,
+            concept_model=concept_model,
+            split_point=split_point,
+            activation_granularity=activation_granularity,
         )
 
         if activation_granularity not in (
@@ -118,7 +124,6 @@ class TopKInputs(BaseConceptInterpretationMethod):
                 f"The granularity {activation_granularity} is not supported. Supported `activation_granularities`: TOKEN, WORD, SENTENCE, and SAMPLE"
             )
 
-        self.activation_granularity = activation_granularity
         self.k = k
         self.use_vocab = use_vocab
 
@@ -150,68 +155,35 @@ class TopKInputs(BaseConceptInterpretationMethod):
 
         """
         # compute the concepts activations from the provided source, can also create inputs from the vocabulary
-        sure_inputs: list[str]  # Verified by concepts_activations_from_source
-        sure_concepts_activations: Float[torch.Tensor, "ng cpt"]  # Verified by concepts_activations_from_source
-
         if self.use_vocab:
             sure_inputs, sure_concepts_activations = self.concepts_activations_from_vocab()
+            granular_inputs = sure_inputs
         else:
             if inputs is None:
-                raise ValueError("No inputs provided. Please provide `inputs` if `use_vocab` is False")
+                raise ValueError("Inputs must be provided when `use_vocab` is False.")
             sure_inputs = inputs
             sure_concepts_activations = self.concepts_activations_from_source(
-                activation_granularity=self.activation_granularity,
                 inputs=inputs,
                 latent_activations=latent_activations,
                 concepts_activations=concepts_activations,
             )
+            granular_inputs, _ = self.get_granular_inputs(sure_inputs)
 
         concepts_indices = verify_concepts_indices(
             concepts_activations=sure_concepts_activations, concepts_indices=concepts_indices
         )
-
-        granular_inputs: list[str]  # len: ng, inputs becomes a list of elements extracted from the examples
-        granular_inputs = self._get_granular_inputs(sure_inputs)
-        if len(granular_inputs) != len(sure_concepts_activations):
-            if latent_activations is not None and len(granular_inputs) != len(latent_activations):
-                raise ValueError(
-                    f"The lengths of the granulated inputs do not match the number of provided latent activations {len(granular_inputs)} != {len(latent_activations)}"
-                    "If you provide latent activations, make sure they have the same granularity as the inputs."
-                )
-            if concepts_activations is not None and len(granular_inputs) != len(concepts_activations):
-                raise ValueError(
-                    f"The lengths of the granulated inputs do not match the number of provided concepts activations {len(granular_inputs)} != {len(concepts_activations)}"
-                    "If you provide concepts activations, make sure they have the same granularity as the inputs."
-                )
-            raise ValueError(
-                f"The lengths of the granulated inputs do not match the number of concepts activations {len(granular_inputs)} != {len(sure_concepts_activations)}"
-            )
+        verify_granular_inputs(
+            granular_inputs=granular_inputs,
+            sure_concepts_activations=sure_concepts_activations,
+            latent_activations=latent_activations,
+            concepts_activations=concepts_activations,
+        )
 
         return self._topk_inputs_from_concepts_activations(
             inputs=granular_inputs,
             concepts_activations=sure_concepts_activations,
             concepts_indices=concepts_indices,
         )
-
-    def _get_granular_inputs(self, inputs: list[str]) -> list[str]:
-        if self.use_vocab or self.activation_granularity is ActivationGranularity.SAMPLE:
-            # no activation_granularity is needed
-            return inputs
-
-        tokens = self.model_with_split_points.tokenizer(
-            inputs, return_tensors="pt", padding=True, return_offsets_mapping=True
-        )
-        list_list_str: list[list[str]] = Granularity.get_decomposition(
-            tokens,
-            granularity=self.activation_granularity.value,  # type: ignore
-            tokenizer=self.model_with_split_points.tokenizer,
-            return_text=True,
-        )  # type: ignore
-
-        # flatten list of list of strings
-        granular_inputs: list[str] = [string for list_str in list_list_str for string in list_str]
-
-        return granular_inputs
 
     def _topk_inputs_from_concepts_activations(
         self,
