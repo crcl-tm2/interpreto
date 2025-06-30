@@ -132,25 +132,20 @@ class BaseConceptInterpretationMethod(ABC):
         if latent_activations is not None:
             if hasattr(self.concept_model, "device"):
                 latent_activations = latent_activations.to(self.concept_model.device)  # type: ignore
-            concepts_activations = self.concept_model.encode(latent_activations)
+            concepts_activations = self.concept_model.encode(latent_activations)  # type: ignore
             if isinstance(concepts_activations, tuple):
                 concepts_activations = concepts_activations[1]  # temporary fix, issue #65
-            return concepts_activations
+            return concepts_activations  # type: ignore
 
         if inputs is not None:
-            activations_dict: dict[str, LatentActivations] = self.model_with_split_points.get_activations(
+            activations_dict: dict[str, LatentActivations] = self.model_with_split_points.get_activations(  # type: ignore
                 inputs,
                 activation_granularity=self.activation_granularity,
             )
             latent_activations = self.model_with_split_points.get_split_activations(
                 activations_dict, split_point=self.split_point
             )
-            if hasattr(self.concept_model, "device"):
-                latent_activations = latent_activations.to(self.concept_model.device)  # type: ignore
-            concepts_activations = self.concept_model.encode(latent_activations)
-            if isinstance(concepts_activations, tuple):
-                concepts_activations = concepts_activations[1]  # temporary fix, issue #65
-            return concepts_activations
+            return self.concepts_activations_from_source(latent_activations=latent_activations, inputs=inputs)
 
         raise ValueError(
             "No source provided. Please provide either `inputs`, `latent_activations`, or `concepts_activations`."
@@ -179,13 +174,13 @@ class BaseConceptInterpretationMethod(ABC):
 
         # compute the vocabulary's latent activations
         input_tensor: Float[torch.Tensor, "v 1"] = torch.tensor(input_ids).unsqueeze(1)
-        activations_dict: dict[str, LatentActivations] = self.model_with_split_points.get_activations(
+        activations_dict: dict[str, LatentActivations] = self.model_with_split_points.get_activations(  # type: ignore
             input_tensor, activation_granularity=ModelWithSplitPoints.activation_granularities.ALL_TOKENS
         )
         latent_activations = self.model_with_split_points.get_split_activations(
             activations_dict, split_point=self.split_point
         )
-        concepts_activations = self.concept_model.encode(latent_activations)
+        concepts_activations = self.concept_model.encode(latent_activations)  # type: ignore
         if isinstance(concepts_activations, tuple):
             concepts_activations = concepts_activations[1]  # temporary fix, issue #65
         return inputs, concepts_activations  # type: ignore
@@ -233,7 +228,7 @@ def verify_concepts_indices(
     if isinstance(concepts_indices, int):
         concepts_indices = [concepts_indices]
 
-    if not isinstance(concepts_indices, list) or not all(isinstance(c, int) for c in concepts_indices):
+    if not isinstance(concepts_indices, list) or not all(isinstance(c, int) for c in concepts_indices):  # type: ignore
         raise ValueError(f"`concepts_indices` should be 'all', an int, or a list of int. Received {concepts_indices}.")
 
     if max(concepts_indices) >= concepts_activations.shape[1] or min(concepts_indices) < 0:

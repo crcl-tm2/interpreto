@@ -268,7 +268,7 @@ def _sample_top(
     k_examples = min(k_examples, non_zero_samples.size(0))
     inputs_indices = non_zero_samples[torch.topk(concept_activations[non_zero_samples], k=k_examples).indices]
 
-    return inputs_indices.tolist()
+    return inputs_indices.tolist()  # type: ignore
 
 
 def _sample_random(
