@@ -43,6 +43,7 @@ from interpreto.attributions.aggregations.base import Aggregator
 from interpreto.attributions.perturbations.base import Perturbator
 from interpreto.commons import Granularity
 from interpreto.commons.generator_tools import split_iterator
+from interpreto.commons.granularity import GranularityAggregation
 from interpreto.model_wrapping.classification_inference_wrapper import ClassificationInferenceWrapper
 from interpreto.model_wrapping.generation_inference_wrapper import GenerationInferenceWrapper
 from interpreto.model_wrapping.inference_wrapper import InferenceModes, InferenceWrapper
@@ -159,6 +160,7 @@ class AttributionExplainer:
         aggregator: Aggregator | None = None,
         device: torch.device | None = None,
         granularity: Granularity = Granularity.DEFAULT,
+        granularity_aggregation: GranularityAggregation = GranularityAggregation.MEAN,
         inference_mode: Callable[[torch.Tensor], torch.Tensor] = InferenceModes.LOGITS,  # TODO: add to all classes
         use_gradient: bool = False,
     ) -> None:
@@ -191,6 +193,7 @@ class AttributionExplainer:
         self.perturbator.to(self.device)
         self.aggregator = aggregator or Aggregator()
         self.granularity = granularity
+        self.granularity_aggregation = granularity_aggregation
         self.inference_wrapper.pad_token_id = self.tokenizer.pad_token_id
 
     def _set_tokenizer(self, model, tokenizer) -> tuple[PreTrainedModel, int]:
@@ -387,6 +390,11 @@ class AttributionExplainer:
             for score, mask in zip(scores, mask_generator, strict=True)
         )
 
+        if self.use_gradient:
+            granular_contributions = #TODO #self.granularity_aggregation
+        else:
+            granular_contributions = contributions
+
         # Decompose each input for the desired granularity level (tokens, words, sentences...)
         granular_inputs_texts: list[list[str]] = [
             Granularity.get_decomposition(t, self.granularity, self.tokenizer, return_text=True)[0]
@@ -396,7 +404,7 @@ class AttributionExplainer:
         # Create and return AttributionOutput objects with the contributions and decoded token sequences:
         results = []
         for contribution, elements, target in zip(
-            contributions, granular_inputs_texts, sanitized_targets, strict=True
+            granular_contributions, granular_inputs_texts, sanitized_targets, strict=True
         ):
             if self.inference_wrapper.__class__.__name__ == "GenerationInferenceWrapper":
                 model_task = ModelTask.GENERATION

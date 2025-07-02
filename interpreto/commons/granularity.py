@@ -59,6 +59,13 @@ class NoWordIdsError(AttributeError):
         )
 
 
+class GranularityAggregation(Enum):
+    MEAN = "mean"
+    MAX = "max"
+    MIN = "min"
+    SUM = "sum"
+
+
 class Granularity(Enum):
     """
     Enumerations of the different granularity levels supported for masking perturbations
@@ -373,3 +380,34 @@ class Granularity(Enum):
             if token_indices:  # skip empty groups (can happen on only-punct spans)
                 groups.append(token_indices)
         return groups
+
+    def aggregate_score_for_gradient_method(scores: torch.Tensor, granularity: Granularity | None, granularity_aggregation: GranularityAggregation, tokenizer: PreTrainedTokenizer | None = None):
+        """
+        Aggregate scores for gradient-based methods according to the specified granularity.
+
+        Args:
+            scores (torch.Tensor): The scores to aggregate.
+            granularity (Granularity | None): The granularity level to use for aggregation.
+                If None, defaults to Granularity.DEFAULT.
+            granularity_aggregation (GranularityAggregation): The aggregation method to use.
+
+        Returns:
+            torch.Tensor: The aggregated scores.
+        """
+        match granularity or Granularity.DEFAULT:
+            case Granularity.ALL_TOKENS:
+                return scores
+            case Granularity.TOKEN:
+                #ne doit renvoyer les scores que des "vrais" tokens
+                if tokenizer is None:
+                    raise ValueError("Tokenizer is required for TOKEN granularity.")
+                special_ids = tokenizer.all_special_ids
+                # Supprime les scores des tokens spéciaux
+                mask = torch.tensor(
+                    [[tok_id not in special_ids for tok_id in seq] for seq in inputs["input_ids"]],
+                    dtype=torch.bool,
+                    device=scores.device,
+                )
+                return torch.masked_select(scores, mask).view(scores.shape[0], -1)
+            case Granularity.WORD:
+                #TODO: pour chaque mot, on prend les scores des tokens qui le composent et on fait soit la moyenne, soit le max, soit le min, soit la somme (suivant granularity_aggregation)
