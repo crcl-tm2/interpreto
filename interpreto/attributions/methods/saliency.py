@@ -34,7 +34,7 @@ import torch
 from transformers import PreTrainedModel, PreTrainedTokenizer
 
 from interpreto.attributions.base import AttributionExplainer, MultitaskExplainerMixin
-from interpreto.commons.granularity import Granularity, GranularityAggregation
+from interpreto.commons.granularity import Granularity, GranularityMethodAggregation
 from interpreto.model_wrapping.inference_wrapper import InferenceModes
 
 
@@ -65,7 +65,7 @@ class Saliency(MultitaskExplainerMixin, AttributionExplainer):
         tokenizer: PreTrainedTokenizer,
         batch_size: int = 4,
         granularity: Granularity = Granularity.WORD,
-        granularity_aggregation: GranularityAggregation = GranularityAggregation.MEAN,
+        granularity_method_aggregation: GranularityMethodAggregation = GranularityMethodAggregation.MEAN,
         device: torch.device | None = None,
         inference_mode: Callable[[torch.Tensor], torch.Tensor] = InferenceModes.LOGITS,
     ):
@@ -77,7 +77,7 @@ class Saliency(MultitaskExplainerMixin, AttributionExplainer):
             tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
             batch_size (int): batch size for the attribution method
             granularity (Granularity): granularity level of the perturbations (token, word, sentence, etc.)
-            granularity_aggregation (GranularityAggregation): how to aggregate token-level attributions into granularity scores
+            granularity_method_aggregation (GranularityMethodAggregation): how to aggregate token-level attributions into granularity scores
             device (torch.device): device on which the attribution method will be run
             inference_mode (Callable[[torch.Tensor], torch.Tensor], optional): The mode used for inference.
                 It can be either one of LOGITS, SOFTMAX, or LOG_SOFTMAX. Use InferenceModes to choose the appropriate mode.
@@ -91,7 +91,7 @@ class Saliency(MultitaskExplainerMixin, AttributionExplainer):
             perturbator=None,
             aggregator=None,
             granularity=granularity,
-            granularity_aggregation=granularity_aggregation,
+            granularity_method_aggregation=granularity_method_aggregation,
             inference_mode=inference_mode,
             use_gradient=True,
         )

@@ -17,18 +17,15 @@ The API have two steps:
 - `tokenizer` (`PreTrainedTokenizer`): Hugging Face tokenizer associated with the model,
 - `batch_size` (`int`): batch size for the attribution method,
 - `granularity` (`Granularity`): granularity level of the explanation. It can be either one of `ALL_TOKENS` (includes all sentence tokens, even special tokens), `TOKEN`, and `WORD`.
+- `inference_mode` (`Callable[[torch.Tensor], torch.Tensor], optional`): The mode used for inference. It can be either one of `LOGITS`, `SOFTMAX`, or `LOG_SOFTMAX`. Use `InferenceModes` to choose the appropriate mode. Default `inference_mode` is `LOGITS`.
 - `device` (`torch.device | None = None`): device on which the attribution method will be run,
 - `args`: specifics for each method.
 
 
 For gradient-based attribution methods, granularity is not calculated at the perturbation mask level, but at the aggregation level. We then aggregate the scores given on the tokens to create scores on the chosen granularity. There may be several ways of aggregating these scores, so we need a new argument, only for gradient-based methods:
 
-- `granularity_aggregation` (`GranularityAggregation`): If granularity is set to 'WORD', this determines how to aggregate token-level attributions into word-level scores. Options are: 'MEAN', 'MAX', 'MIN', and 'SUM'.
+- `granularity_method_aggregation` (`GranularityMethodAggregation`): If granularity is set to 'WORD', this determines how to aggregate token-level attributions into word-level scores. Options are: 'MEAN', 'MAX', 'MIN', and 'SUM'.
 
-
-*Note: There are also an argument, general to all inference-based attribution methods:*
-
-- `inference_mode` (`Callable[[torch.Tensor], torch.Tensor], optional`): The mode used for inference. It can be either one of `LOGITS`, `SOFTMAX`, or `LOG_SOFTMAX`. Use `InferenceModes` to choose the appropriate mode. Default `inference_mode` is `LOGITS`.
 
 
 **Step 2:** The `AttributionExplainer` class overloads the `__call__` method to directly invoke the `explain` function. Therefore, calling `explainer(inputs, targets)` is equivalent to `explainer.explain(inputs, targets)`. It takes two parameters:

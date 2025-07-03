@@ -43,7 +43,7 @@ from interpreto.attributions.aggregations.base import Aggregator
 from interpreto.attributions.perturbations.base import Perturbator
 from interpreto.commons import Granularity
 from interpreto.commons.generator_tools import split_iterator
-from interpreto.commons.granularity import GranularityAggregation
+from interpreto.commons.granularity import GranularityMethodAggregation
 from interpreto.model_wrapping.classification_inference_wrapper import ClassificationInferenceWrapper
 from interpreto.model_wrapping.generation_inference_wrapper import GenerationInferenceWrapper
 from interpreto.model_wrapping.inference_wrapper import InferenceModes, InferenceWrapper
@@ -160,7 +160,7 @@ class AttributionExplainer:
         aggregator: Aggregator | None = None,
         device: torch.device | None = None,
         granularity: Granularity = Granularity.DEFAULT,
-        granularity_aggregation: GranularityAggregation = GranularityAggregation.MEAN,
+        granularity_method_aggregation: GranularityMethodAggregation = GranularityMethodAggregation.MEAN,
         inference_mode: Callable[[torch.Tensor], torch.Tensor] = InferenceModes.LOGITS,  # TODO: add to all classes
         use_gradient: bool = False,
     ) -> None:
@@ -193,7 +193,7 @@ class AttributionExplainer:
         self.perturbator.to(self.device)
         self.aggregator = aggregator or Aggregator()
         self.granularity = granularity
-        self.granularity_aggregation = granularity_aggregation
+        self.granularity_method_aggregation = granularity_method_aggregation
         self.inference_wrapper.pad_token_id = self.tokenizer.pad_token_id
 
     def _set_tokenizer(self, model, tokenizer) -> tuple[PreTrainedModel, int]:
@@ -393,7 +393,7 @@ class AttributionExplainer:
         if self.use_gradient:
             granular_contributions = [
                 Granularity.aggregate_score_for_gradient_method(
-                    contribution, self.granularity, self.granularity_aggregation, inputs, self.tokenizer
+                    contribution, self.granularity, self.granularity_method_aggregation, inputs, self.tokenizer
                 )
                 for contribution, inputs in zip(contributions, model_inputs_to_explain, strict=True)
             ]

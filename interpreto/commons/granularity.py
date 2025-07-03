@@ -59,7 +59,7 @@ class NoWordIdsError(AttributeError):
         )
 
 
-class GranularityAggregation(Enum):
+class GranularityMethodAggregation(Enum):
     MEAN = "mean"
     MAX = "max"
     MIN = "min"
@@ -384,7 +384,7 @@ class Granularity(Enum):
     def aggregate_score_for_gradient_method(
         scores: torch.Tensor,
         granularity: Granularity | None,
-        granularity_aggregation: GranularityAggregation,
+        granularity_method_aggregation: GranularityMethodAggregation,
         inputs: BatchEncoding,
         tokenizer: PreTrainedTokenizer,
     ):
@@ -395,7 +395,7 @@ class Granularity(Enum):
             scores (torch.Tensor): The scores to aggregate. Shape: (n, lp)
             granularity (Granularity | None): The granularity level to use for aggregation.
                 If None, defaults to Granularity.DEFAULT.
-            granularity_aggregation (GranularityAggregation): The aggregation method to use.
+            granularity_method_aggregation (GranularityMethodAggregation): The aggregation method to use.
             inputs (BatchEncoding, optional): Required for WORD-level aggregation.
             tokenizer (PreTrainedTokenizer, optional): Required for TOKEN/WORD-level filtering.
 
@@ -417,5 +417,28 @@ class Granularity(Enum):
                 )
                 return scores[mask]
             case Granularity.WORD:
-                # TODO: pour chaque mot, on prend les scores des tokens qui le composent et on fait soit la moyenne, soit le max, soit le min, soit la somme (suivant granularity_aggregation)
-                raise NotImplementedError("WORD granularity aggregation is not implemented yet.")
+                if tokenizer is None or inputs is None:
+                    raise ValueError("Tokenizer and inputs are required for WORD granularity.")
+                if not tokenizer.is_fast:
+                    raise NoWordIdsError()
+                word_ids = inputs.word_ids(0)  # batch size = 1
+                mapping: dict[int, list[int]] = {}
+                for idx, wid in enumerate(word_ids):
+                    if wid is not None:
+                        mapping.setdefault(wid, []).append(idx)
+
+                aggregated_scores = []
+                for indices in mapping.values():
+                    token_scores = scores[indices]
+                    match granularity_method_aggregation:
+                        case GranularityMethodAggregation.MEAN:
+                            aggregated_scores.append(token_scores.mean())
+                        case GranularityMethodAggregation.MAX:
+                            aggregated_scores.append(token_scores.max())
+                        case GranularityMethodAggregation.MIN:
+                            aggregated_scores.append(token_scores.min())
+                        case GranularityMethodAggregation.SUM:
+                            aggregated_scores.append(token_scores.sum())
+                        case _:
+                            raise NotImplementedError(f"Unknown aggregation method: {granularity_method_aggregation}")
+                return torch.stack(aggregated_scores)
