@@ -178,7 +178,7 @@ class AttributionExplainer:
             device (torch.device, optional): The device on which computations are performed.
                 If None, defaults to the device of the model.
             granularity (Granularity, optional): The level of granularity for the explanation (e.g., token, word, sentence).
-                Defaults to Granularity.DEFAULT (TOKEN)
+                Defaults to Granularity.DEFAULT (ALL_TOKENS)
             inference_mode (Callable[[torch.Tensor], torch.Tensor], optional): The mode used for inference.
                 It can be either one of LOGITS, SOFTMAX, or LOG_SOFTMAX. Use InferenceModes to choose the appropriate mode.
             use_gradient (bool, optional): If True, computes gradients instead of inference for targeted explanations.
@@ -391,7 +391,13 @@ class AttributionExplainer:
         )
 
         if self.use_gradient:
-            granular_contributions = #TODO #self.granularity_aggregation
+            granular_contributions = [
+                Granularity.aggregate_score_for_gradient_method(
+                    contribution, self.granularity, self.granularity_aggregation, inputs, self.tokenizer
+                )
+                for contribution, inputs in zip(contributions, model_inputs_to_explain, strict=True)
+            ]
+            print("Granularity aggregation for gradient method is applied.")
         else:
             granular_contributions = contributions
 

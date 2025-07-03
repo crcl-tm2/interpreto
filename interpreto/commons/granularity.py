@@ -381,15 +381,23 @@ class Granularity(Enum):
                 groups.append(token_indices)
         return groups
 
-    def aggregate_score_for_gradient_method(scores: torch.Tensor, granularity: Granularity | None, granularity_aggregation: GranularityAggregation, tokenizer: PreTrainedTokenizer | None = None):
+    def aggregate_score_for_gradient_method(
+        scores: torch.Tensor,
+        granularity: Granularity | None,
+        granularity_aggregation: GranularityAggregation,
+        inputs: BatchEncoding,
+        tokenizer: PreTrainedTokenizer,
+    ):
         """
         Aggregate scores for gradient-based methods according to the specified granularity.
 
         Args:
-            scores (torch.Tensor): The scores to aggregate.
+            scores (torch.Tensor): The scores to aggregate. Shape: (n, lp)
             granularity (Granularity | None): The granularity level to use for aggregation.
                 If None, defaults to Granularity.DEFAULT.
             granularity_aggregation (GranularityAggregation): The aggregation method to use.
+            inputs (BatchEncoding, optional): Required for WORD-level aggregation.
+            tokenizer (PreTrainedTokenizer, optional): Required for TOKEN/WORD-level filtering.
 
         Returns:
             torch.Tensor: The aggregated scores.
@@ -398,16 +406,16 @@ class Granularity(Enum):
             case Granularity.ALL_TOKENS:
                 return scores
             case Granularity.TOKEN:
-                #ne doit renvoyer les scores que des "vrais" tokens
+                # ne doit renvoyer les scores que des "vrais" tokens
                 if tokenizer is None:
                     raise ValueError("Tokenizer is required for TOKEN granularity.")
                 special_ids = tokenizer.all_special_ids
-                # Supprime les scores des tokens spéciaux
                 mask = torch.tensor(
-                    [[tok_id not in special_ids for tok_id in seq] for seq in inputs["input_ids"]],
+                    [tok_id not in special_ids for tok_id in inputs["input_ids"][0]],
                     dtype=torch.bool,
                     device=scores.device,
                 )
-                return torch.masked_select(scores, mask).view(scores.shape[0], -1)
+                return scores[mask]
             case Granularity.WORD:
-                #TODO: pour chaque mot, on prend les scores des tokens qui le composent et on fait soit la moyenne, soit le max, soit le min, soit la somme (suivant granularity_aggregation)
+                # TODO: pour chaque mot, on prend les scores des tokens qui le composent et on fait soit la moyenne, soit le max, soit le min, soit la somme (suivant granularity_aggregation)
+                raise NotImplementedError("WORD granularity aggregation is not implemented yet.")
