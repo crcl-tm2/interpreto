@@ -400,6 +400,32 @@ class Granularity(Enum):
         return groups
 
     def aggregate_subscores(token_scores: torch.tensor, granularity_method_aggregation: GranularityMethodAggregation):
+        """
+        Aggregates a set of token-level scores using the specified aggregation method.
+
+        This function supports various strategies to combine multiple scores (e.g., across tokens
+        corresponding to the same word) into a single value or vector. It handles both 1D and 2D tensors.
+
+        Args:
+            token_scores (torch.Tensor): A tensor containing scores to be aggregated.
+                - If 1D: shape (num_tokens (for the world),)
+                - If 2D: shape (num_scores, num_tokens)
+            granularity_method_aggregation (GranularityMethodAggregation): The aggregation method to apply.
+                Can be one of:
+                    - MEAN: average of scores
+                    - MAX: maximum score
+                    - MIN: minimum score
+                    - SUM: sum of scores
+                    - SIGNED_MAX_ABS: score with the largest absolute value, preserving its sign
+
+        Returns:
+            torch.Tensor: The aggregated score(s).
+                - If input is 1D: returns a single value (scalar).
+                - If input is 2D: returns a 1D tensor of shape (num_scores,).
+
+        Raises:
+            NotImplementedError: If the aggregation method is not recognized.
+        """
         match granularity_method_aggregation:
             case GranularityMethodAggregation.MEAN:
                 return token_scores.mean(dim=0)
