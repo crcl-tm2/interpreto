@@ -60,10 +60,28 @@ class NoWordIdsError(AttributeError):
 
 
 class GranularityMethodAggregation(Enum):
+    """
+    Enumeration of the available aggregation strategies for combining token-level
+    scores into a single score for each unit of a higher-level granularity
+    (e.g., word, sentence).
+
+    This is used in explainability methods to reduce token-based attributions
+    according to a defined granularity.
+
+    Attributes:
+        MEAN: Average of the token scores within each group.
+        MAX: Maximum token score within each group.
+        MIN: Minimum token score within each group.
+        SUM: Sum of all token scores within each group.
+        SIGNED_MAX_ABS: Selects the token with the highest absolute score and returns its signed value.
+                        For example, given scores [3, -1, 7], returns 7; for [3, -1, -7], returns -7.
+    """
+
     MEAN = "mean"
     MAX = "max"
     MIN = "min"
     SUM = "sum"
+    SIGNED_MAX_ABS = "signed_max_abs"
 
 
 class Granularity(Enum):
@@ -439,6 +457,9 @@ class Granularity(Enum):
                             aggregated_scores.append(token_scores.min())
                         case GranularityMethodAggregation.SUM:
                             aggregated_scores.append(token_scores.sum())
+                        case GranularityMethodAggregation.SIGNED_MAX_ABS:
+                            max_idx = torch.argmax(token_scores.abs())
+                            aggregated_scores.append(token_scores[max_idx])
                         case _:
                             raise NotImplementedError(f"Unknown aggregation method: {granularity_method_aggregation}")
                 return torch.stack(aggregated_scores)
