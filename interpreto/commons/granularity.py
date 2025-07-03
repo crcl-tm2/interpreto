@@ -399,6 +399,28 @@ class Granularity(Enum):
                 groups.append(token_indices)
         return groups
 
+    def aggregate_subscores(token_scores: torch.tensor, granularity_method_aggregation: GranularityMethodAggregation):
+        match granularity_method_aggregation:
+            case GranularityMethodAggregation.MEAN:
+                return token_scores.mean(dim=0)
+            case GranularityMethodAggregation.MAX:
+                return token_scores.max(dim=0)
+            case GranularityMethodAggregation.MIN:
+                return token_scores.min(dim=0)
+            case GranularityMethodAggregation.SUM:
+                return token_scores.sum(dim=0)
+            case GranularityMethodAggregation.SIGNED_MAX_ABS:
+                if token_scores.dim() == 1:
+                    max_idx = torch.argmax(token_scores.abs())
+                    return token_scores[max_idx]
+                else:
+                    abs_token_scores = token_scores.abs()
+                    max_indices = abs_token_scores.argmax(dim=0)
+                    selected_scores = token_scores[max_indices, torch.arange(token_scores.shape[1])]
+                    return selected_scores
+            case _:
+                raise NotImplementedError(f"Unknown aggregation method: {granularity_method_aggregation}")
+
     def aggregate_score_for_gradient_method(
         scores: torch.Tensor,
         granularity: Granularity | None,
@@ -455,20 +477,9 @@ class Granularity(Enum):
                     else:  # n scores per token
                         scores_T = scores.T
                         token_scores = scores_T[indices]
-                    match granularity_method_aggregation:
-                        case GranularityMethodAggregation.MEAN:
-                            aggregated_scores.append(token_scores.mean(dim=0))
-                        case GranularityMethodAggregation.MAX:
-                            aggregated_scores.append(token_scores.max(dim=0))
-                        case GranularityMethodAggregation.MIN:
-                            aggregated_scores.append(token_scores.min(dim=0))
-                        case GranularityMethodAggregation.SUM:
-                            aggregated_scores.append(token_scores.sum(dim=0))
-                        case GranularityMethodAggregation.SIGNED_MAX_ABS:
-                            max_idx = torch.argmax(token_scores.abs())  # TODO.
-                            aggregated_scores.append(token_scores[:, max_idx])
-                        case _:
-                            raise NotImplementedError(f"Unknown aggregation method: {granularity_method_aggregation}")
+                    aggregated_scores.append(
+                        Granularity.aggregate_subscores(token_scores, granularity_method_aggregation)
+                    )
                 if scores.dim() == 1:  # one score per token
                     return torch.stack(aggregated_scores)
                 else:  # n scores per token
