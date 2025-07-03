@@ -397,7 +397,6 @@ class AttributionExplainer:
                 )
                 for contribution, inputs in zip(contributions, model_inputs_to_explain, strict=True)
             ]
-            print("Granularity aggregation for gradient method is applied.")
         else:
             granular_contributions = contributions
 
