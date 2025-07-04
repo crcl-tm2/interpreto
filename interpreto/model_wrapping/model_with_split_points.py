@@ -700,7 +700,7 @@ class ModelWithSplitPoints(LanguageModel):
                                 )
                         else:
                             batch_activations = batch_outputs
-                        all_activation_dict[sp].append(batch_activations)
+                        activations[sp].append(batch_activations)
                     #     # at each split point, get activations
                     #     for idx, split_point in enumerate(self.split_points):
                     #         curr_module = self.get(split_point)
