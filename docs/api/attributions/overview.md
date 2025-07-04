@@ -24,7 +24,7 @@ The API have two steps:
 
 For gradient-based attribution methods, granularity is not calculated at the perturbation mask level, but at the aggregation level. We then aggregate the scores given on the tokens to create scores on the chosen granularity. There may be several ways of aggregating these scores, so we need a new argument, only for gradient-based methods:
 
-- `granularity_method_aggregation` (`GranularityMethodAggregation`): If granularity is set to 'WORD', this determines how to aggregate token-level attributions into word-level scores. Options are: 'MEAN', 'MAX', 'MIN', and 'SUM'.
+- `granularity_method_aggregation` (`GranularityMethodAggregation`): If granularity is set to 'WORD', this determines how to aggregate token-level attributions into word-level scores. Options are: 'MEAN', 'MAX', 'MIN', 'SUM' and 'SIGNED_MAX_ABS'.
 
 
 

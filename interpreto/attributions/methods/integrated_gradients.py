@@ -80,8 +80,10 @@ class IntegratedGradients(MultitaskExplainerMixin, AttributionExplainer):
             model (PreTrainedModel): model to explain
             tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
             batch_size (int): batch size for the attribution method
-            granularity (Granularity): granularity level of the perturbations (token, word, sentence, etc.)
-            granularity_method_aggregation (GranularityMethodAggregation): how to aggregate token-level attributions into granularity scores
+            granularity (Granularity): granularity level of the perturbations.
+                Options are: ALL_TOKENS, TOKEN, and WORD.
+            granularity_method_aggregation (GranularityMethodAggregation): how to aggregate token-level attributions into granularity scores.
+                Options are: MEAN, MAX, MIN, SUM, and SIGNED_MAX_ABS.
             device (torch.device): device on which the attribution method will be run
             inference_mode (Callable[[torch.Tensor], torch.Tensor], optional): The mode used for inference.
                 It can be either one of LOGITS, SOFTMAX, or LOG_SOFTMAX. Use InferenceModes to choose the appropriate mode.
