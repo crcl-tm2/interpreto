@@ -45,7 +45,7 @@ from interpreto.attributions import (
     Sobol,
 )
 from interpreto.attributions.base import AttributionOutput
-from interpreto.commons.granularity import Granularity
+from interpreto.commons.granularity import Granularity, GranularityMethodAggregation
 from interpreto.model_wrapping.inference_wrapper import InferenceModes
 from interpreto.typing import IncompatibilityError
 
@@ -54,8 +54,11 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 attribution_method_kwargs = {
     # -----------------------
     # Gradient based methods:
-    Saliency: {},
-    IntegratedGradients: {"n_interpolations": 3, "baseline": 0.0},
+    Saliency: {
+        "granularity": Granularity.WORD,
+        "granularity_method_aggregation": GranularityMethodAggregation.SIGNED_MAX_ABS,
+    },
+    IntegratedGradients: {"n_interpolations": 3, "baseline": 0.0, "granularity": Granularity.TOKEN},
     SmoothGrad: {"n_interpolations": 3, "noise_level": 0.1},
     # ---------------------------
     # Perturbation based methods:

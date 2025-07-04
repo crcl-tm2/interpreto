@@ -430,9 +430,9 @@ class Granularity(Enum):
             case GranularityMethodAggregation.MEAN:
                 return token_scores.mean(dim=0)
             case GranularityMethodAggregation.MAX:
-                return token_scores.max(dim=0)
+                return token_scores.max(dim=0).values
             case GranularityMethodAggregation.MIN:
-                return token_scores.min(dim=0)
+                return token_scores.min(dim=0).values
             case GranularityMethodAggregation.SUM:
                 return token_scores.sum(dim=0)
             case GranularityMethodAggregation.SIGNED_MAX_ABS:
