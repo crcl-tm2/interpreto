@@ -464,12 +464,16 @@ class Granularity(Enum):
             granularity (Granularity | None): The granularity level to use for aggregation.
                 If None, defaults to Granularity.DEFAULT.
             granularity_aggregation_strategy (GranularityAggregationStrategy): The aggregation method to use.
-            inputs (BatchEncoding, optional): Required for WORD-level aggregation.
+            inputs (BatchEncoding, optional): Required for aggregation for every granularity apart from ALL_TOKENS.
             tokenizer (PreTrainedTokenizer, optional): Required for TOKEN/WORD-level filtering.
 
         Returns:
             torch.Tensor: The aggregated scores.
         """
+        if not isinstance(inputs, BatchEncoding):
+            raise TypeError("`inputs` must be a BatchEncoding instance.")
+        if inputs["input_ids"].shape[0] != 1:  # type: ignore
+            raise ValueError("`inputs` must contain a single sample for aggregation.")
         match granularity or Granularity.DEFAULT:
             case Granularity.ALL_TOKENS:
                 return scores
