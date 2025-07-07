@@ -395,7 +395,7 @@ class AttributionExplainer:
         if self.use_gradient:
             granular_contributions = [
                 Granularity.aggregate_score_for_gradient_method(
-                    contribution, self.granularity, self.granularity_aggregation_strategy, inputs, self.tokenizer
+                    contribution.cpu(), self.granularity, self.granularity_aggregation_strategy, inputs, self.tokenizer
                 )
                 for contribution, inputs in zip(contributions, model_inputs_to_explain, strict=True)
             ]

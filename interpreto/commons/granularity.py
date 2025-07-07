@@ -30,10 +30,11 @@ from __future__ import annotations
 import os
 from enum import Enum
 from functools import lru_cache
+from typing import Protocol
 
 import torch
 from beartype import beartype
-from jaxtyping import Bool, Int, jaxtyped
+from jaxtyping import Bool, Float, Int, jaxtyped
 from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_utils_base import BatchEncoding
 
@@ -77,11 +78,26 @@ class GranularityAggregationStrategy(Enum):
                         For example, given scores [3, -1, 7], returns 7; for [3, -1, -7], returns -7.
     """
 
-    MEAN = "mean"
-    MAX = "max"
-    MIN = "min"
-    SUM = "sum"
-    SIGNED_MAX = "signed_max"
+    MEAN = staticmethod(lambda x, dim: x.mean(dim=dim, keepdim=True))
+    MAX = staticmethod(lambda x, dim: x.max(dim=dim, keepdim=True))
+    MIN = staticmethod(lambda x, dim: x.min(dim=dim, keepdim=True))
+    SUM = staticmethod(lambda x, dim: x.sum(dim=dim, keepdim=True))
+    SIGNED_MAX = staticmethod(lambda x, dim: x.gather(dim, x.abs().argmax(dim=dim).unsqueeze(dim)))
+
+
+class AggregationProtocol(Protocol):
+    """Protocol for aggregation strategies used in :meth:`ModelWithSplitPoints.get_activations`."""
+
+    def __call__(self, x: torch.Tensor, dim: int) -> torch.Tensor:
+        """Aggregate activations.
+
+        Args:
+            x (torch.Tensor): The tensor to aggregate.
+
+        Returns:
+            torch.Tensor: The aggregated tensor.
+        """
+        ...
 
 
 class Granularity(Enum):
@@ -399,115 +415,78 @@ class Granularity(Enum):
                 groups.append(token_indices)
         return groups
 
-    def aggregate_subscores(
-        token_scores: torch.tensor, granularity_aggregation_strategy: GranularityAggregationStrategy
-    ):
-        """
-        Aggregates a set of token-level scores using the specified aggregation method.
-
-        This function supports various strategies to combine multiple scores (e.g., across tokens
-        corresponding to the same word) into a single value or vector. It handles both 1D and 2D tensors.
-
-        Args:
-            token_scores (torch.Tensor): A tensor containing scores to be aggregated.
-                - If 1D: shape (num_tokens (for the world),)
-                - If 2D: shape (num_scores, num_tokens)
-            granularity_aggregation_strategy (GranularityAggregationStrategy): The aggregation method to apply.
-                Can be one of:
-                    - MEAN: average of scores
-                    - MAX: maximum score
-                    - MIN: minimum score
-                    - SUM: sum of scores
-                    - signed_maxore with the largest absolute value, preserving its sign
-
-        Returns:
-            torch.Tensor: The aggregated score(s).
-                - If input is 1D: returns a single value (scalar).
-                - If input is 2D: returns a 1D tensor of shape (num_scores,).
-
-        Raises:
-            NotImplementedError: If the aggregation method is not recognized.
-        """
-        match granularity_aggregation_strategy:
-            case GranularityAggregationStrategy.MEAN:
-                return token_scores.mean(dim=0)
-            case GranularityAggregationStrategy.MAX:
-                return token_scores.max(dim=0).values
-            case GranularityAggregationStrategy.MIN:
-                return token_scores.min(dim=0).values
-            case GranularityAggregationStrategy.SUM:
-                return token_scores.sum(dim=0)
-            case GranularityAggregationStrategy.SIGNED_MAX:
-                if token_scores.dim() == 1:
-                    max_idx = torch.argmax(token_scores.abs())
-                    return token_scores[max_idx]
-                else:
-                    abs_token_scores = token_scores.abs()
-                    max_indices = abs_token_scores.argmax(dim=0)
-                    selected_scores = token_scores[max_indices, torch.arange(token_scores.shape[1])]
-                    return selected_scores
-            case _:
-                raise NotImplementedError(f"Unknown aggregation method: {granularity_aggregation_strategy}")
-
+    @staticmethod
     def aggregate_score_for_gradient_method(
         scores: torch.Tensor,
         granularity: Granularity | None,
-        granularity_aggregation_strategy: GranularityAggregationStrategy,
-        inputs: BatchEncoding,
-        tokenizer: PreTrainedTokenizer,
-    ):
+        granularity_aggregation_strategy: AggregationProtocol,
+        inputs: BatchEncoding | None = None,
+        tokenizer: PreTrainedTokenizer | None = None,
+    ) -> Float[torch.Tensor, "t g"]:
         """
         Aggregate scores for gradient-based methods according to the specified granularity.
 
         Args:
             scores (torch.Tensor): The scores to aggregate. Shape: (n, lp)
-            granularity (Granularity | None): The granularity level to use for aggregation.
+            granularity (Granularity): The granularity level to use for aggregation.
                 If None, defaults to Granularity.DEFAULT.
             granularity_aggregation_strategy (GranularityAggregationStrategy): The aggregation method to use.
-            inputs (BatchEncoding, optional): Required for WORD-level aggregation.
-            tokenizer (PreTrainedTokenizer, optional): Required for TOKEN/WORD-level filtering.
+                It should be an attribute of `GranularityAggregationStrategy`. Choices are:
+                    - `MEAN`: average of scores
+
+                    - `MAX`: maximum score
+
+                    - `MIN`: minimum score
+
+                    - `SUM`: sum of scores
+
+                    - `SIGNED_MAX`: scores with the largest absolute value, preserving its sign
+            inputs (BatchEncoding | None): Required if granularity is not `ALL_TOKENS`.
+            tokenizer (PreTrainedTokenizer | None): Required for TOKEN/WORD-level filtering.
 
         Returns:
             torch.Tensor: The aggregated scores.
         """
-        match granularity or Granularity.DEFAULT:
-            case Granularity.ALL_TOKENS:
-                return scores
-            case Granularity.TOKEN:
-                if tokenizer is None:
-                    raise ValueError("Tokenizer is required for TOKEN granularity.")
-                special_ids = tokenizer.all_special_ids
-                mask = torch.tensor(
-                    [tok_id not in special_ids for tok_id in inputs["input_ids"][0]],
-                    dtype=torch.bool,
-                    device=scores.device,
-                )
-                if scores.dim() == 1:  # one score per token
-                    return scores[mask]
-                else:  # n scores per token
-                    return scores[:, mask]
-            case Granularity.WORD:
-                if tokenizer is None or inputs is None:
-                    raise ValueError("Tokenizer and inputs are required for WORD granularity.")
-                if not tokenizer.is_fast:
-                    raise NoWordIdsError()
-                word_ids = inputs.word_ids(0)  # batch size = 1
-                mapping: dict[int, list[int]] = {}
-                for idx, wid in enumerate(word_ids):
-                    if wid is not None:
-                        mapping.setdefault(wid, []).append(idx)
+        if scores.dim() == 1:
+            scores = scores.unsqueeze(0)
 
-                aggregated_scores = []
-                for indices in mapping.values():
-                    if scores.dim() == 1:  # one score per token
-                        token_scores = scores[indices]
-                    else:  # n scores per token
-                        scores_T = scores.T
-                        token_scores = scores_T[indices]
-                    aggregated_scores.append(
-                        Granularity.aggregate_subscores(token_scores, granularity_aggregation_strategy)
-                    )
-                if scores.dim() == 1:  # one score per token
-                    return torch.stack(aggregated_scores)
-                else:  # n scores per token
-                    return torch.stack(aggregated_scores).T
+        granularity = granularity or Granularity.DEFAULT
+
+        if granularity == Granularity.ALL_TOKENS:
+            return scores
+
+        if inputs is None:
+            raise ValueError("Inputs are required for non ALL_TOKENS granularity.")
+
+        # extract indices of scores to keep from inputs
+        indices_list = Granularity.get_indices(inputs, granularity, tokenizer)  # type: ignore
+
+        if len(indices_list) > 1:
+            raise ValueError(
+                "`aggregate_score_for_gradient_method` do not support batched inputs. Please provide a single input."
+            )
+
+        match granularity:
+            case Granularity.TOKEN:
+                # convert scores to tensor for faster indexing
+                indices = torch.tensor(indices_list[0]).squeeze(1)
+
+                return scores[:, indices]
+            case Granularity.WORD | Granularity.SENTENCE:
+                # iterate over granularity elements
+                aggregated_scores: Float[torch.Tensor, "t g"] = torch.zeros((scores.shape[0], len(indices_list[0])))
+                for aggregation_index, token_indices in enumerate(indices_list[0]):
+                    # extract token scores for each word/sentence
+                    tokens_scores: Float[torch.Tensor, "t gi"] = scores[:, token_indices]
+
+                    if tokens_scores.dim() == 1 or tokens_scores.shape[1] == 1:
+                        # if only one token, no aggregation needed
+                        aggregated_scores[:, [aggregation_index]] = tokens_scores
+                    else:
+                        # aggregate token scores for each word/sentence
+                        aggregated_scores[:, [aggregation_index]] = granularity_aggregation_strategy(
+                            tokens_scores, dim=1
+                        )
+                return aggregated_scores
+            case _:
+                raise NotImplementedError(f"Invalid granularity for aggregation: {granularity}")
