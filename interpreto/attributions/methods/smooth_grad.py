@@ -36,7 +36,7 @@ from transformers import PreTrainedModel, PreTrainedTokenizer
 from interpreto.attributions.aggregations import MeanAggregator
 from interpreto.attributions.base import AttributionExplainer, MultitaskExplainerMixin
 from interpreto.attributions.perturbations import GaussianNoisePerturbator
-from interpreto.commons.granularity import Granularity, GranularityMethodAggregation
+from interpreto.commons.granularity import Granularity, GranularityAggregationStrategy
 from interpreto.model_wrapping.inference_wrapper import InferenceModes
 
 
@@ -69,7 +69,7 @@ class SmoothGrad(MultitaskExplainerMixin, AttributionExplainer):
         tokenizer: PreTrainedTokenizer,
         batch_size: int = 4,
         granularity: Granularity = Granularity.WORD,
-        granularity_method_aggregation: GranularityMethodAggregation = GranularityMethodAggregation.MEAN,
+        granularity_aggregation_strategy: GranularityAggregationStrategy = GranularityAggregationStrategy.MEAN,
         device: torch.device | None = None,
         inference_mode: Callable[[torch.Tensor], torch.Tensor] = InferenceModes.LOGITS,
         n_interpolations: int = 10,  # TODO: find better name
@@ -84,8 +84,8 @@ class SmoothGrad(MultitaskExplainerMixin, AttributionExplainer):
             batch_size (int): batch size for the attribution method
             granularity (Granularity): granularity level of the perturbations.
                 Options are: ALL_TOKENS, TOKEN, and WORD.
-            granularity_method_aggregation (GranularityMethodAggregation): how to aggregate token-level attributions into granularity scores.
-                Options are: MEAN, MAX, MIN, SUM, and SIGNED_MAX_ABS.
+            granularity_aggregation_strategy (GranularityAggregationStrategy): how to aggregate token-level attributions into granularity scores.
+                Options are: MEAN, MAX, MIN, SUM, and SIGNED_MAX.
             device (torch.device): device on which the attribution method will be run
             inference_mode (Callable[[torch.Tensor], torch.Tensor], optional): The mode used for inference.
                 It can be either one of LOGITS, SOFTMAX, or LOG_SOFTMAX. Use InferenceModes to choose the appropriate mode.
@@ -104,7 +104,7 @@ class SmoothGrad(MultitaskExplainerMixin, AttributionExplainer):
             perturbator=perturbator,
             aggregator=MeanAggregator(),
             granularity=granularity,
-            granularity_method_aggregation=granularity_method_aggregation,
+            granularity_aggregation_strategy=granularity_aggregation_strategy,
             inference_mode=inference_mode,
             use_gradient=True,
         )

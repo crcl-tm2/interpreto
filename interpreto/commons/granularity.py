@@ -59,7 +59,7 @@ class NoWordIdsError(AttributeError):
         )
 
 
-class GranularityMethodAggregation(Enum):
+class GranularityAggregationStrategy(Enum):
     """
     Enumeration of the available aggregation strategies for combining token-level
     scores into a single score for each unit of a higher-level granularity
@@ -73,7 +73,7 @@ class GranularityMethodAggregation(Enum):
         MAX: Maximum token score within each group.
         MIN: Minimum token score within each group.
         SUM: Sum of all token scores within each group.
-        SIGNED_MAX_ABS: Selects the token with the highest absolute score and returns its signed value.
+        SIGNED_MAX: Selects the token with the highest absolute score and returns its signed value.
                         For example, given scores [3, -1, 7], returns 7; for [3, -1, -7], returns -7.
     """
 
@@ -81,7 +81,7 @@ class GranularityMethodAggregation(Enum):
     MAX = "max"
     MIN = "min"
     SUM = "sum"
-    SIGNED_MAX_ABS = "signed_max_abs"
+    SIGNED_MAX = "signed_max"
 
 
 class Granularity(Enum):
@@ -399,7 +399,9 @@ class Granularity(Enum):
                 groups.append(token_indices)
         return groups
 
-    def aggregate_subscores(token_scores: torch.tensor, granularity_method_aggregation: GranularityMethodAggregation):
+    def aggregate_subscores(
+        token_scores: torch.tensor, granularity_aggregation_strategy: GranularityAggregationStrategy
+    ):
         """
         Aggregates a set of token-level scores using the specified aggregation method.
 
@@ -410,13 +412,13 @@ class Granularity(Enum):
             token_scores (torch.Tensor): A tensor containing scores to be aggregated.
                 - If 1D: shape (num_tokens (for the world),)
                 - If 2D: shape (num_scores, num_tokens)
-            granularity_method_aggregation (GranularityMethodAggregation): The aggregation method to apply.
+            granularity_aggregation_strategy (GranularityAggregationStrategy): The aggregation method to apply.
                 Can be one of:
                     - MEAN: average of scores
                     - MAX: maximum score
                     - MIN: minimum score
                     - SUM: sum of scores
-                    - SIGNED_MAX_ABS: score with the largest absolute value, preserving its sign
+                    - signed_maxore with the largest absolute value, preserving its sign
 
         Returns:
             torch.Tensor: The aggregated score(s).
@@ -426,16 +428,16 @@ class Granularity(Enum):
         Raises:
             NotImplementedError: If the aggregation method is not recognized.
         """
-        match granularity_method_aggregation:
-            case GranularityMethodAggregation.MEAN:
+        match granularity_aggregation_strategy:
+            case GranularityAggregationStrategy.MEAN:
                 return token_scores.mean(dim=0)
-            case GranularityMethodAggregation.MAX:
+            case GranularityAggregationStrategy.MAX:
                 return token_scores.max(dim=0).values
-            case GranularityMethodAggregation.MIN:
+            case GranularityAggregationStrategy.MIN:
                 return token_scores.min(dim=0).values
-            case GranularityMethodAggregation.SUM:
+            case GranularityAggregationStrategy.SUM:
                 return token_scores.sum(dim=0)
-            case GranularityMethodAggregation.SIGNED_MAX_ABS:
+            case GranularityAggregationStrategy.SIGNED_MAX:
                 if token_scores.dim() == 1:
                     max_idx = torch.argmax(token_scores.abs())
                     return token_scores[max_idx]
@@ -445,12 +447,12 @@ class Granularity(Enum):
                     selected_scores = token_scores[max_indices, torch.arange(token_scores.shape[1])]
                     return selected_scores
             case _:
-                raise NotImplementedError(f"Unknown aggregation method: {granularity_method_aggregation}")
+                raise NotImplementedError(f"Unknown aggregation method: {granularity_aggregation_strategy}")
 
     def aggregate_score_for_gradient_method(
         scores: torch.Tensor,
         granularity: Granularity | None,
-        granularity_method_aggregation: GranularityMethodAggregation,
+        granularity_aggregation_strategy: GranularityAggregationStrategy,
         inputs: BatchEncoding,
         tokenizer: PreTrainedTokenizer,
     ):
@@ -461,7 +463,7 @@ class Granularity(Enum):
             scores (torch.Tensor): The scores to aggregate. Shape: (n, lp)
             granularity (Granularity | None): The granularity level to use for aggregation.
                 If None, defaults to Granularity.DEFAULT.
-            granularity_method_aggregation (GranularityMethodAggregation): The aggregation method to use.
+            granularity_aggregation_strategy (GranularityAggregationStrategy): The aggregation method to use.
             inputs (BatchEncoding, optional): Required for WORD-level aggregation.
             tokenizer (PreTrainedTokenizer, optional): Required for TOKEN/WORD-level filtering.
 
@@ -472,7 +474,6 @@ class Granularity(Enum):
             case Granularity.ALL_TOKENS:
                 return scores
             case Granularity.TOKEN:
-                # ne doit renvoyer les scores que des "vrais" tokens
                 if tokenizer is None:
                     raise ValueError("Tokenizer is required for TOKEN granularity.")
                 special_ids = tokenizer.all_special_ids
@@ -504,7 +505,7 @@ class Granularity(Enum):
                         scores_T = scores.T
                         token_scores = scores_T[indices]
                     aggregated_scores.append(
-                        Granularity.aggregate_subscores(token_scores, granularity_method_aggregation)
+                        Granularity.aggregate_subscores(token_scores, granularity_aggregation_strategy)
                     )
                 if scores.dim() == 1:  # one score per token
                     return torch.stack(aggregated_scores)

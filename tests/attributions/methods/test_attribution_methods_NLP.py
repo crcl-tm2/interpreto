@@ -45,7 +45,7 @@ from interpreto.attributions import (
     Sobol,
 )
 from interpreto.attributions.base import AttributionOutput
-from interpreto.commons.granularity import Granularity, GranularityMethodAggregation
+from interpreto.commons.granularity import Granularity, GranularityAggregationStrategy
 from interpreto.model_wrapping.inference_wrapper import InferenceModes
 from interpreto.typing import IncompatibilityError
 
@@ -56,7 +56,7 @@ attribution_method_kwargs = {
     # Gradient based methods:
     Saliency: {
         "granularity": Granularity.WORD,
-        "granularity_method_aggregation": GranularityMethodAggregation.SIGNED_MAX_ABS,
+        "granularity_aggregation_strategy": GranularityAggregationStrategy.SIGNED_MAX,
     },
     IntegratedGradients: {"n_interpolations": 3, "baseline": 0.0, "granularity": Granularity.TOKEN},
     SmoothGrad: {"n_interpolations": 3, "noise_level": 0.1},
