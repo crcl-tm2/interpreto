@@ -31,6 +31,7 @@ from __future__ import annotations
 import itertools
 from abc import abstractmethod
 from collections.abc import Callable, Iterable, MutableMapping
+from enum import Enum
 from typing import Any
 
 import torch
@@ -52,6 +53,16 @@ SingleAttribution = (
 )
 
 
+class ModelTask(Enum):
+    """
+    Enum to represent the model task type.
+    """
+
+    SINGLE_CLASS_CLASSIFICATION = "single-class classification"
+    MULTI_CLASS_CLASSIFICATION = "multi-class classification"
+    GENERATION = "generation"
+
+
 def clone_tensor_mapping(tm: TensorMapping, detach: bool = False) -> TensorMapping:
     """
     Clone a TensorMapping, optionally detaching the tensors.
@@ -71,12 +82,14 @@ class AttributionOutput:
     Class to store the output of an attribution method.
     """
 
-    __slots__ = ("attributions", "elements")
+    __slots__ = ("attributions", "elements", "model_task", "classes")
 
     def __init__(
         self,
         attributions: SingleAttribution,
-        elements: list[str] | torch.Tensor | None = None,
+        elements: list[str] | torch.Tensor,
+        model_task: ModelTask,
+        classes: torch.Tensor | None = None,
     ):
         """
         Initializes an AttributionOutput instance.
@@ -91,22 +104,40 @@ class AttributionOutput:
                 - `l` represents the number of elements for which attribution is computed (for NLP tasks: can be the total sequence length).
                 - Shapes depend on the task:
                     - Classification (single class): `(l)`
-                    - Classification (all classes): `(c, l)`, where `c` is the number of classes.
+                    - Classification (multi classes): `(c, l)`, where `c` is the number of classes.
                     - Generative models: `(l_g, l)`, where `l_g` is the length of the generated part.
                         - For non-generated elements, there are `l_g` attribution scores.
                         - For generated elements, scores are zero for previously generated tokens.
                     - Token classification: `(l_t, l)`, where `l_t` is the number of token classes. When the tokens are disturbed, l = l_t.
-            elements (Iterable[list[str]] | Iterable[torch.Tensor] | None, optional): A list or tensor representing the elements for which attributions are computed.
+            elements (Iterable[list[str]] | Iterable[torch.Tensor]): A list or tensor representing the elements for which attributions are computed.
                 - These elements can be tokens, words, sentences, or tensors of size `l`.
+            model_task (ModelTask): An enum representing the task of the model explained, such as SINGLE_CLASS_CLASSIFICATION, MULTI_CLASS_CLASSIFICATION, or GENERATION.
+            classes (torch.Tensor | None): Optional tensor of class labels.
+                - For single-class classification: tensor of shape `(1)`
+                - For multi-class classification: tensor of shape `(c)` where `c` is the number of classes
         """
         self.attributions = attributions
         self.elements = elements
+        self.model_task = model_task
+        self.classes = classes
 
     def __repr__(self):
-        return f"AttributionOutput(attributions={repr(self.attributions)}, elements={repr(self.elements)})"
+        return (
+            f"AttributionOutput("
+            f"attributions={repr(self.attributions)}, "
+            f"elements={repr(self.elements)}, "
+            f"model_task='{self.model_task}', "
+            f"classes={repr(self.classes)})"
+        )
 
     def __str__(self):
-        return f"AttributionOutput(attributions={self.attributions}, elements={self.elements})"
+        return (
+            f"AttributionOutput("
+            f"attributions={self.attributions}, "
+            f"elements={self.elements}, "
+            f"model_task='{self.model_task}', "
+            f"classes={self.classes})"
+        )
 
 
 class AttributionExplainer:
@@ -332,9 +363,10 @@ class AttributionExplainer:
         # If targets are not provided, create them from model_inputs_to_explain.
         model_inputs_to_explain: Iterable[TensorMapping]
         sanitized_targets: Iterable[Float[torch.Tensor, "n t"]]
-        model_inputs_to_explain, sanitized_targets = self.process_inputs_to_explain_and_targets(
+        model_inputs_to_explain, sanitized_targets_gen = self.process_inputs_to_explain_and_targets(
             sanitized_model_inputs, targets, **model_kwargs
         )
+        sanitized_targets = list(sanitized_targets_gen)
 
         # Create perturbation masks and perturb inputs based on the masks.
         # Inputs might be embedded during the perturbation process if the perturbator works with embeddings.
@@ -362,7 +394,28 @@ class AttributionExplainer:
         ]  # type: ignore
 
         # Create and return AttributionOutput objects with the contributions and decoded token sequences:
-        return [AttributionOutput(c, texts) for c, texts in zip(contributions, granular_inputs_texts, strict=True)]
+        results = []
+        for contribution, elements, target in zip(
+            contributions, granular_inputs_texts, sanitized_targets, strict=True
+        ):
+            if self.inference_wrapper.__class__.__name__ == "GenerationInferenceWrapper":
+                model_task = ModelTask.GENERATION
+                classes = None
+            elif self.inference_wrapper.__class__.__name__ == "ClassificationInferenceWrapper":
+                classes = target
+                if contribution.dim() == 1:
+                    model_task = ModelTask.SINGLE_CLASS_CLASSIFICATION
+                else:
+                    model_task = ModelTask.MULTI_CLASS_CLASSIFICATION
+            else:
+                raise NotImplementedError(
+                    f"Model type {self.inference_wrapper.model.__class__.__name__} not supported for AttributionExplainer."
+                )
+            attribution_output = AttributionOutput(
+                attributions=contribution, elements=elements, model_task=model_task, classes=classes
+            )
+            results.append(attribution_output)
+        return results
 
     def __call__(self, model_inputs: ModelInputs, targets=None, **kwargs) -> Iterable[AttributionOutput]:
         """
