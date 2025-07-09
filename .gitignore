@@ -177,3 +177,8 @@ cython_debug/
 
 # Codex
 codex.patch
+
+# testing and drafts
+data/
+quick_test.py
+quick_test.ipynb
