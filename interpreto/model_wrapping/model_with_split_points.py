@@ -205,7 +205,7 @@ class ModelWithSplitPoints(LanguageModel):
         tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast | None = None,
         config: PretrainedConfig | None = None,
         batch_size: int = 1,
-        device_map: str | None = None,
+        device_map: torch.device | str | None = None,
         output_tuple_index: int | None = None,
         **kwargs,
     ) -> None:
@@ -232,7 +232,7 @@ class ModelWithSplitPoints(LanguageModel):
             tokenizer (PreTrainedTokenizer): Custom tokenizer for the loaded model.
                 If not specified, it will be instantiated with the default tokenizer for the model.
             batch_size (int): Batch size for the model.
-            device_map (str | None): Device map for the model. Directly passed to the model.
+            device_map (torch.device | str | None): Device map for the model. Directly passed to the model.
             output_tuple_index (int | None): If the output at the split point is a tuple, this is the index of the hidden state.
                 If `None`, an element with 3 dimensions is searched for. If not found, an error is raised. If several elements are found,
                 an error is raised.
@@ -532,7 +532,8 @@ class ModelWithSplitPoints(LanguageModel):
                         unfolded_activations = AggregationStrategy.unfold(
                             aggregated_activations, aggregation_strategy, len(index)
                         )
-                        initial_activations[i, torch.tensor(index)] = unfolded_activations
+                        torch_index = torch.tensor(index).to(initial_activations.device)
+                        initial_activations[i, torch_index] = unfolded_activations.to(initial_activations.device)
                         current_index += 1
                 return initial_activations
             case ActivationGranularity.SAMPLE:
@@ -869,7 +870,7 @@ class ModelWithSplitPoints(LanguageModel):
 
                 # get activations
                 layer_outputs = getattr(curr_module, module_out_name)
-                raw_activations = self._manage_output_tuple(layer_outputs, sp)
+                raw_activations = self._manage_output_tuple(layer_outputs, local_split_point)
 
                 if offset_mapping is not None:
                     tokenized_inputs["offset_mapping"] = offset_mapping  # type: ignore

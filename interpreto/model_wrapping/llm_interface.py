@@ -41,7 +41,7 @@ class LLMInterface(ABC):
 
 
 # class HuggingFaceLLM(LLMInterface):  # TODO: use what we already have in nnsight
-#     def __init__(self, model_name: str, device: str | torch.device | None = None):
+#     def __init__(self, model_name: str, device: torch.device | str | None = None):
 #         try:
 #             from transformers import AutoModelForCausalLM, AutoTokenizer
 #         except ImportError as e:
