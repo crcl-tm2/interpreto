@@ -419,7 +419,7 @@ class Granularity(Enum):
     def aggregate_score_for_gradient_method(
         scores: torch.Tensor,
         granularity: Granularity | None,
-        granularity_aggregation_strategy: AggregationProtocol,
+        granularity_aggregation_strategy: AggregationProtocol | None = None,
         inputs: BatchEncoding | None = None,
         tokenizer: PreTrainedTokenizer | None = None,
     ) -> Float[torch.Tensor, "t g"]:
@@ -447,7 +447,10 @@ class Granularity(Enum):
         Returns:
             torch.Tensor: The aggregated scores.
         """
+        print("shape scores", scores.shape)
+        tosqueeze = False
         if scores.dim() == 1:
+            tosqueeze = True
             scores = scores.unsqueeze(0)
 
         granularity = granularity or Granularity.DEFAULT
@@ -470,9 +473,16 @@ class Granularity(Enum):
             case Granularity.TOKEN:
                 # convert scores to tensor for faster indexing
                 indices = torch.tensor(indices_list[0]).squeeze(1)
-
+                if tosqueeze:
+                    # if scores were squeezed, we need to squeeze the output too
+                    return scores[:, indices].squeeze(0)
                 return scores[:, indices]
             case Granularity.WORD | Granularity.SENTENCE:
+                # verify aggregation strategy is not None:
+                if granularity_aggregation_strategy is None:
+                    raise ValueError(
+                        "granularity_aggregation_strategy must be provided for WORD or SENTENCE granularity."
+                    )
                 # iterate over granularity elements
                 aggregated_scores: Float[torch.Tensor, "t g"] = torch.zeros((scores.shape[0], len(indices_list[0])))
                 for aggregation_index, token_indices in enumerate(indices_list[0]):
@@ -487,6 +497,9 @@ class Granularity(Enum):
                         aggregated_scores[:, [aggregation_index]] = granularity_aggregation_strategy(
                             tokens_scores, dim=1
                         )
+                if tosqueeze:
+                    # if scores were squeezed, we need to squeeze the output too
+                    return aggregated_scores.squeeze(0)
                 return aggregated_scores
             case _:
                 raise NotImplementedError(f"Invalid granularity for aggregation: {granularity}")
