@@ -863,7 +863,7 @@ class ModelWithSplitPoints(LanguageModel):
                 offset_mapping = None
 
             # call model forward pass and gradients on concept activations
-            with self.trace(tokenized_inputs, **kwargs):
+            with self.trace(tokenized_inputs, **kwargs) as tracer:
                 curr_module = self.get(local_split_point)
                 # Handle case in which module has .output attribute, and .nns_output gets overridden instead
                 module_out_name = "nns_output" if hasattr(curr_module, "nns_output") else "output"

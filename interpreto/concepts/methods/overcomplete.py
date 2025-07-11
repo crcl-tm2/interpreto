@@ -264,6 +264,9 @@ class SAEExplainer(ConceptAutoEncoderExplainer[oc_sae.SAE], Generic[_SAE_co]):
             train_method = oc_sae.train_sae
         log = train_method(**train_params)
         self.concept_model.fitted = True
+
+        if hasattr(self.concept_model, "training"):
+            self.concept_model.training = False
         return log
 
     @check_fitted
