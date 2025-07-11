@@ -354,8 +354,8 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
         Returns:
             The encoded concept activations.
         """
-        # self._sanitize_activations(activations)
-        if hasattr(self.concept_model, "to"):
+        if hasattr(self.concept_model, "device") and self.concept_model.device != activations.device:
+            activations = activations.to(self.concept_model.device, non_blocking=True)
             self.concept_model.to(activations.device)
         return self.concept_model.encode(activations)  # type: ignore
 
@@ -369,7 +369,8 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
         Returns:
             The decoded model activations.
         """
-        if hasattr(self.concept_model, "to"):
+        if hasattr(self.concept_model, "device") and self.concept_model.device != concepts.device:
+            concepts = concepts.to(self.concept_model.device, non_blocking=True)
             self.concept_model.to(concepts.device)
         return self.concept_model.decode(concepts)  # type: ignore
 
@@ -415,6 +416,8 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
         concepts_x_gradients: bool = False,
     ) -> Float[torch.Tensor, "ng c"]:
         """ """
+        print(f"{self.model_with_split_points.device=}")
+        print(f"{self.concept_model.device=}")
         gradients = self.model_with_split_points.get_concepts_output_gradients(
             inputs=inputs,
             targets=targets,
@@ -425,5 +428,4 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
             aggregation_strategy=aggregation_strategy,
             concepts_x_gradients=concepts_x_gradients,
         )
-        self.concept_model.to("cpu")
         return gradients

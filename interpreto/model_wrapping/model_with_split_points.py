@@ -912,9 +912,9 @@ class ModelWithSplitPoints(LanguageModel):
 
                 # get logits
                 # TODO: allow target specification
-                outputs = self.output  # (n, t, v)
+                outputs = self.output
 
-                if len(outputs.logits.shape) == 3:  # generation
+                if len(outputs.logits.shape) == 3:  # generation (l, l, v)  # TODO: test
                     max_logits, _ = outputs.logits.max(dim=-1)
 
                     # compute gradients for each target
@@ -928,19 +928,21 @@ class ModelWithSplitPoints(LanguageModel):
                                 concept_activations_grad *= concept_activations
                         target_gradient.append(concept_activations_grad)
                     target_gradient = torch.cat(target_gradient, dim=0).save()
-                else:  # classification
+                else:  # classification (l, t)
                     logits = outputs.logits
                     # compute gradients for each class
                     target_gradient = []
                     for t in range(logits.shape[1]):
                         with logits[:, t].backward(retain_graph=True):
-                            concept_activations_grad = concept_activations.grad.squeeze(dim=0)
+                            concept_activations_grad: Float[torch.Tensor, "l c"] = concept_activations.grad.squeeze(
+                                dim=0
+                            )
 
                             # for gradient x concepts, multiply by concepts
                             if concepts_x_gradients:
                                 concept_activations_grad *= concept_activations
                         target_gradient.append(concept_activations_grad)
-                    target_gradient = torch.cat(target_gradient, dim=0).save()
+                    target_gradient = torch.stack(target_gradient, dim=1).save()
 
             gradients_list.append(target_gradient)
             torch.cuda.empty_cache()
