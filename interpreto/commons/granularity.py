@@ -456,6 +456,9 @@ class Granularity(Enum):
         granularity = granularity or Granularity.DEFAULT
 
         if granularity == Granularity.ALL_TOKENS:
+            if tosqueeze:
+                # if scores were squeezed, we need to squeeze the output too
+                return scores.squeeze(0)
             return scores
 
         if inputs is None:
