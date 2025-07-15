@@ -417,54 +417,45 @@ class Granularity(Enum):
 
     @staticmethod
     def aggregate_score_for_gradient_method(
-        scores: torch.Tensor,
+        contribution: torch.Tensor,
         granularity: Granularity | None,
         granularity_aggregation_strategy: AggregationProtocol | None = None,
         inputs: BatchEncoding | None = None,
         tokenizer: PreTrainedTokenizer | None = None,
     ) -> Float[torch.Tensor, "t g"]:
         """
-        Aggregate scores for gradient-based methods according to the specified granularity.
+        Aggregate contribution for gradient-based methods according to the specified granularity.
 
         Args:
-            scores (torch.Tensor): The scores to aggregate. Shape: (n, lp)
+            contribution (torch.Tensor): The contribution to aggregate. Shape: (n, lp)
             granularity (Granularity): The granularity level to use for aggregation.
                 If None, defaults to Granularity.DEFAULT.
             granularity_aggregation_strategy (GranularityAggregationStrategy): The aggregation method to use.
                 It should be an attribute of `GranularityAggregationStrategy`. Choices are:
-                    - `MEAN`: average of scores
+                    - `MEAN`: average of contribution
 
-                    - `MAX`: maximum score
+                    - `MAX`: maximum contribution
 
-                    - `MIN`: minimum score
+                    - `MIN`: minimum contribution
 
-                    - `SUM`: sum of scores
+                    - `SUM`: sum of contribution
 
-                    - `SIGNED_MAX`: scores with the largest absolute value, preserving its sign
+                    - `SIGNED_MAX`: contribution with the largest absolute value, preserving its sign
             inputs (BatchEncoding | None): Required if granularity is not `ALL_TOKENS`.
             tokenizer (PreTrainedTokenizer | None): Required for TOKEN/WORD-level filtering.
 
         Returns:
-            torch.Tensor: The aggregated scores.
+            torch.Tensor: The aggregated contribution.
         """
-        print("shape scores", scores.shape)
-        tosqueeze = False
-        if scores.dim() == 1:
-            tosqueeze = True
-            scores = scores.unsqueeze(0)
-
         granularity = granularity or Granularity.DEFAULT
 
         if granularity == Granularity.ALL_TOKENS:
-            if tosqueeze:
-                # if scores were squeezed, we need to squeeze the output too
-                return scores.squeeze(0)
-            return scores
+            return contribution
 
         if inputs is None:
             raise ValueError("Inputs are required for non ALL_TOKENS granularity.")
 
-        # extract indices of scores to keep from inputs
+        # extract indices of contribution to keep from inputs
         indices_list = Granularity.get_indices(inputs, granularity, tokenizer)  # type: ignore
 
         if len(indices_list) > 1:
@@ -474,12 +465,9 @@ class Granularity(Enum):
 
         match granularity:
             case Granularity.TOKEN:
-                # convert scores to tensor for faster indexing
+                # convert contribution to tensor for faster indexing
                 indices = torch.tensor(indices_list[0]).squeeze(1)
-                if tosqueeze:
-                    # if scores were squeezed, we need to squeeze the output too
-                    return scores[:, indices].squeeze(0)
-                return scores[:, indices]
+                return contribution[:, indices]
             case Granularity.WORD | Granularity.SENTENCE:
                 # verify aggregation strategy is not None:
                 if granularity_aggregation_strategy is None:
@@ -487,22 +475,21 @@ class Granularity(Enum):
                         "granularity_aggregation_strategy must be provided for WORD or SENTENCE granularity."
                     )
                 # iterate over granularity elements
-                aggregated_scores: Float[torch.Tensor, "t g"] = torch.zeros((scores.shape[0], len(indices_list[0])))
+                aggregated_contribution: Float[torch.Tensor, "t g"] = torch.zeros(
+                    (contribution.shape[0], len(indices_list[0]))
+                )
                 for aggregation_index, token_indices in enumerate(indices_list[0]):
-                    # extract token scores for each word/sentence
-                    tokens_scores: Float[torch.Tensor, "t gi"] = scores[:, token_indices]
+                    # extract token contribution for each word/sentence
+                    tokens_contribution: Float[torch.Tensor, "t gi"] = contribution[:, token_indices]
 
-                    if tokens_scores.dim() == 1 or tokens_scores.shape[1] == 1:
+                    if tokens_contribution.dim() == 1 or tokens_contribution.shape[1] == 1:
                         # if only one token, no aggregation needed
-                        aggregated_scores[:, [aggregation_index]] = tokens_scores
+                        aggregated_contribution[:, [aggregation_index]] = tokens_contribution
                     else:
-                        # aggregate token scores for each word/sentence
-                        aggregated_scores[:, [aggregation_index]] = granularity_aggregation_strategy(
-                            tokens_scores, dim=1
+                        # aggregate token contribution for each word/sentence
+                        aggregated_contribution[:, [aggregation_index]] = granularity_aggregation_strategy(
+                            tokens_contribution, dim=1
                         )
-                if tosqueeze:
-                    # if scores were squeezed, we need to squeeze the output too
-                    return aggregated_scores.squeeze(0)
-                return aggregated_scores
+                return aggregated_contribution
             case _:
                 raise NotImplementedError(f"Invalid granularity for aggregation: {granularity}")

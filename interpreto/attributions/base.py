@@ -392,15 +392,25 @@ class AttributionExplainer:
             for score, mask in zip(scores, mask_generator, strict=True)
         )
 
+        # TODO: It is not super clean but I need this to keep the same dim in all cases (single class vs other)
+        clean_contributions = []
+        for contribution in contributions:
+            if contribution.dim() == 1:
+                # If the contribution is 1D, it means we have a single target or class. But we still need to keep the batch dimension.
+                clean_contributions.append(contribution.unsqueeze_(0))
+            else:
+                # If the contribution is 2D, it means we have multiple targets or classes.
+                clean_contributions.append(contribution)
+
         if self.use_gradient:
             granular_contributions = [
                 Granularity.aggregate_score_for_gradient_method(
                     contribution.cpu(), self.granularity, self.granularity_aggregation_strategy, inputs, self.tokenizer
                 )
-                for contribution, inputs in zip(contributions, model_inputs_to_explain, strict=True)
+                for contribution, inputs in zip(clean_contributions, model_inputs_to_explain, strict=True)
             ]
         else:
-            granular_contributions = contributions
+            granular_contributions = clean_contributions
 
         # Decompose each input for the desired granularity level (tokens, words, sentences...)
         granular_inputs_texts: list[list[str]] = [
@@ -418,7 +428,7 @@ class AttributionExplainer:
                 classes = None
             elif self.inference_wrapper.__class__.__name__ == "ClassificationInferenceWrapper":
                 classes = target
-                if contribution.dim() == 1:
+                if contribution.shape[0] == 1:
                     model_task = ModelTask.SINGLE_CLASS_CLASSIFICATION
                 else:
                     model_task = ModelTask.MULTI_CLASS_CLASSIFICATION
