@@ -83,6 +83,8 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
         has_differentiable_concept_encoder (bool): Whether the `encode_activations` operation is differentiable.
     """
 
+    has_differentiable_concept_encoder = False
+
     def __init__(
         self,
         model_with_split_points: ModelWithSplitPoints,
@@ -108,7 +110,6 @@ class ConceptEncoderExplainer(ABC, Generic[ConceptModel]):
         self._concept_model = concept_model
         self.split_point = split_point  # Verified by `split_point.setter`
         self.__is_fitted: bool = False
-        self.has_differentiable_concept_encoder = False
 
     @property
     def concept_model(self) -> ConceptModelProtocol:
@@ -310,6 +311,8 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
         has_differentiable_concept_decoder (bool): Whether the `decode_concepts` operation is differentiable.
     """
 
+    has_differentiable_concept_decoder = False
+
     def __init__(
         self,
         model_with_split_points: ModelWithSplitPoints,
@@ -328,7 +331,6 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
         """
         self.concept_model: BaseDictionaryLearning
         super().__init__(model_with_split_points, concept_model, split_point)
-        self.has_differentiable_concept_decoder = False
 
     @property
     def is_fitted(self) -> bool:

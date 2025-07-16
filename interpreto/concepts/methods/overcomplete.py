@@ -127,6 +127,9 @@ class SAEExplainer(ConceptAutoEncoderExplainer[oc_sae.SAE], Generic[_SAE_co]):
         has_differentiable_concept_decoder (bool): Whether the `decode_concepts` operation is differentiable.
     """
 
+    has_differentiable_concept_encoder = True
+    has_differentiable_concept_decoder = True
+
     @property
     @abstractmethod
     def concept_model_class(self) -> type[oc_sae.SAE]:
@@ -184,8 +187,6 @@ class SAEExplainer(ConceptAutoEncoderExplainer[oc_sae.SAE], Generic[_SAE_co]):
             **kwargs,
         )
         super().__init__(model_with_split_points, concept_model, self.split_point)
-        self.has_differentiable_concept_encoder = True
-        self.has_differentiable_concept_decoder = True
 
     @property
     def device(self) -> torch.device:
@@ -308,7 +309,7 @@ class DictionaryLearningExplainer(ConceptAutoEncoderExplainer[oc_opt.BaseOptimDi
             It should have at least one split point on which `concept_model` can be fitted.
         split_point (str | None): The split point used to train the `concept_model`. Default: `None`, set only when
             the concept explainer is fitted.
-        concept_model (overcomplete.sae.SAE): An [Overcomplete BaseOptimDictionaryLearning](https://github.com/KempnerInstitute/overcomplete/blob/main/overcomplete/optimization/base.py)
+        concept_model (overcomplete.optimization.BaseOptimDictionaryLearning): An [Overcomplete BaseOptimDictionaryLearning](https://github.com/KempnerInstitute/overcomplete/blob/main/overcomplete/optimization/base.py)
             variant for concept extraction.
         is_fitted (bool): Whether the `concept_model` was fit on model activations.
         has_differentiable_concept_encoder (bool): Whether the `encode_activations` operation is differentiable.
@@ -355,8 +356,6 @@ class DictionaryLearningExplainer(ConceptAutoEncoderExplainer[oc_opt.BaseOptimDi
             **kwargs,
         )
         super().__init__(model_with_split_points, concept_model, split_point)
-        self.has_differentiable_concept_encoder = True
-        self.has_differentiable_concept_decoder = True
 
     def fit(self, activations: LatentActivations | dict[str, LatentActivations], *, overwrite: bool = False, **kwargs):
         """Fit an Overcomplete OptimDictionaryLearning model on the given activations.
@@ -457,6 +456,8 @@ class NMFConcepts(DictionaryLearningExplainer[oc_opt.NMF]):
         Nature, 401, 1999, pp. 788–791.
     """
 
+    has_differentiable_concept_decoder = True
+
     @property
     def concept_model_class(self) -> type[oc_opt.NMF]:
         return oc_opt.NMF
@@ -493,8 +494,6 @@ class NMFConcepts(DictionaryLearningExplainer[oc_opt.NMF]):
             **kwargs,
         )
         self.force_relu = force_relu
-        self.has_differentiable_concept_encoder = False
-        self.has_differentiable_concept_decoder = True
 
     def fit(self, activations: LatentActivations | dict[str, LatentActivations], *, overwrite: bool = False, **kwargs):
         """Fit an Overcomplete OptimDictionaryLearning model on the given activations.
@@ -552,6 +551,8 @@ class SemiNMFConcepts(DictionaryLearningExplainer[oc_opt.SemiNMF]):
         IEEE Transactions on Pattern Analysis and Machine Intelligence, 32(1), 2010, pp. 45-55
     """
 
+    has_differentiable_concept_decoder = True
+
     @property
     def concept_model_class(self) -> type[oc_opt.SemiNMF]:
         return oc_opt.SemiNMF
@@ -568,6 +569,8 @@ class ConvexNMFConcepts(DictionaryLearningExplainer[oc_opt.ConvexNMF]):
         C. H. Q. Ding, T. Li and M. I. Jordan, [Convex and Semi-Nonnegative Matrix Factorizations](https://ieeexplore.ieee.org/document/4685898).
         IEEE Transactions on Pattern Analysis and Machine Intelligence, 32(1), 2010, pp. 45-55
     """
+
+    has_differentiable_concept_decoder = True
 
     @property
     def concept_model_class(self) -> type[oc_opt.ConvexNMF]:
@@ -605,53 +608,6 @@ class ConvexNMFConcepts(DictionaryLearningExplainer[oc_opt.ConvexNMF]):
         )
 
 
-class PCAConcepts(DictionaryLearningExplainer[oc_opt.SkPCA]):
-    """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
-
-    `ConceptAutoEncoderExplainer` with the PCA from Pearson (1901)[^3] as concept model.
-
-    PCA implementation from [overcomplete.optimization.SkPCA](https://kempnerinstitute.github.io/overcomplete/optimization/sklearn/) class.
-
-    [^3]:
-        K. Pearson, [On lines and planes of closest fit to systems of points in space](https://doi.org/10.1080/14786440109462720).
-        Philosophical Magazine, 2(11), 1901, pp. 559-572.
-    """
-
-    @property
-    def concept_model_class(self) -> type[oc_opt.SkPCA]:
-        return oc_opt.SkPCA
-
-
-class ICAConcepts(DictionaryLearningExplainer[oc_opt.SkICA]):
-    """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
-
-    `ConceptAutoEncoderExplainer` with the ICA from Hyvarinen and Oja (2000)[^4] as concept model.
-
-    ICA implementation from [overcomplete.optimization.SkICA](https://kempnerinstitute.github.io/overcomplete/optimization/sklearn/) class.
-
-    [^4]:
-        A. Hyvarinen and E. Oja, [Independent Component Analysis: Algorithms and Applications](https://www.sciencedirect.com/science/article/pii/S0893608000000265),
-        Neural Networks, 13(4-5), 2000, pp. 411-430.
-    """
-
-    @property
-    def concept_model_class(self) -> type[oc_opt.SkICA]:
-        return oc_opt.SkICA
-
-
-class KMeansConcepts(DictionaryLearningExplainer[oc_opt.SkKMeans]):
-    """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
-
-    `ConceptAutoEncoderExplainer` with the K-Means as concept model.
-
-    K-Means implementation from [overcomplete.optimization.SkKMeans](https://kempnerinstitute.github.io/overcomplete/optimization/sklearn/) class.
-    """
-
-    @property
-    def concept_model_class(self) -> type[oc_opt.SkKMeans]:
-        return oc_opt.SkKMeans
-
-
 class DictionaryLearningConcepts(DictionaryLearningExplainer[oc_opt.SkDictionaryLearning]):
     """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
 
@@ -680,16 +636,3 @@ class SparsePCAConcepts(DictionaryLearningExplainer[oc_opt.SkSparsePCA]):
     @property
     def concept_model_class(self) -> type[oc_opt.SkSparsePCA]:
         return oc_opt.SkSparsePCA
-
-
-class SVDConcepts(DictionaryLearningExplainer[oc_opt.SkSVD]):
-    """Code: [:octicons-mark-github-24: `concepts/methods/overcomplete.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/concepts/methods/overcomplete.py)
-
-    `ConceptAutoEncoderExplainer` with SVD as concept model.
-
-    SVD implementation from [overcomplete.optimization.SkSVD](https://kempnerinstitute.github.io/overcomplete/optimization/sklearn/) class.
-    """
-
-    @property
-    def concept_model_class(self) -> type[oc_opt.SkSVD]:
-        return oc_opt.SkSVD
