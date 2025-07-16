@@ -162,5 +162,5 @@ if __name__ == "__main__":
     test_overcomplete_cbe(
         splitted_encoder_ml=splitted_encoder_ml,
         activations_dict=activations_dict,
-        method_class=VanillaSAEConcepts,
+        method_class=KMeansConcepts,
     )
