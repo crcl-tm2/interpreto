@@ -98,7 +98,7 @@ def test_low_level_granularities_indices(simple_text, real_bert_tokenizer):
 
     # WORD
     word_indices = Granularity.get_indices(tokens, Granularity.WORD, real_bert_tokenizer)[0]
-    # We know there are exactly 3 human words in *simple_text*.
+    # We know there are exactly 3 human words in *simple_text*: "word longword verylongword".
     assert len(word_indices) == 3
     # First word should decode to "word"
     first_word_ids = [int(tokens["input_ids"][0][i]) for i in word_indices[0]]
@@ -293,6 +293,10 @@ def test_spacy_granularities_indices(complex_text, real_bert_tokenizer):
     sent_idx = Granularity.get_indices(tokens, Granularity.SENTENCE, real_bert_tokenizer)[0]
 
     # We know our handcrafted *complex_text*:
+    # 1st sentence (2 clauses): "Although it was raining, we went for a walk. "
+    # 2nd sentence (1 clause) in same paragraph: "We took umbrellas.\n\n"
+    # 3rd sentence (1 clause) in a new paragraph: "It was fun."
+
     #   • 4 clauses   (2 + 1 + 1)
     #   • 3 sentences (2 + 1)
     #   • 2 paragraphs

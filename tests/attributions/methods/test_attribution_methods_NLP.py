@@ -59,7 +59,12 @@ attribution_method_kwargs = {
         "granularity_aggregation_strategy": GranularityAggregationStrategy.SIGNED_MAX,
     },
     IntegratedGradients: {"n_interpolations": 3, "baseline": 0.0, "granularity": Granularity.TOKEN},
-    SmoothGrad: {"n_interpolations": 3, "noise_level": 0.1},
+    SmoothGrad: {
+        "n_interpolations": 3,
+        "noise_level": 0.1,
+        "granularity": Granularity.SENTENCE,
+        "granularity_aggregation_strategy": GranularityAggregationStrategy.MAX,
+    },
     # ---------------------------
     # Perturbation based methods:
     Occlusion: {"granularity": Granularity.TOKEN, "inference_mode": InferenceModes.SOFTMAX},

@@ -79,8 +79,8 @@ class GranularityAggregationStrategy(Enum):
     """
 
     MEAN = staticmethod(lambda x, dim: x.mean(dim=dim, keepdim=True))
-    MAX = staticmethod(lambda x, dim: x.max(dim=dim, keepdim=True))
-    MIN = staticmethod(lambda x, dim: x.min(dim=dim, keepdim=True))
+    MAX = staticmethod(lambda x, dim: x.max(dim=dim, keepdim=True).values)
+    MIN = staticmethod(lambda x, dim: x.min(dim=dim, keepdim=True).values)
     SUM = staticmethod(lambda x, dim: x.sum(dim=dim, keepdim=True))
     SIGNED_MAX = staticmethod(lambda x, dim: x.gather(dim, x.abs().argmax(dim=dim).unsqueeze(dim)))
 
