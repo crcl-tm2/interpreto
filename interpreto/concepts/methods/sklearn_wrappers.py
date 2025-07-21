@@ -94,7 +94,7 @@ class ICAWrapper(SkLearnWrapper):
     ):
         super().__init__(nb_concepts=nb_concepts, input_size=input_size, random_state=random_state, device=device)
 
-        self.mean = nn.Parameter(torch.zeros(input_size, input_size))
+        self.mean = nn.Parameter(torch.zeros(input_size))
         self.components = nn.Parameter(torch.zeros(input_size, nb_concepts))
         self.mixing = nn.Parameter(torch.zeros(nb_concepts, input_size))
         self.to(device)
@@ -106,7 +106,7 @@ class ICAWrapper(SkLearnWrapper):
 
         self.mean.data = torch.as_tensor(ica.mean_, dtype=torch.float32, device=self.mean.device)
         self.components.data = torch.as_tensor(ica.components_.T, dtype=torch.float32, device=self.components.device)
-        self.mixing.data = torch.as_tensor(ica.mixing_.T, dtype=torch.float32, device=self.mixing.device)
+        self.mixing.data = torch.as_tensor(ica.mixing_.T, dtype=torch.float32, device=self.mixing.device)  # type: ignore
         self.fitted = True
 
         if return_sklearn_model:
@@ -146,7 +146,7 @@ class PCAWrapper(SkLearnWrapper):
         self.input_size = input_size
         self.random_state = random_state
 
-        self.mean = nn.Parameter(torch.zeros(input_size, input_size))
+        self.mean = nn.Parameter(torch.zeros(input_size))
         self.components = nn.Parameter(torch.zeros(nb_concepts, input_size))
         self.to(device)
 
