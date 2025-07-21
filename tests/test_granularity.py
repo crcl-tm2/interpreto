@@ -153,7 +153,7 @@ def test_aggregate_score_for_gradient_method_alltokens_granularity_manual_ids(si
 
     # ALL_TOKENS → passthrough
     agg_all_tokens = Granularity.aggregate_score_for_gradient_method(
-        scores=fake_scores,
+        contribution=fake_scores,
         granularity=Granularity.ALL_TOKENS,
         inputs=tokens,
         tokenizer=tokenizer,
@@ -189,106 +189,92 @@ def test_aggregate_score_for_gradient_method_token_granularity_manual_ids(real_b
     input_ids = torch.tensor([[special_token_id] + non_special_ids])
     tokens = BatchEncoding({"input_ids": input_ids})
 
-    # Create dummy scores: one score per token and 2 scores per token (test 1D and 2D cases)
-    # Shape: (5) and (2, 5)
-    fake_scores1D = torch.tensor([10.0, 20.0, 30.0, 40.0, 50.0])
-    fake_scores2D = torch.tensor([[10.0, 20.0, 31.1, 41.2, 55.2], [12.0, 21.0, 30.0, 40.0, 50.0]])  # shape (2, 5)
+    # Create dummy scores: 2 scores per token:
+    fake_scores = torch.tensor([[10.0, 20.0, 31.1, 41.2, 55.2], [12.0, 21.0, 30.0, 40.0, 50.0]])  # shape (2, 5)
 
     # Apply TOKEN-level aggregation (no actual reduction since each token is treated individually)
-    aggregated1D = Granularity.aggregate_score_for_gradient_method(
-        scores=fake_scores1D,
-        granularity=Granularity.TOKEN,
-        inputs=tokens,
-        tokenizer=tokenizer,
-    )
-
-    aggregated2D = Granularity.aggregate_score_for_gradient_method(
-        scores=fake_scores2D,
+    aggregated = Granularity.aggregate_score_for_gradient_method(
+        contribution=fake_scores,
         granularity=Granularity.TOKEN,
         inputs=tokens,
         tokenizer=tokenizer,
     )
 
     # Expect scores of regular tokens only (i.e., skip the first one)
-    expected1D = fake_scores1D[1:]
-    expected2D = fake_scores2D[:, 1:]
+    expected = fake_scores[:, 1:]
 
     # Assert the result matches the expected filtered scores
-    assert torch.allclose(aggregated1D, expected1D, atol=1e-5)
-    assert torch.allclose(aggregated2D, expected2D, atol=1e-5)
+    assert torch.allclose(aggregated, expected, atol=1e-5)
 
 
-def test_aggregate_score_for_gradient_method_word_granularity_manual_ids():
+def _manual_aggregate(
+    scores: torch.Tensor,  # (t, lp)
+    indices: list[list[int]],  # groups of token positions
+    strategy: GranularityAggregationStrategy,
+) -> torch.Tensor:  # (t, g)
+    """Manually reproduce the selected aggregation strategy (for word and sentence) over scores."""
+    chunks: list[torch.Tensor] = []
+
+    for group in indices:
+        chunk = scores[:, group]  # (t, |group|)
+
+        if chunk.shape[1] == 1:  # only one token: no aggregation
+            agg = chunk
+        elif strategy is GranularityAggregationStrategy.MEAN:
+            agg = chunk.mean(dim=1, keepdim=True)
+        elif strategy is GranularityAggregationStrategy.MAX:
+            agg = chunk.max(dim=1, keepdim=True).values
+        elif strategy is GranularityAggregationStrategy.MIN:
+            agg = chunk.min(dim=1, keepdim=True).values
+        elif strategy is GranularityAggregationStrategy.SUM:
+            agg = chunk.sum(dim=1, keepdim=True)
+        elif strategy is GranularityAggregationStrategy.SIGNED_MAX:
+            idx = chunk.abs().argmax(dim=1).unsqueeze(1)
+            agg = chunk.gather(1, idx)
+        else:  # should never happen
+            raise ValueError(f"Unknown strategy: {strategy}")
+
+        chunks.append(agg)
+
+    return torch.cat(chunks, dim=1)  # (t, g)
+
+
+STRATS = [
+    GranularityAggregationStrategy.MEAN,
+    GranularityAggregationStrategy.MAX,
+    GranularityAggregationStrategy.MIN,
+    GranularityAggregationStrategy.SUM,
+    GranularityAggregationStrategy.SIGNED_MAX,
+]
+
+
+@pytest.mark.parametrize("strategy", STRATS)
+def test_word_aggregation_matches_manual(simple_text, real_bert_tokenizer, strategy):
     """
-    Test WORD-level aggregation using mocked word_ids and manually defined input_ids and scores.
-
-    Checks that all aggregation strategies behave correctly on both 1D and 2D score tensors.
+    Checks that word-level aggregation performed by the library
+    matches our manual aggregation implementation.
     """
 
-    # Simulated input_ids: arbitrary token IDs
-    input_ids = torch.tensor([[101, 102, 103, 104, 105]])  # shape (1, 5)
-    batch = BatchEncoding({"input_ids": input_ids})
+    tok = real_bert_tokenizer(simple_text, return_tensors="pt", return_offsets_mapping=True)
+    seq_len = tok["input_ids"].shape[1]
 
-    # Mock word_ids to define 3 groups: [0,1], [2], [3,4]
-    batch.word_ids = lambda batch_index=0: [0, 0, 1, 2, 2]
+    # ≈ Two "heads" of random scores to test batch/head dimensions
+    scores = torch.randn(2, seq_len)
 
-    # Token groups:
-    # Group 0: tokens 0 and 1
-    # Group 1: token 2
-    # Group 2: tokens 3 and 4
+    # Group token indices by word
+    indices = Granularity.get_indices(tok, Granularity.WORD, real_bert_tokenizer)[0]
 
-    # Define 1D scores: shape (5,)
-    scores_1d = torch.tensor([1.0, 3.0, 5.0, 2.0, 8.0])
+    expected = _manual_aggregate(scores, indices, strategy)
 
-    # Define 2D scores: shape (2, 5)
-    scores_2d = torch.tensor([[1.0, 3.0, 5.0, 2.0, 8.0], [-1.0, 4.0, 6.0, -7.0, 2.0]])
+    obtained = Granularity.aggregate_score_for_gradient_method(
+        contribution=scores,
+        granularity=Granularity.WORD,
+        granularity_aggregation_strategy=strategy,
+        inputs=tok,
+        tokenizer=real_bert_tokenizer,
+    )
 
-    # All aggregation strategies
-    strategies = {
-        "mean": GranularityAggregationStrategy.MEAN,
-        "max": GranularityAggregationStrategy.MAX,
-        "min": GranularityAggregationStrategy.MIN,
-        "sum": GranularityAggregationStrategy.SUM,
-        "signed_max": GranularityAggregationStrategy.SIGNED_MAX,
-    }
-
-    # Expected outputs for each strategy
-    expected_1d = {
-        "mean": torch.tensor([[2.0, 5.0, 5.0]]),
-        "max": torch.tensor([[3.0, 5.0, 8.0]]),
-        "min": torch.tensor([[1.0, 5.0, 2.0]]),
-        "sum": torch.tensor([[4.0, 5.0, 10.0]]),
-        "signed_max": torch.tensor([[3.0, 5.0, 8.0]]),
-    }
-
-    expected_2d = {
-        "mean": torch.tensor([[(1.0 + 3.0) / 2, 5.0, (2.0 + 8.0) / 2], [(-1.0 + 4.0) / 2, 6.0, (-7.0 + 2.0) / 2]]),
-        "max": torch.tensor([[3.0, 5.0, 8.0], [4.0, 6.0, 2.0]]),
-        "min": torch.tensor([[1.0, 5.0, 2.0], [-1.0, 6.0, -7.0]]),
-        "sum": torch.tensor([[4.0, 5.0, 10.0], [3.0, 6.0, -5.0]]),
-        "signed_max": torch.tensor([[3.0, 5.0, 8.0], [4.0, 6.0, -7.0]]),
-    }
-
-    for name, strategy in strategies.items():
-        # 1D case
-        aggregated_1d = Granularity.aggregate_score_for_gradient_method(
-            scores=scores_1d,
-            granularity=Granularity.WORD,
-            granularity_aggregation_strategy=strategy,
-            inputs=batch,
-            tokenizer=None,
-        )
-        assert torch.allclose(aggregated_1d, expected_1d[name], atol=1e-5), f"1D failed for {name}"
-
-        # 2D case
-        aggregated_2d = Granularity.aggregate_score_for_gradient_method(
-            scores=scores_2d,
-            granularity=Granularity.WORD,
-            granularity_aggregation_strategy=strategy,
-            inputs=batch,
-            tokenizer=None,
-        )
-        assert torch.allclose(aggregated_2d, expected_2d[name], atol=1e-5), f"2D failed for {name}"
+    assert torch.allclose(obtained, expected, atol=1e-6)
 
 
 # ----------------------------------------------------------
@@ -352,6 +338,33 @@ def test_spacy_granularities_matrices_and_decomposition(complex_text, real_bert_
     # Join without spaces – coverage check (no char lost)
     joined = " ".join(seg.strip() for seg in decomp_text)
     assert joined == raw_text
+
+
+@needs_spacy
+@pytest.mark.parametrize("strategy", STRATS)
+def test_sentence_aggregation_matches_manual(complex_text, real_bert_tokenizer, strategy):
+    """
+    Same as the WORD-level test, but for SENTENCE-level granularity.
+    This test depends on spaCy for sentence segmentation.
+    """
+
+    tok = real_bert_tokenizer(complex_text, return_tensors="pt", return_offsets_mapping=True)
+    seq_len = tok["input_ids"].shape[1]
+    scores = torch.randn(3, seq_len)  # three heads for variation
+
+    indices = Granularity.get_indices(tok, Granularity.SENTENCE, real_bert_tokenizer)[0]
+
+    expected = _manual_aggregate(scores, indices, strategy)
+
+    obtained = Granularity.aggregate_score_for_gradient_method(
+        contribution=scores,
+        granularity=Granularity.SENTENCE,
+        granularity_aggregation_strategy=strategy,
+        inputs=tok,
+        tokenizer=real_bert_tokenizer,
+    )
+
+    assert torch.allclose(obtained, expected, atol=1e-6)
 
 
 # -----------------------------------------------------------------
