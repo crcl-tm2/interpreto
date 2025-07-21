@@ -26,6 +26,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from enum import Enum
+from math import ceil
 from typing import Any
 
 import torch
@@ -645,6 +646,7 @@ class ModelWithSplitPoints(LanguageModel):
 
             pad_side (str): 'left' or 'right' — side on which to apply padding along dim=1 only for ALL strategy.
             tqdm_bar (bool): Whether to display a progress bar.
+            return_predictions (bool): Whether to return the model predictions along with the activations.
             **kwargs: Additional keyword arguments passed to the model forward pass.
 
         Returns:
@@ -670,7 +672,7 @@ class ModelWithSplitPoints(LanguageModel):
             )
 
         activations: dict = {}
-        for split_point in self.split_points:
+        for split_point in self.split_points + ["predictions"]:
             activations[split_point] = []
 
         # iterate over batch of inputs
@@ -680,7 +682,7 @@ class ModelWithSplitPoints(LanguageModel):
                     batch_generator,
                     desc="Computing activations",
                     unit="batch",
-                    total=1 + len(inputs) // self.batch_size,
+                    total=ceil(len(inputs) / self.batch_size),
                     disable=not tqdm_bar,
                 ):
                     # tokenize text inputs
@@ -709,6 +711,7 @@ class ModelWithSplitPoints(LanguageModel):
                     # call model forward pass and save split point outputs
                     with self.trace(tokenized_inputs, **kwargs) as tracer:
                         batch_activations = tracer.cache(modules=[self.get(sp) for sp in self.split_points])
+                        activations["predictions"].append(self.output.logits.argmax(dim=-1).cpu().save())
                     torch.cuda.empty_cache()
 
                     # put back offset mapping
@@ -721,7 +724,7 @@ class ModelWithSplitPoints(LanguageModel):
                         batch_outputs = getattr(sp_module, output_name)
                         batch_sp_activations = self._manage_output_tuple(batch_outputs, sp)
 
-                        granular_activations, _ = self._apply_selection_strategy(
+                        granular_activations, indices_list = self._apply_selection_strategy(
                             inputs=tokenized_inputs,  # type: ignore
                             activations=batch_sp_activations.cpu(),  # type: ignore
                             activation_granularity=activation_granularity,
@@ -729,6 +732,19 @@ class ModelWithSplitPoints(LanguageModel):
                         )
 
                         activations[sp].append(granular_activations)
+
+                    # adapt predictions ot match the granularity indices
+                    if indices_list is None:
+                        if activation_granularity == ActivationGranularity.ALL_TOKENS:
+                            activations["predictions"][-1] = (
+                                activations["predictions"][-1].repeat(1, batch_sp_activations.shape[1]).flatten(0, 1)
+                            )
+                    else:
+                        predictions = []
+                        for i, indices in enumerate(indices_list):
+                            predictions.append(activations["predictions"][-1][i].repeat(len(indices)))
+
+                        activations["predictions"][-1] = torch.cat(predictions, dim=0)
 
         # concat activation batches
         for split_point in self.split_points:
@@ -738,6 +754,7 @@ class ModelWithSplitPoints(LanguageModel):
             else:
                 # two dimensional tensor (n*g, d)
                 activations[split_point] = torch.cat(activations[split_point], dim=0)
+        activations["predictions"] = torch.cat(activations["predictions"], dim=0)
 
         # Validate that activations have the expected type
         for layer, act in activations.items():
@@ -752,11 +769,12 @@ class ModelWithSplitPoints(LanguageModel):
         inputs: list[str] | torch.Tensor | BatchEncoding,
         encode_activations: Callable[[LatentActivations], ConceptsActivations],
         decode_activations: Callable[[ConceptsActivations], LatentActivations],
-        targets: int | None = None,
+        targets: list[int] | None = None,
         split_point: str | None = None,
         activation_granularity: ActivationGranularity = ActivationGranularity.ALL_TOKENS,
         aggregation_strategy: AggregationStrategy = AggregationStrategy.MEAN,
         concepts_x_gradients: bool = False,
+        tqdm_bar: bool = False,
         **kwargs,
     ) -> Float[torch.Tensor, "ng c"]:
         """Get intermediate activations for all model split points
@@ -810,12 +828,13 @@ class ModelWithSplitPoints(LanguageModel):
                     The maximum of the absolute value of the activations multiplied by its initial sign.
                     signed_max([[-1, 0, 1, 2], [-3, 1, -2, 0]]) = [-3, 1, -2, 2]
 
-            pad_side (str): 'left' or 'right' — side on which to apply padding along dim=1 only for ALL strategy.
+            tqdm_bar (bool): Whether to display a progress bar.
             **kwargs: Additional keyword arguments passed to the model forward pass.
 
         Returns:
             gradients torch.Tensor: The gradients of the model output with respect to the concept activations.
         """
+        self.targets = targets
         if split_point is not None:
             local_split_point: str = split_point
         elif not self.split_points:
@@ -842,7 +861,13 @@ class ModelWithSplitPoints(LanguageModel):
 
         gradients_list: list[Float[torch.Tensor, "ng c"]] = []
         # iterate over batch of inputs
-        for batch_inputs in batch_generator:
+        for batch_inputs in tqdm(
+            batch_generator,
+            desc="Computing gradients",
+            unit="sample",
+            total=len(inputs),
+            disable=not tqdm_bar,
+        ):
             # tokenize text inputs
             if isinstance(batch_inputs, list):
                 if activation_granularity == ActivationGranularity.CLS_TOKEN:
@@ -863,7 +888,7 @@ class ModelWithSplitPoints(LanguageModel):
                 offset_mapping = None
 
             # call model forward pass and gradients on concept activations
-            with self.trace(tokenized_inputs, **kwargs) as tracer:
+            with self.trace(tokenized_inputs, **kwargs):
                 curr_module = self.get(local_split_point)
                 # Handle case in which module has .output attribute, and .nns_output gets overridden instead
                 module_out_name = "nns_output" if hasattr(curr_module, "nns_output") else "output"
@@ -899,50 +924,47 @@ class ModelWithSplitPoints(LanguageModel):
                     aggregation_strategy=aggregation_strategy,
                 )
 
+                # reintegrate the reconstructed activations into the original layer outputs
                 if isinstance(layer_outputs, tuple):
                     layer_outputs = list(layer_outputs)
-                    layer_outputs[candidate_idx] = reconstructed_activations
+                    layer_outputs[self.output_tuple_index] = reconstructed_activations
                 else:
                     layer_outputs = reconstructed_activations
 
+                # assign the new outputs to the module output
                 if hasattr(curr_module, "nns_output"):
                     curr_module.nns_output = layer_outputs
                 else:
                     curr_module.output = layer_outputs
 
                 # get logits
-                # TODO: allow target specification
-                outputs = self.output
+                all_logits = self.output.logits
 
-                if len(outputs.logits.shape) == 3:  # generation (l, l, v)  # TODO: test
-                    max_logits, _ = outputs.logits.max(dim=-1)
-
-                    # compute gradients for each target
-                    target_gradient = []
-                    for t in range(max_logits.shape[1]):
-                        with max_logits[:, t].backward(retain_graph=True):
-                            concept_activations_grad = concept_activations.grad.squeeze(dim=0)
-
-                            # for gradient x concepts, multiply by concepts
-                            if concepts_x_gradients:
-                                concept_activations_grad *= concept_activations
-                        target_gradient.append(concept_activations_grad)
-                    target_gradient = torch.cat(target_gradient, dim=0).save()
+                if len(all_logits.shape) == 3:  # generation (l, l, v)
+                    logits, _ = all_logits.max(dim=-1)
                 else:  # classification (l, t)
-                    logits = outputs.logits
-                    # compute gradients for each class
-                    target_gradient = []
-                    for t in range(logits.shape[1]):
-                        with logits[:, t].backward(retain_graph=True):
-                            concept_activations_grad: Float[torch.Tensor, "l c"] = concept_activations.grad.squeeze(
-                                dim=0
-                            )
+                    logits = all_logits
 
-                            # for gradient x concepts, multiply by concepts
-                            if concepts_x_gradients:
-                                concept_activations_grad *= concept_activations
-                        target_gradient.append(concept_activations_grad)
-                    target_gradient = torch.stack(target_gradient, dim=1).save()
+                # TODO: test if gradient of sum is equivalent to individual gradients
+                # It would allow batching the gradient computation
+
+                # compute gradients for each target
+                target_gradient = []
+                if self.targets is None:
+                    self.targets = range(logits.shape[1])
+                for t in self.targets if self.targets is not None else range(logits.shape[1]):
+                    with logits[:, t].backward(retain_graph=True):
+                        concept_activations_grad: Float[torch.Tensor, "l c"] = concept_activations.grad.squeeze(dim=0)
+
+                        # for gradient x concepts, multiply by concepts
+                        if concepts_x_gradients:
+                            concept_activations_grad *= concept_activations
+                    target_gradient.append(concept_activations_grad)
+
+                if len(logits.shape) == 3:  # generation (l, l, v)
+                    target_gradient = torch.cat(target_gradient, dim=0).detach().cpu().save()
+                else:  # classification (l, t)
+                    target_gradient = torch.stack(target_gradient, dim=1).detach().cpu().save()
 
             gradients_list.append(target_gradient)
             torch.cuda.empty_cache()

@@ -411,15 +411,14 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
     def concept_output_gradient(
         self,
         inputs: torch.Tensor | list[str] | BatchEncoding,
-        targets: int | None = None,
+        targets: list[int] | None = None,
         split_point: str | None = None,
         activation_granularity: ActivationGranularity = ActivationGranularity.TOKEN,
         aggregation_strategy: AggregationStrategy = AggregationStrategy.MEAN,
         concepts_x_gradients: bool = False,
+        tqdm_bar: bool = True,
     ) -> Float[torch.Tensor, "ng c"]:
         """ """
-        print(f"{self.model_with_split_points.device=}")
-        print(f"{self.concept_model.device=}")
         gradients = self.model_with_split_points.get_concepts_output_gradients(
             inputs=inputs,
             targets=targets,
@@ -429,5 +428,6 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
             activation_granularity=activation_granularity,
             aggregation_strategy=aggregation_strategy,
             concepts_x_gradients=concepts_x_gradients,
+            tqdm_bar=tqdm_bar,
         )
         return gradients
