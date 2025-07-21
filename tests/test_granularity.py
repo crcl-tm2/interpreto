@@ -173,16 +173,14 @@ def test_aggregate_score_for_gradient_method_token_granularity_manual_ids(real_b
     special_ids = set(tokenizer.all_special_ids)
 
     # Ensure the tokenizer has special tokens
-    if not special_ids:
-        pytest.skip("Tokenizer has no special tokens to test with.")
+    assert special_ids is not None, "Tokenizer should have special tokens defined."
 
     # Select one special token ID (e.g., [CLS] or [SEP])
     special_token_id = list(special_ids)[0]
 
     # Select 4 token IDs that are not in the set of special tokens
     non_special_ids = [i for i in range(100, 1000) if i not in special_ids][:4]
-    if len(non_special_ids) < 4:
-        pytest.skip("Not enough non-special token IDs available.")
+    assert len(non_special_ids) >= 4, "Not enough non-special token IDs available."
 
     # Construct input_ids tensor: [special_token, regular_token1, ..., regular_token4]
     # Shape: (1, 5)
@@ -258,7 +256,7 @@ def test_word_aggregation_matches_manual(simple_text, real_bert_tokenizer, strat
     tok = real_bert_tokenizer(simple_text, return_tensors="pt", return_offsets_mapping=True)
     seq_len = tok["input_ids"].shape[1]
 
-    # ≈ Two "heads" of random scores to test batch/head dimensions
+    # two scores per token:
     scores = torch.randn(2, seq_len)
 
     # Group token indices by word
@@ -350,7 +348,7 @@ def test_sentence_aggregation_matches_manual(complex_text, real_bert_tokenizer, 
 
     tok = real_bert_tokenizer(complex_text, return_tensors="pt", return_offsets_mapping=True)
     seq_len = tok["input_ids"].shape[1]
-    scores = torch.randn(3, seq_len)  # three heads for variation
+    scores = torch.randn(3, seq_len)  # three scores per token for variation
 
     indices = Granularity.get_indices(tok, Granularity.SENTENCE, real_bert_tokenizer)[0]
 
