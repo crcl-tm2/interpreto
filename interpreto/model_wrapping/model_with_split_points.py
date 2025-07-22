@@ -25,7 +25,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Protocol
+from typing import Any
 
 import nnsight
 import torch
@@ -42,7 +42,7 @@ from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_utils_base import BatchEncoding
 from transformers.tokenization_utils_fast import PreTrainedTokenizerFast
 
-from interpreto.commons.granularity import Granularity
+from interpreto.commons.granularity import AggregationProtocol, Granularity, GranularityAggregationStrategy
 from interpreto.model_wrapping.splitting_utils import get_layer_by_idx, sort_paths, validate_path, walk_modules
 from interpreto.model_wrapping.transformers_classes import (
     get_supported_hf_transformer_autoclasses,
@@ -66,35 +66,6 @@ class ActivationGranularity(Enum):
     WORD = Granularity.WORD
     SENTENCE = Granularity.SENTENCE
     SAMPLE = "sample"
-
-
-class AggregationStrategy(Enum):
-    """Aggregation strategies for :meth:`ModelWithSplitPoints.get_activations`.
-
-    The input x is a tensor of shape (..., sequence_length, model_dimension).
-
-    The output is a tensor of shape (..., 1, model_dimension).
-    """
-
-    SUM = staticmethod(lambda x: x.sum(dim=-2, keepdim=True))
-    MEAN = staticmethod(lambda x: x.mean(dim=-2, keepdim=True))
-    MAX = staticmethod(lambda x: x.max(dim=-2, keepdim=True))
-    SIGNED_MAX = staticmethod(lambda x: x.gather(-2, x.abs().max(dim=-2)[1].unsqueeze(-2)))
-
-
-class AggregationProtocol(Protocol):
-    """Protocol for aggregation strategies used in :meth:`ModelWithSplitPoints.get_activations`."""
-
-    def __call__(self, x: torch.Tensor) -> torch.Tensor:
-        """Aggregate activations.
-
-        Args:
-            x (torch.Tensor): The tensor to aggregate.
-
-        Returns:
-            torch.Tensor: The aggregated tensor.
-        """
-        ...
 
 
 class ModelWithSplitPoints(LanguageModel):
@@ -408,7 +379,7 @@ class ModelWithSplitPoints(LanguageModel):
 
                     # aggregate activations for SAMPLE strategy
                     if activation_granularity == ActivationGranularity.SAMPLE:
-                        activation_list[-1] = aggregation_strategy(activation_list[-1])
+                        activation_list[-1] = aggregation_strategy(activation_list[-1], dim=-2)
 
                 # concat all activations
                 flatten_activations: Float[torch.Tensor, "ng d"] = torch.concat(activation_list, dim=0)
@@ -434,7 +405,7 @@ class ModelWithSplitPoints(LanguageModel):
                     # iterate over activations
                     for index in indices:
                         word_activations = activations[i, index]
-                        aggregated_activations = aggregation_strategy(word_activations)
+                        aggregated_activations = aggregation_strategy(word_activations, dim=-2)
                         activation_list.append(aggregated_activations)
 
                 # concat all activations
@@ -447,7 +418,7 @@ class ModelWithSplitPoints(LanguageModel):
         self,
         inputs: list[str] | torch.Tensor | BatchEncoding,
         activation_granularity: ActivationGranularity = ActivationGranularity.ALL_TOKENS,
-        aggregation_strategy: AggregationProtocol = AggregationStrategy.MEAN,
+        aggregation_strategy: AggregationProtocol = GranularityAggregationStrategy.MEAN,
         pad_side: str = "left",
         **kwargs,
     ) -> dict[str, LatentActivations]:
