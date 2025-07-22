@@ -68,6 +68,7 @@ class Saliency(MultitaskExplainerMixin, AttributionExplainer):
         granularity_aggregation_strategy: GranularityAggregationStrategy = GranularityAggregationStrategy.MEAN,
         device: torch.device | None = None,
         inference_mode: Callable[[torch.Tensor], torch.Tensor] = InferenceModes.LOGITS,
+        input_x_gradient: bool = False,
     ):
         """
         Initialize the attribution method.
@@ -86,6 +87,8 @@ class Saliency(MultitaskExplainerMixin, AttributionExplainer):
             device (torch.device): device on which the attribution method will be run
             inference_mode (Callable[[torch.Tensor], torch.Tensor], optional): The mode used for inference.
                 It can be either one of LOGITS, SOFTMAX, or LOG_SOFTMAX. Use InferenceModes to choose the appropriate mode.
+            input_x_gradient (bool, optional): If True, multiplies the input embeddings with
+                their gradients before aggregation. Defaults to ``False``.
         """
 
         super().__init__(
@@ -99,4 +102,5 @@ class Saliency(MultitaskExplainerMixin, AttributionExplainer):
             granularity_aggregation_strategy=granularity_aggregation_strategy,
             inference_mode=inference_mode,
             use_gradient=True,
+            input_x_gradient=input_x_gradient,
         )

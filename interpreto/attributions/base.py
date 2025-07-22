@@ -163,6 +163,7 @@ class AttributionExplainer:
         granularity_aggregation_strategy: GranularityAggregationStrategy = GranularityAggregationStrategy.MEAN,
         inference_mode: Callable[[torch.Tensor], torch.Tensor] = InferenceModes.LOGITS,  # TODO: add to all classes
         use_gradient: bool = False,
+        input_x_gradient: bool = False,
     ) -> None:
         """
         Initializes the AttributionExplainer.
@@ -188,8 +189,11 @@ class AttributionExplainer:
             inference_mode (Callable[[torch.Tensor], torch.Tensor], optional): The mode used for inference.
                 It can be either one of LOGITS, SOFTMAX, or LOG_SOFTMAX. Use InferenceModes to choose the appropriate mode.
             use_gradient (bool, optional): If True, computes gradients instead of inference for targeted explanations.
+            input_x_gradient (bool, optional): If True and ``use_gradient`` is set, multiplies the input embeddings
+                with their gradients before reducing them. Defaults to ``False``.
         """
         self.use_gradient = use_gradient
+        self.input_x_gradient = input_x_gradient
         if not hasattr(self, "tokenizer"):
             model, _ = self._set_tokenizer(model, tokenizer)
         self.inference_wrapper = self._associated_inference_wrapper(
@@ -238,7 +242,7 @@ class AttributionExplainer:
             Iterable[torch.Tensor]: The computed scores.
         """
         if self.use_gradient:
-            return self.inference_wrapper.get_gradients(model_inputs, targets)
+            return self.inference_wrapper.get_gradients(model_inputs, targets, input_x_gradient=self.input_x_gradient)
         return self.inference_wrapper.get_targeted_logits(model_inputs, targets)
 
     @property

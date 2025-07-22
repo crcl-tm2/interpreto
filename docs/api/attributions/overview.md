@@ -21,9 +21,10 @@ The API have two steps:
 - `device` (`torch.device | None = None`): device on which the attribution method will be run,
 - `args`: specifics for each method.
 
-For gradient-based attribution methods, granularity is not calculated at the perturbation mask level, but at the aggregation level. We then aggregate the scores given on the tokens to create scores on the chosen granularity. There may be several ways of aggregating these scores, so we need a new argument, only for gradient-based methods:
+For gradient-based attribution methods, granularity is not calculated at the perturbation mask level, but at the aggregation level. We then aggregate the scores given on the tokens to create scores on the chosen granularity. There may be several ways of aggregating these scores. We can also, in the context of gradient-based methods, have a parameter to choose whether we take the gradients directly or the gradients multiplied by the inputs (inspired by the InputxGradient method). So we need new arguments, only for gradient-based methods:
 
 - `granularity_aggregation_strategy` (`GranularityAggregationStrategy`): If granularity is set to 'WORD', this determines how to aggregate token-level attributions into word-level scores. Options are: 'MEAN', 'MAX', 'MIN', 'SUM' and 'SIGNED_MAX'.
+- `input_x_gradient` (bool, optional): If True, multiplies the input embeddings with their gradients before aggregation. Defaults to ``False``.
 
 **Step 2:** The `AttributionExplainer` class overloads the `__call__` method to directly invoke the `explain` function. Therefore, calling `explainer(inputs, targets)` is equivalent to `explainer.explain(inputs, targets)`. It takes two parameters:
 
