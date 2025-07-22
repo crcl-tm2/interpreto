@@ -330,7 +330,7 @@ def test_spacy_granularities_matrices_and_decomposition(complex_text, real_bert_
     # Decomposition (text)
     decomp_text = Granularity.get_decomposition(tokens, gran, real_bert_tokenizer, return_text=True)[0]
     # Silent print for manual inspection when running directly
-    print(f"\n[{gran.value}] decomposition:\n", decomp_text)
+    print(f"\n[{gran}] decomposition:\n", decomp_text)
 
     # Each segment must be non‑empty & appear verbatim in the original text
     raw_text = real_bert_tokenizer.decode(tokens["input_ids"][0], skip_special_tokens=True)

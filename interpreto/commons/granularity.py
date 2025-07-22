@@ -100,7 +100,7 @@ class AggregationProtocol(Protocol):
         ...
 
 
-class Granularity(Enum):
+class Granularity:
     """
     Enumerations of the different granularity levels supported for masking perturbations
     Allows to define token-wise masking, word-wise masking...
@@ -112,6 +112,7 @@ class Granularity(Enum):
     SENTENCE = "sentence"  # Sentences of the input
     # PARAGRAPH = "paragraph"  # Not supported yet, the "\n\n" characters are replaced by spaces in many tokenizers.
     DEFAULT = ALL_TOKENS
+    aggregation_strategies = GranularityAggregationStrategy
 
     @staticmethod
     # @jaxtyped(typechecker=beartype)
@@ -220,8 +221,7 @@ class Granularity(Enum):
                 #     raise ValueError(f"{level.value} granularity needs a *fast* tokenizer.")
                 if "offset_mapping" not in inputs:
                     raise ValueError(
-                        f"{level.value} granularity requires `return_offsets_mapping=True` "
-                        "when you call the tokenizer."
+                        f"{level} granularity requires `return_offsets_mapping=True` when you call the tokenizer."
                     )
 
                 if not _HAS_SPACY:
@@ -447,7 +447,7 @@ class Granularity(Enum):
         Returns:
             torch.Tensor: The aggregated contribution.
         """
-        granularity = granularity or Granularity.DEFAULT
+        granularity = granularity or Granularity.DEFAULT  # type: ignore
 
         if granularity == Granularity.ALL_TOKENS:
             return contribution
