@@ -177,12 +177,14 @@ class AttributionExplainer:
                 If None, the aggregator returns the original scores.
             device (torch.device, optional): The device on which computations are performed.
                 If None, defaults to the device of the model.
-            granularity (Granularity, optional): The level of granularity for the explanation in `ALL_TOKENS`, `TOKEN`, `WORD`, or `SENTENCE`.
+            granularity (Granularity, optional): The level of granularity for the explanation.
+                Options are: `ALL_TOKENS`, `TOKEN`, `WORD`, or `SENTENCE`.
                 Defaults to Granularity.DEFAULT (ALL_TOKENS)
                 To obtain it, `from interpreto import Granularity` then `Granularity.WORD`.
             granularity_aggregation_strategy (GranularityAggregationStrategy, optional): The method used to aggregate scores at the specified granularity,
                 for gradient-based methods. Thus, it is ignored for perturbation based methods.
                 Defaults to GranularityAggregationStrategy.MEAN.
+                Ignored for `granularity` set to `ALL_TOKENS` or `TOKEN`.
             inference_mode (Callable[[torch.Tensor], torch.Tensor], optional): The mode used for inference.
                 It can be either one of LOGITS, SOFTMAX, or LOG_SOFTMAX. Use InferenceModes to choose the appropriate mode.
             use_gradient (bool, optional): If True, computes gradients instead of inference for targeted explanations.

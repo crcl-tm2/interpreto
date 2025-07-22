@@ -82,10 +82,13 @@ class SmoothGrad(MultitaskExplainerMixin, AttributionExplainer):
             model (PreTrainedModel): model to explain
             tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
             batch_size (int): batch size for the attribution method
-            granularity (Granularity): granularity level of the perturbations.
-                Options are: ALL_TOKENS, TOKEN, and WORD.
+            granularity (Granularity, optional): The level of granularity for the explanation.
+                Options are: `ALL_TOKENS`, `TOKEN`, `WORD`, or `SENTENCE`.
+                Defaults to Granularity.WORD.
+                To obtain it, `from interpreto import Granularity` then `Granularity.WORD`.
             granularity_aggregation_strategy (GranularityAggregationStrategy): how to aggregate token-level attributions into granularity scores.
                 Options are: MEAN, MAX, MIN, SUM, and SIGNED_MAX.
+                Ignored for `granularity` set to `ALL_TOKENS` or `TOKEN`.
             device (torch.device): device on which the attribution method will be run
             inference_mode (Callable[[torch.Tensor], torch.Tensor], optional): The mode used for inference.
                 It can be either one of LOGITS, SOFTMAX, or LOG_SOFTMAX. Use InferenceModes to choose the appropriate mode.
