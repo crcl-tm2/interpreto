@@ -138,3 +138,22 @@ class OcclusionAggregator(Aggregator):
         scores = results[..., 0, :] - results[..., 1:, :]
         mask = mask[..., 1:, :]
         return torch.einsum("pt,pl->tl", scores, mask) / mask.sum(dim=0)
+
+
+class TrapezoidalMeanAggregator(Aggregator):
+    """
+    Weighted mean using the trapezoidal rule.
+
+    This aggregator performs a weighted average across the first axis of the input tensor,
+    assigning a weight of 0.5 to the first and last elements, and 1.0 to all intermediate ones.
+
+    This reflects trapezoidal numerical integration over uniformly spaced samples.
+    """
+
+    @jaxtyped(typechecker=beartype)
+    def aggregate(
+        self,
+        results: Float[Tensor, "p t l"],
+        mask: torch.Tensor | None = None,
+    ) -> Float[Tensor, "t l"]:
+        return torch.trapezoid(results, dim=0) / (results.shape[0] - 1)

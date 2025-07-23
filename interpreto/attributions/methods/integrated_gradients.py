@@ -33,7 +33,7 @@ from collections.abc import Callable
 import torch
 from transformers import PreTrainedModel, PreTrainedTokenizer
 
-from interpreto.attributions.aggregations import MeanAggregator
+from interpreto.attributions.aggregations import TrapezoidalMeanAggregator
 from interpreto.attributions.base import AttributionExplainer, MultitaskExplainerMixin
 from interpreto.attributions.perturbations import LinearInterpolationPerturbator
 from interpreto.commons.granularity import Granularity, GranularityAggregationStrategy
@@ -105,7 +105,7 @@ class IntegratedGradients(MultitaskExplainerMixin, AttributionExplainer):
             batch_size=batch_size,
             device=device,
             perturbator=perturbator,
-            aggregator=MeanAggregator(),  # TODO: check if we need a trapezoidal mean
+            aggregator=TrapezoidalMeanAggregator(),
             granularity=granularity,
             granularity_aggregation_strategy=granularity_aggregation_strategy,
             inference_mode=inference_mode,
