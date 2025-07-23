@@ -5,6 +5,7 @@ from .occlusion import Occlusion
 from .saliency import Saliency
 from .smooth_grad import SmoothGrad
 from .sobol_attribution import Sobol
+from .var_grad import VarGrad
 
 __all__ = [
     "IntegratedGradients",
@@ -14,4 +15,5 @@ __all__ = [
     "Sobol",
     "SmoothGrad",
     "Saliency",
+    "VarGrad",
 ]

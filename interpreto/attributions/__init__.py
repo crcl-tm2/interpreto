@@ -7,6 +7,7 @@ from .methods import (
     Saliency,
     SmoothGrad,
     Sobol,
+    VarGrad,
 )
 
 __all__ = [
@@ -16,5 +17,6 @@ __all__ = [
     "Occlusion",
     "Sobol",
     "SmoothGrad",
+    "VarGrad",
     "Saliency",
 ]
