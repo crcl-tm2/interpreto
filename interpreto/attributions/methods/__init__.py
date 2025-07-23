@@ -1,3 +1,4 @@
+from .gradient_shap import GradientShap
 from .integrated_gradients import IntegratedGradients
 from .kernel_shap import KernelShap
 from .lime import Lime
@@ -8,6 +9,7 @@ from .sobol_attribution import Sobol
 from .var_grad import VarGrad
 
 __all__ = [
+    "GradientShap",
     "IntegratedGradients",
     "KernelShap",
     "Lime",

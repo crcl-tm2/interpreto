@@ -1,5 +1,6 @@
 from .base import InferenceModes
 from .methods import (
+    GradientShap,
     IntegratedGradients,
     KernelShap,
     Lime,
@@ -11,12 +12,13 @@ from .methods import (
 )
 
 __all__ = [
+    "GradientShap",
     "IntegratedGradients",
     "KernelShap",
     "Lime",
     "Occlusion",
-    "Sobol",
-    "SmoothGrad",
-    "VarGrad",
     "Saliency",
+    "SmoothGrad",
+    "Sobol",
+    "VarGrad",
 ]
