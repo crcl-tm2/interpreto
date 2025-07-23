@@ -1,1 +1,1 @@
-from .base import MeanAggregator
+from .base import MeanAggregator, VarianceAggregator
