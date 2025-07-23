@@ -42,15 +42,19 @@ from interpreto.model_wrapping.inference_wrapper import InferenceModes
 
 class VarGrad(MultitaskExplainerMixin, AttributionExplainer):
     """
-    VarGrad is an enhanced version of gradient-based interpretability methods, such as saliency maps.
-    It reduces the noise and visual instability often seen in raw gradient attributions by averaging gradients
-    over multiple noisy versions of the input. The result is a smoothed importance score for each token.
+    VarGrad is a gradient-based attribution method that computes the variance of input gradients
+    under random perturbations. Unlike methods that average gradients (e.g., SmoothGrad),
+    VarGrad focuses on capturing the sensitivity and variability of the model's response
+    to local perturbations in input space.
+
+    The resulting attributions reveal regions where the gradient signal is consistently volatile,
+    thus potentially highlighting areas where explanations may be less reliable or more fragile.
 
     Procedure:
     - Generate multiple perturbed versions of the input by adding noise (Gaussian) to the input embeddings.
     - For each noisy input, compute the gradient of the output with respect to the embeddings.
-    - Average the gradients across all samples.
-    - Aggregate the result per token (e.g., by norm with the input) to get the final attribution scores.
+    - Compute the element-wise variance of the gradient values across these samples.
+    - Aggregate the result per token (e.g., by norm with the input) to get the final attribution scores
 
     **Reference:**
     Richter et al. (2020). *VarGrad: A Low-Variance Gradient Estimator for Variational Inference.*
