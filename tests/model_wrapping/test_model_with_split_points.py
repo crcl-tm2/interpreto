@@ -30,6 +30,8 @@ from transformers import (
     AutoModelForSeq2SeqLM,
     AutoModelForSequenceClassification,
     AutoTokenizer,
+    BatchEncoding,
+    PreTrainedTokenizer,
 )
 
 from interpreto import Granularity, ModelWithSplitPoints
@@ -156,6 +158,73 @@ def test_get_activations_selection_strategies(
     for strategy, shape in expected_shapes.items():
         activations = splitted_encoder_ml.get_activations(sentences, activation_granularity=strategy)
         assert activations[split].shape == shape
+
+
+def _identity(x: torch.Tensor) -> torch.Tensor:
+    return x
+
+
+def _compute_expected_grad_shape(
+    tokens: BatchEncoding,
+    nb_targets: int,
+    hidden: int,
+    strategy: ActivationGranularity,
+    tokenizer: PreTrainedTokenizer,
+) -> tuple[int, int, int]:
+    batch, seq_len = tokens["input_ids"].shape  # type: ignore
+    total_token_len = sum(len(idx) for idx in Granularity.get_indices(tokens, Granularity.TOKEN, tokenizer))
+    total_word_len = sum(len(idx) for idx in Granularity.get_indices(tokens, Granularity.WORD, tokenizer))
+
+    expected_shapes = {
+        ActivationGranularity.CLS_TOKEN: (batch, nb_targets, hidden),
+        ActivationGranularity.ALL_TOKENS: (batch * seq_len, nb_targets, hidden),
+        ActivationGranularity.TOKEN: (total_token_len, nb_targets, hidden),
+        ActivationGranularity.WORD: (total_word_len, nb_targets, hidden),
+        ActivationGranularity.SENTENCE: (len(tokens["input_ids"]) + 1, nb_targets, hidden),  # type: ignore
+        ActivationGranularity.SAMPLE: (batch, nb_targets, hidden),
+    }
+
+    return expected_shapes[strategy]
+
+
+@pytest.mark.parametrize(
+    "strategy",
+    [
+        ActivationGranularity.CLS_TOKEN,
+        ActivationGranularity.ALL_TOKENS,
+        ActivationGranularity.TOKEN,
+        ActivationGranularity.WORD,
+        ActivationGranularity.SENTENCE,
+        ActivationGranularity.SAMPLE,
+    ],
+)
+def test_gradient_selection_strategies(
+    splitted_encoder_ml: ModelWithSplitPoints, sentences: list[str], strategy: ActivationGranularity
+):
+    tokenizer = splitted_encoder_ml.tokenizer
+    tokens = tokenizer(
+        sentences,
+        return_tensors="pt",
+        padding=True,
+        truncation=True,
+        return_offsets_mapping=True,
+    )
+
+    nb_targets = 1
+    hidden = splitted_encoder_ml._model.config.hidden_size
+
+    gradients = splitted_encoder_ml.get_concepts_output_gradients(
+        sentences,
+        encode_activations=_identity,
+        decode_activations=_identity,
+        split_point=splitted_encoder_ml.split_points[0],
+        activation_granularity=strategy,
+        targets=[0],
+    )
+
+    assert isinstance(gradients, torch.Tensor)
+    expected_shape = _compute_expected_grad_shape(tokens, nb_targets, hidden, strategy, tokenizer)
+    assert gradients.shape == expected_shape
 
 
 @pytest.mark.parametrize(
