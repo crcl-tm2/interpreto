@@ -42,7 +42,7 @@ from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_utils_base import BatchEncoding
 from transformers.tokenization_utils_fast import PreTrainedTokenizerFast
 
-from interpreto.commons.granularity import Granularity
+from interpreto.commons.granularity import Granularity, GranularityAggregationStrategy
 from interpreto.model_wrapping.splitting_utils import get_layer_by_idx, sort_paths, validate_path, walk_modules
 from interpreto.model_wrapping.transformers_classes import (
     get_supported_hf_transformer_autoclasses,
@@ -66,60 +66,6 @@ class ActivationGranularity(Enum):
     WORD = Granularity.WORD
     SENTENCE = Granularity.SENTENCE
     SAMPLE = "sample"
-
-
-class AggregationStrategy(Enum):
-    """
-    Aggregation strategies for :meth:`ModelWithSplitPoints.get_activations`.
-    """
-
-    SUM = "sum"
-    MEAN = "mean"
-    MAX = "max"
-    SIGNED_MAX = "signed_max"
-
-    @staticmethod
-    def aggregate(x: Float[torch.Tensor, "l d"], strategy: AggregationStrategy) -> Float[torch.Tensor, "1 d"]:
-        """
-        Aggregate activations.
-        Args:
-            x (torch.Tensor): The tensor to aggregate, shape: (l, d).
-            strategy (AggregationStrategy): The aggregation strategy to use.
-        Returns:
-            torch.Tensor: The aggregated tensor, shape (1, d).
-        """
-        match strategy:
-            case AggregationStrategy.SUM:
-                return x.sum(dim=0, keepdim=True)
-            case AggregationStrategy.MEAN:
-                return x.mean(dim=0, keepdim=True)
-            case AggregationStrategy.MAX:
-                return x.max(dim=0, keepdim=True)[0]
-            case AggregationStrategy.SIGNED_MAX:
-                return x.gather(0, x.abs().max(dim=0)[1].unsqueeze(0))
-            case _:
-                raise NotImplementedError(f"Aggregation strategy {strategy} not implemented.")
-
-    @staticmethod
-    def unfold(
-        x: Float[torch.Tensor, "1 d"], strategy: AggregationStrategy, new_dim_length: int
-    ) -> Float[torch.Tensor, "{new_dim_length} d"]:
-        """
-        Unfold activations.
-        Args:
-            x (torch.Tensor): The tensor to unfold, shape: (1, d).
-            strategy (AggregationStrategy): The aggregation strategy initially used.
-            new_dim_length (int): The new dimension length.
-        Returns:
-            torch.Tensor: The unfolded tensor, shape: (l, d).
-        """
-        match strategy:
-            case AggregationStrategy.SUM:
-                return (x / new_dim_length).repeat(new_dim_length, 1)
-            case AggregationStrategy.MEAN | AggregationStrategy.MAX | AggregationStrategy.SIGNED_MAX:
-                return x.repeat(new_dim_length, 1)
-            case _:
-                raise NotImplementedError(f"Aggregation strategy {strategy} not implemented.")
 
 
 class ModelWithSplitPoints(LanguageModel):
@@ -196,7 +142,7 @@ class ModelWithSplitPoints(LanguageModel):
 
     _example_input = "hello"
     activation_granularities = ActivationGranularity
-    aggregation_strategies = AggregationStrategy
+    aggregation_strategies = GranularityAggregationStrategy
 
     def __init__(
         self,
@@ -380,7 +326,7 @@ class ModelWithSplitPoints(LanguageModel):
         inputs: BatchEncoding | torch.Tensor,
         activations: Float[torch.Tensor, "n l d"],
         activation_granularity: ActivationGranularity,
-        aggregation_strategy: AggregationStrategy | None,
+        aggregation_strategy: GranularityGranularityAggregationStrategy | None,
     ) -> tuple[Float[torch.Tensor, "n l d"] | Float[torch.Tensor, "ng d"], list[list[list[int]]] | None]:
         """Apply selection strategy to activations.
 
@@ -389,7 +335,7 @@ class ModelWithSplitPoints(LanguageModel):
                 In the case of a `torch.Tensor`, we assume a batch dimension and token ids.
             activations (InterventionProxy): Activations to apply selection strategy to.
             activation_granularity (ActivationGranularity): Selection strategy to apply. see :meth:`ModelWithSplitPoints.get_activations`.
-            aggregation_strategy (AggregationStrategy | None): Aggregation strategy to apply. see :meth:`ModelWithSplitPoints.get_activations`.
+            aggregation_strategy (GranularityGranularityAggregationStrategy | None): Aggregation strategy to apply. see :meth:`ModelWithSplitPoints.get_activations`.
 
         Returns:
             torch.Tensor: The aggregated activations. (n, l, d) or (ng, d)
@@ -429,7 +375,7 @@ class ModelWithSplitPoints(LanguageModel):
                     raise ValueError("aggregation_strategy cannot be None when activation_granularity is SAMPLE.")
 
                 # extract indices of activations to keep from inputs
-                indices_list = Granularity.get_indices(inputs, Granularity.TOKEN, self.tokenizer)
+                indices_list = Granularity.get_indices(inputs, Granularity.TOKEN, self.tokenizer)  # type: ignore
 
                 # select activations based on indices
                 activation_list: list[Float[torch.Tensor, "g d"]] = []
@@ -441,7 +387,11 @@ class ModelWithSplitPoints(LanguageModel):
 
                     # aggregate activations for SAMPLE strategy
                     if activation_granularity == ActivationGranularity.SAMPLE:
-                        activation_list[-1] = AggregationStrategy.aggregate(activation_list[-1], aggregation_strategy)
+                        activation_list[-1] = GranularityAggregationStrategy.aggregate(
+                            activation_list[-1],
+                            strategy=aggregation_strategy,  # type: ignore
+                            dim=-2,
+                        )
 
                 # concat all activations
                 flatten_activations: Float[torch.Tensor, "ng d"] = torch.concat(activation_list, dim=0)
@@ -460,7 +410,7 @@ class ModelWithSplitPoints(LanguageModel):
 
                 # extract indices of activations to keep from inputs
                 # activation_granularity and granularities correspond
-                granularity: Granularity = activation_granularity.value
+                granularity: Granularity = activation_granularity.value  # type: ignore
                 indices_list = Granularity.get_indices(inputs, granularity, self.tokenizer)
 
                 # select activations based on indices
@@ -471,7 +421,9 @@ class ModelWithSplitPoints(LanguageModel):
                     # iterate over activations
                     for index in indices:
                         word_activations = activations[i, index]
-                        aggregated_activations = AggregationStrategy.aggregate(word_activations, aggregation_strategy)
+                        aggregated_activations = GranularityAggregationStrategy.aggregate(
+                            word_activations, strategy=aggregation_strategy, dim=-2
+                        )
                         activation_list.append(aggregated_activations)
 
                 # concat all activations
@@ -485,7 +437,7 @@ class ModelWithSplitPoints(LanguageModel):
         initial_activations: Float[torch.Tensor, "n l d"],
         new_activations: Float[torch.Tensor, "n l d"] | Float[torch.Tensor, "ng d"],
         activation_granularity: ActivationGranularity,
-        aggregation_strategy: AggregationStrategy | None,
+        aggregation_strategy: GranularityAggregationStrategy | None,
         granularity_indices: list[list[list[int]]] | None = None,
     ):
         """
@@ -496,7 +448,7 @@ class ModelWithSplitPoints(LanguageModel):
             new_activations (Float[torch.Tensor, "n l d"] | Float[torch.Tensor, "ng d"]): The new activations tensor.
             granularity_indices (list[list[list[int]]]): The indices of the granularity level.
             activation_granularity (ActivationGranularity): The granularity level.
-            aggregation_strategy (AggregationStrategy | None): The aggregation strategy to use.
+            aggregation_strategy (GranularityAggregationStrategy | None): The aggregation strategy to use.
 
         Returns:
             Float[torch.Tensor, "n l d"]: The reintegrated activations tensor.
@@ -540,7 +492,7 @@ class ModelWithSplitPoints(LanguageModel):
                         aggregated_activations = new_activations[current_index : current_index + 1]
 
                         # repeat the activations to match the length of the word/sentence
-                        unfolded_activations = AggregationStrategy.unfold(
+                        unfolded_activations = GranularityAggregationStrategy.unfold(
                             aggregated_activations, aggregation_strategy, len(index)
                         )
                         torch_index = torch.tensor(index).to(initial_activations.device)
@@ -598,7 +550,7 @@ class ModelWithSplitPoints(LanguageModel):
         self,
         inputs: list[str] | torch.Tensor | BatchEncoding,
         activation_granularity: ActivationGranularity = ActivationGranularity.ALL_TOKENS,
-        aggregation_strategy: AggregationStrategy | None = AggregationStrategy.MEAN,
+        aggregation_strategy: GranularityAggregationStrategy = GranularityAggregationStrategy.MEAN,
         pad_side: str = "left",
         tqdm_bar: bool = False,
         **kwargs,
@@ -786,7 +738,7 @@ class ModelWithSplitPoints(LanguageModel):
         targets: list[int] | None = None,
         split_point: str | None = None,
         activation_granularity: ActivationGranularity = ActivationGranularity.ALL_TOKENS,
-        aggregation_strategy: AggregationStrategy | None = AggregationStrategy.MEAN,
+        aggregation_strategy: GranularityAggregationStrategy | None = GranularityAggregationStrategy.MEAN,
         concepts_x_gradients: bool = False,
         tqdm_bar: bool = False,
         **kwargs,
