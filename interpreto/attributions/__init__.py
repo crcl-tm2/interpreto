@@ -32,6 +32,7 @@ from .methods import (
     Saliency,
     SmoothGrad,
     Sobol,
+    SquareGrad,
     VarGrad,
 )
 
@@ -44,5 +45,6 @@ __all__ = [
     "Saliency",
     "SmoothGrad",
     "Sobol",
+    "SquareGrad",
     "VarGrad",
 ]

@@ -43,6 +43,8 @@ from interpreto.attributions import (
     Saliency,
     SmoothGrad,
     Sobol,
+    SquareGrad,
+    VarGrad,
 )
 from interpreto.attributions.base import AttributionOutput
 from interpreto.commons.granularity import _HAS_SPACY, Granularity
@@ -59,6 +61,16 @@ attribution_method_kwargs = {
     SmoothGrad: {
         "n_interpolations": 3,
         "noise_level": 0.1,
+    },
+    VarGrad: {
+        "inference_mode": InferenceModes.LOG_SOFTMAX,
+        "input_x_gradient": True,
+        "n_interpolations": 2,
+        "noise_level": 0.05,
+    },
+    SquareGrad: {
+        "n_interpolations": 2,
+        "noise_level": 0.12,
     },
     # ---------------------------
     # Perturbation based methods:
@@ -127,7 +139,8 @@ def test_attribution_methods_with_text_long(model_name, attribution_explainer):
     "model_name", ["hf-internal-testing/tiny-random-bert", "hf-internal-testing/tiny-random-gpt2"]
 )
 @pytest.mark.parametrize(
-    "attribution_explainer", [Occlusion, KernelShap, Lime, Sobol, IntegratedGradients, SmoothGrad, Saliency]
+    "attribution_explainer",
+    [Occlusion, KernelShap, Lime, Sobol, IntegratedGradients, SmoothGrad, Saliency, VarGrad, SquareGrad],
 )
 @pytest.mark.parametrize(
     "granularity", [Granularity.ALL_TOKENS, Granularity.TOKEN, Granularity.WORD, Granularity.SENTENCE]
@@ -146,7 +159,7 @@ def test_attribution_methods_granularity(model_name, attribution_explainer, gran
 @pytest.mark.parametrize(
     "model_name", ["hf-internal-testing/tiny-random-bert", "hf-internal-testing/tiny-random-gpt2"]
 )
-@pytest.mark.parametrize("attribution_explainer", [IntegratedGradients, SmoothGrad, Saliency])
+@pytest.mark.parametrize("attribution_explainer", [IntegratedGradients, SmoothGrad, Saliency, VarGrad, SquareGrad])
 @pytest.mark.parametrize("granularity", [Granularity.WORD, Granularity.SENTENCE])
 @pytest.mark.parametrize(
     "aggregation_strategy",

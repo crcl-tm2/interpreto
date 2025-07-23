@@ -22,4 +22,4 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from .base import MeanAggregator, TrapezoidalMeanAggregator, VarianceAggregator
+from .base import MeanAggregator, SquaredMeanAggregator, TrapezoidalMeanAggregator, VarianceAggregator
