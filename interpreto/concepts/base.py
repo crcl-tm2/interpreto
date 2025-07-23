@@ -417,8 +417,9 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
         aggregation_strategy: AggregationStrategy = AggregationStrategy.MEAN,
         concepts_x_gradients: bool = False,
         tqdm_bar: bool = True,
-    ) -> Float[torch.Tensor, "ng c"]:
+    ) -> list[Float[torch.Tensor, "t g c"]]:
         """ """
+        self.concept_model.to(self.model_with_split_points.device)
         gradients = self.model_with_split_points.get_concepts_output_gradients(
             inputs=inputs,
             targets=targets,
