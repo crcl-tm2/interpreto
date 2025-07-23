@@ -170,7 +170,7 @@ This project received funding from the French ”Investing for the Future – PI
 
 ## 👨‍🎓 Creators
 
-Interpreto 🪄 is a project of the FOR and the [DEEL](https://www.deel.ai) teams at the [IRT Saint-Exupéry](https://www.irt-saintexupery.com/) in Toulouse, France.
+Interpreto 🪄 is a project of the [FOR](https://www.irt-saintexupery.com/fr/for-program/) and the [DEEL](https://www.deel.ai) teams at the [IRT Saint-Exupéry](https://www.irt-saintexupery.com/) in Toulouse, France.
 
 ## 🗞️ Citation
 
