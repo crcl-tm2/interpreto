@@ -9,13 +9,6 @@ template: home.html
 [![Python Version](https://img.shields.io/pypi/pyversions/interpreto.svg?color=blue)](https://pypi.org/project/interpreto/)
 [![Downloads](https://static.pepy.tech/badge/interpreto)](https://pepy.tech/project/interpreto)
 [![License](https://img.shields.io/github/license/FOR-sight-ai/interpreto.svg)](https://github.com/FOR-sight-ai/interpreto/blob/main/LICENSE)
-> **Warning**
->
-> This library is currently in beta and many functions may not work. If you use it anyway, we welcome your comments; please open an issue!
->
-> The API might change and the documentation is not up to date.
->
-> In particular, it is not yet possible to obtain interpretable concept-based explanations.
 
 ## 📚 Table of contents
 
@@ -80,7 +73,7 @@ Interpreto 🪄 provides a modular framework encompassing Attribution Methods, C
 
     - NMF, Semi-NMF, ConvexNMF
 
-    - ICA, SVD, PCA
+    - ICA, SVD, PCA, KMeans
 
     - SAE variants (Vanilla SAE, TopK SAE, JumpReLU SAE, BatchTopK SAE)
 
@@ -90,14 +83,14 @@ Interpreto 🪄 provides a modular framework encompassing Attribution Methods, C
 
     - Top-k tokens/words/sentences/samples from specific datasets
 
+    - LLM Labeling ([Bills et al. 2023](https://openai.com/index/language-models-can-explain-neurons-in-language-models/))
+
     *Concept Interpretation Techniques Added Soon:*
 
     - Input-to-concept attribution from dataset examples ([Jourdan et al. 2023](https://aclanthology.org/2023.findings-acl.317/))
     - Theme prediction via LLMs from top-k tokens/sentences
 
     *Concept Interpretation Techniques Added Later:*
-
-    - OpenAI Interpretation ([Bills et al. 2023](https://openai.com/index/language-models-can-explain-neurons-in-language-models/))
 
     - Aligning concepts with human labels ([Sajjad et al. 2022](https://aclanthology.org/2022.naacl-main.225/))
 

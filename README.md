@@ -15,14 +15,6 @@
 
 </div>
 
-## ⚠️ Warning
-
-This library is currently in beta and many functions may not work. If you use it anyway, we welcome your comments; please open an issue!
-
-The API might change and the documentation is not up to date.
-
-In particular, it is not yet possible to obtain interpretable concept-based explanations.
-
 ## 📚 Table of contents
 
 - [📚 Table of contents](#-table-of-contents)
@@ -90,13 +82,14 @@ Interpreto generalizes these methods through three core steps:
 **Concept Discovery Techniques** (via [Overcomplete](https://github.com/KempnerInstitute/overcomplete)):
 
 - NMF, Semi-NMF, ConvexNMF
-- ICA, SVD, PCA
+- ICA, SVD, PCA, KMeans
 - SAE variants (Vanilla SAE, TopK SAE, JumpReLU SAE, BatchTopK SAE)
 
 **Available Concept Interpretation Techniques:**
 
 - Top-k tokens from tokenizer vocabulary
 - Top-k tokens/words/sentences/samples from specific datasets
+- LLM Labeling ([Bills et al. 2023](https://openai.com/index/language-models-can-explain-neurons-in-language-models/))
 
 *Concept Interpretation Techniques Added Soon:*
 
@@ -105,7 +98,6 @@ Interpreto generalizes these methods through three core steps:
 
 *Concept Interpretation Techniques Added Later:*
 
-- OpenAI Interpretation ([Bills et al. 2023](https://openai.com/index/language-models-can-explain-neurons-in-language-models/))
 - Aligning concepts with human labels ([Sajjad et al. 2022](https://aclanthology.org/2022.naacl-main.225/))
 - Word cloud visualizations of concepts ([Dalvi et al. 2022](https://arxiv.org/abs/2205.07237))
 - VocabProj & TokenChange ([Gur-Arieh et al. 2025](https://arxiv.org/abs/2501.08319))
