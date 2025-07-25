@@ -36,6 +36,7 @@ from transformers import (
 )
 
 from interpreto.attributions import (
+    GradientShap,
     IntegratedGradients,
     KernelShap,
     Lime,
@@ -56,6 +57,11 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 attribution_method_kwargs = {
     # -----------------------
     # Gradient based methods:
+    GradientShap: {
+        "baseline": 0.0,
+        "n_interpolations": 2,
+        "noise_level": 0.0001,
+    },
     Saliency: {},
     IntegratedGradients: {"n_interpolations": 3, "baseline": 0.0},
     SmoothGrad: {
@@ -140,7 +146,7 @@ def test_attribution_methods_with_text_long(model_name, attribution_explainer):
 )
 @pytest.mark.parametrize(
     "attribution_explainer",
-    [Occlusion, KernelShap, Lime, Sobol, IntegratedGradients, SmoothGrad, Saliency, VarGrad, SquareGrad],
+    [Occlusion, KernelShap, Lime, Sobol, GradientShap, IntegratedGradients, Saliency, SmoothGrad, SquareGrad, VarGrad],
 )
 @pytest.mark.parametrize(
     "granularity", [Granularity.ALL_TOKENS, Granularity.TOKEN, Granularity.WORD, Granularity.SENTENCE]
@@ -159,7 +165,9 @@ def test_attribution_methods_granularity(model_name, attribution_explainer, gran
 @pytest.mark.parametrize(
     "model_name", ["hf-internal-testing/tiny-random-bert", "hf-internal-testing/tiny-random-gpt2"]
 )
-@pytest.mark.parametrize("attribution_explainer", [IntegratedGradients, SmoothGrad, Saliency, VarGrad, SquareGrad])
+@pytest.mark.parametrize(
+    "attribution_explainer", [GradientShap, IntegratedGradients, Saliency, SmoothGrad, SquareGrad, VarGrad]
+)
 @pytest.mark.parametrize("granularity", [Granularity.WORD, Granularity.SENTENCE])
 @pytest.mark.parametrize(
     "aggregation_strategy",
