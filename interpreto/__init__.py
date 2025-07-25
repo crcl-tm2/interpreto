@@ -28,6 +28,7 @@
 # =====================================================================================
 
 from .attributions import (
+    GradientShap,
     IntegratedGradients,
     KernelShap,
     Lime,

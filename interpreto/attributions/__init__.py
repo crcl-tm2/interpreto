@@ -24,7 +24,7 @@
 
 from .base import InferenceModes
 from .methods import (
-    # GradientShap,
+    GradientShap,
     IntegratedGradients,
     KernelShap,
     Lime,
@@ -37,7 +37,7 @@ from .methods import (
 )
 
 __all__ = [
-    # "GradientShap",
+    "GradientShap",
     "IntegratedGradients",
     "KernelShap",
     "Lime",

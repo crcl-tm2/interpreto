@@ -22,7 +22,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# from .gradient_shap import GradientShap
+from .gradient_shap import GradientShap
 from .integrated_gradients import IntegratedGradients
 from .kernel_shap import KernelShap
 from .lime import Lime
@@ -34,7 +34,7 @@ from .square_grad import SquareGrad
 from .var_grad import VarGrad
 
 __all__ = [
-    # "GradientShap",
+    "GradientShap",
     "IntegratedGradients",
     "KernelShap",
     "Lime",
