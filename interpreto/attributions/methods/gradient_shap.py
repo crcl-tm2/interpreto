@@ -38,7 +38,28 @@ from interpreto.model_wrapping.inference_wrapper import InferenceModes
 
 
 class GradientShap(MultitaskExplainerMixin, AttributionExplainer):
-    """GradientSHAP combines SmoothGrad and Integrated Gradients."""
+    """
+    GradientSHAP is a gradient-based Shapley value estimator that computes attributions
+    by integrating model gradients along a path between a baseline (reference) and
+    the input. It approximates Shapley values by averaging multiple stochastic
+    integrated gradients across randomly sampled paths.
+
+    By combining ideas from Integrated Gradients and Shapley value theory,
+    GradientSHAP provides additive feature attributions with strong consistency
+    guarantees, while capturing non-linear effects.
+
+    **Reference:**
+    Lundberg and Lee (2017). *A Unified Approach to Interpreting Model Predictions.*
+    [Paper](https://arxiv.org/abs/1705.07874)
+
+    Examples:
+        >>> from interpreto import GradientShap
+        >>> method = GradientShap(model, tokenizer, batch_size=4,
+        >>>                       n_perturbations=20,
+        >>>                       baseline=0,
+        >>>                       noise_level=0.1,)
+        >>> explanations = method(text)
+    """
 
     def __init__(
         self,
@@ -49,16 +70,38 @@ class GradientShap(MultitaskExplainerMixin, AttributionExplainer):
         granularity_aggregation_strategy: GranularityAggregationStrategy = GranularityAggregationStrategy.MEAN,
         device: torch.device | None = None,
         inference_mode: Callable[[torch.Tensor], torch.Tensor] = InferenceModes.LOGITS,
-        n_perturbations: int = 10,
+        input_x_gradient: bool = False,
+        n_interpolations: int = 10,
         baseline: torch.Tensor | float | None = None,
         noise_level: float = 0.1,
-        input_x_gradient: bool = False,
     ) -> None:
-        """Initialize the attribution method."""
+        """
+        Initialize the attribution method.
+
+        Args:
+            model (PreTrainedModel): model to explain
+            tokenizer (PreTrainedTokenizer): Hugging Face tokenizer associated with the model
+            batch_size (int): batch size for the attribution method
+            granularity (Granularity, optional): The level of granularity for the explanation.
+                Options are: `ALL_TOKENS`, `TOKEN`, `WORD`, or `SENTENCE`.
+                Defaults to Granularity.WORD.
+                To obtain it, `from interpreto import Granularity` then `Granularity.WORD`.
+            granularity_aggregation_strategy (GranularityAggregationStrategy): how to aggregate token-level attributions into granularity scores.
+                Options are: MEAN, MAX, MIN, SUM, and SIGNED_MAX.
+                Ignored for `granularity` set to `ALL_TOKENS` or `TOKEN`.
+            device (torch.device): device on which the attribution method will be run
+            inference_mode (Callable[[torch.Tensor], torch.Tensor], optional): The mode used for inference.
+                It can be either one of LOGITS, SOFTMAX, or LOG_SOFTMAX. Use InferenceModes to choose the appropriate mode.
+            input_x_gradient (bool, optional): If True, multiplies the input embeddings with
+                their gradients before aggregation. Defaults to ``False``.
+            n_interpolations (int): the number of interpolations to generate
+            baseline (torch.Tensor | float | None): the baseline to use for the interpolations
+            noise_level (float): the standard deviation of the noise added to the baseline
+        """
         perturbator = GradientShapPerturbator(
             inputs_embedder=model.get_input_embeddings(),
             baseline=baseline,
-            n_perturbations=n_perturbations,
+            n_interpolations=n_interpolations,
             std=noise_level,
         )
         super().__init__(
