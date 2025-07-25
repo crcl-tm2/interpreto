@@ -75,14 +75,14 @@ class MeanAggregator(TorchAggregator):
     _method = torch.mean
 
 
-class SquaredMeanAggregator(Aggregator):
+class SquaredMeanAggregator(TorchAggregator):
     """
     Mean of squares of attributions
     """
 
     @staticmethod
-    def _method(results: torch.Tensor, dim: int = 0) -> torch.Tensor:
-        return torch.mean(torch.square(results), dim=dim)
+    def _method(x: torch.Tensor, dim: int = 0) -> torch.Tensor:  # type: ignore
+        return torch.mean(torch.square(x), dim=dim)
 
 
 class SumAggregator(TorchAggregator):

@@ -35,6 +35,8 @@ from .attributions import (
     Saliency,
     SmoothGrad,
     Sobol,
+    SquareGrad,
+    VarGrad,
 )
 from .commons import (
     Granularity,
