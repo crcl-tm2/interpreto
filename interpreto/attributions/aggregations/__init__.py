@@ -22,4 +22,15 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from .base import MeanAggregator, SquaredMeanAggregator, TrapezoidalMeanAggregator, VarianceAggregator
+from .base import (
+    Aggregator,
+    MaskwiseMeanAggregator,
+    MeanAggregator,
+    OcclusionAggregator,
+    SquaredMeanAggregator,
+    SumAggregator,
+    TrapezoidalMeanAggregator,
+    VarianceAggregator,
+)
+from .linear_regression_aggregation import LinearRegressionAggregator
+from .sobol_aggregation import SobolAggregator
