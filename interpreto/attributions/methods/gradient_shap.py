@@ -101,7 +101,7 @@ class GradientShap(MultitaskExplainerMixin, AttributionExplainer):
         perturbator = GradientShapPerturbator(
             inputs_embedder=model.get_input_embeddings(),
             baseline=baseline,
-            n_interpolations=n_interpolations,
+            n_perturbations=n_interpolations,
             std=noise_level,
         )
         super().__init__(

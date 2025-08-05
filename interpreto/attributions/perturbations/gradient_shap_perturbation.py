@@ -26,54 +26,50 @@
 from __future__ import annotations
 
 import torch
-from beartype import beartype
-from jaxtyping import jaxtyped
 
-from interpreto.attributions.perturbations.base import Perturbator
 from interpreto.attributions.perturbations.linear_interpolation_perturbation import (
     LinearInterpolationPerturbator,
 )
-from interpreto.typing import TensorBaseline, TensorMapping
 
 
-class GradientShapPerturbator(Perturbator):
-    """Generate samples for GradientSHAP."""
+class GradientShapPerturbator(LinearInterpolationPerturbator):
+    """
+    Perturbator for GradientSHAP, introducing randomness both in interpolation coefficients (alphas)
+    and in the baseline, to approximate the expectation over multiple noisy baselines and paths.
+    """
 
-    def __init__(
-        self,
-        inputs_embedder: torch.nn.Module | None = None,
-        baseline: TensorBaseline = None,
-        n_interpolations: int = 10,
-        *,
-        std: float = 0.1,
-    ) -> None:
-        super().__init__(inputs_embedder)
-        self.baseline = baseline
-        self.n_interpolations = n_interpolations
+    def __init__(self, inputs_embedder=None, baseline=None, n_perturbations=10, std=0.1):
+        """
+        Initializes the GradientShapPerturbator.
+
+        Args:
+            inputs_embedder: Optional module to transform inputs into embeddings.
+            baseline: The reference embedding (can be a tensor, float, int, or None).
+            n_perturbations: Number of random samples for interpolation.
+            std: Standard deviation of the Gaussian noise added to the baseline.
+        """
+        super().__init__(inputs_embedder=inputs_embedder, baseline=baseline, n_perturbations=n_perturbations)
         self.std = std
 
-    @jaxtyped(typechecker=beartype)
-    def perturb_embeds(self, model_inputs: TensorMapping) -> tuple[TensorMapping, None]:
-        embeddings = model_inputs["inputs_embeds"]  # (b, l, d)
-        baseline = LinearInterpolationPerturbator.adjust_baseline(self.baseline, embeddings)
+    def _generate_baseline(self, embeddings: torch.Tensor) -> torch.Tensor:
+        """
+        Generates multiple noisy baselines for GradientSHAP.
+
+        - Replicates the baseline for each interpolation step and batch element.
+        - Adds Gaussian noise with standard deviation `std`.
+        """
+        baseline = self.adjust_baseline(self.baseline, embeddings)
         baseline = baseline.to(embeddings.device)
         b = embeddings.shape[0]
-        baseline = baseline.unsqueeze(0).expand(b, *baseline.shape)
 
-        baseline = baseline.unsqueeze(0).repeat(self.n_interpolations, 1, 1, 1)
-        baseline += torch.randn_like(baseline) * self.std
+        baseline = baseline.unsqueeze(0).expand(b, *baseline.shape)  # (b, l, d)
+        baseline = baseline.unsqueeze(0).repeat(self.n_perturbations, 1, 1, 1)  # (n, b, l, d)
+        baseline += torch.randn_like(baseline) * self.std  # bruit
 
-        embeddings = embeddings.unsqueeze(0).repeat(self.n_interpolations, 1, 1, 1)
-        alphas = torch.rand(self.n_interpolations, 1, 1, 1, device=embeddings.device)
+        return baseline
 
-        model_inputs["inputs_embeds"] = (1 - alphas) * baseline + alphas * embeddings
-        model_inputs["inputs_embeds"] = model_inputs["inputs_embeds"].view(
-            self.n_interpolations * b, *embeddings.shape[2:]
-        )
-        model_inputs["attention_mask"] = (
-            model_inputs["attention_mask"]
-            .unsqueeze(0)
-            .repeat(self.n_interpolations, 1, 1)
-            .reshape(self.n_interpolations * b, -1)
-        )
-        return model_inputs, None
+    def _generate_alphas(self, shape: torch.Size, device: torch.device) -> torch.Tensor:
+        """
+        Generates random interpolation coefficients (alphas) for GradientSHAP.
+        """
+        return torch.rand(self.n_perturbations, 1, 1, 1, device=device)

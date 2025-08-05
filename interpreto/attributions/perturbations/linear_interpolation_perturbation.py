@@ -35,6 +35,7 @@ from interpreto.typing import TensorBaseline, TensorMapping
 class LinearInterpolationPerturbator(Perturbator):
     """
     Perturbation using linear interpolation between a reference point (baseline) and the input.
+    This class can serve as a base for different interpolation-based perturbators.
     """
 
     def __init__(
@@ -47,8 +48,10 @@ class LinearInterpolationPerturbator(Perturbator):
         Initializes the LinearInterpolationPerturbation instance.
 
         Args:
+            inputs_embedder: Optional module to transform inputs into embeddings.
             baseline (TensorBaseline, optional): The baseline value for the perturbation.
                 It can be a torch.Tensor, int, float, or None. Defaults to None.
+            n_perturbations: Number of interpolation steps between baseline and input.
 
         Raises:
             AssertionError: If the baseline is not a torch.Tensor, int, float, or None.
@@ -91,16 +94,30 @@ class LinearInterpolationPerturbator(Perturbator):
             raise ValueError(f"Baseline dtype {baseline.dtype} does not match expected dtype {inputs.dtype}.")
         return baseline
 
+    def _generate_baseline(self, embeddings: torch.Tensor) -> torch.Tensor:
+        """
+        Generates the baseline tensor for interpolation.
+        Default behavior: uses a fixed baseline without noise.
+        """
+        baseline = self.adjust_baseline(self.baseline, embeddings)
+        return baseline.to(embeddings.device).unsqueeze(0)
+
+    def _generate_alphas(self, shape: torch.Size, device: torch.device) -> torch.Tensor:
+        """
+        Generates interpolation coefficients (alphas).
+        Default behavior: evenly spaced values between 0 and 1.
+        """
+        return torch.linspace(0, 1, self.n_perturbations, device=device).view(-1, *([1] * (len(shape) - 1)))
+
     @jaxtyped(typechecker=beartype)
     def perturb_embeds(self, model_inputs: TensorMapping) -> tuple[TensorMapping, None]:
+        """
+        Applies linear interpolation perturbation between the baseline and the original embeddings.
+        """
         embeddings = model_inputs["inputs_embeds"]
 
-        baseline = self.adjust_baseline(self.baseline, embeddings)
-        alphas = torch.linspace(0, 1, self.n_perturbations, device=embeddings.device).view(
-            self.n_perturbations, *([1] * (embeddings.dim() - 1))
-        )
-
-        baseline = baseline.to(embeddings.device).unsqueeze(0)
+        baseline = self._generate_baseline(embeddings)
+        alphas = self._generate_alphas(embeddings.shape, embeddings.device)
 
         model_inputs["inputs_embeds"] = (1 - alphas) * embeddings + alphas * baseline
         model_inputs["attention_mask"] = model_inputs["attention_mask"].repeat(
