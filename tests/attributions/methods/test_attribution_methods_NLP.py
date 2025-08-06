@@ -166,7 +166,8 @@ def test_attribution_methods_granularity(model_name, attribution_explainer, gran
     "model_name", ["hf-internal-testing/tiny-random-bert", "hf-internal-testing/tiny-random-gpt2"]
 )
 @pytest.mark.parametrize(
-    "attribution_explainer", [GradientShap, IntegratedGradients, Saliency, SmoothGrad, SquareGrad, VarGrad]
+    "attribution_explainer",
+    [GradientShap, IntegratedGradients, Saliency, SmoothGrad, SquareGrad, VarGrad],
 )
 @pytest.mark.parametrize("granularity", [Granularity.WORD, Granularity.SENTENCE])
 @pytest.mark.parametrize(

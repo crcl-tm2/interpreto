@@ -119,8 +119,15 @@ class LinearInterpolationPerturbator(Perturbator):
         baseline = self._generate_baseline(embeddings)
         alphas = self._generate_alphas(embeddings.shape, embeddings.device)
 
-        model_inputs["inputs_embeds"] = (1 - alphas) * embeddings + alphas * baseline
-        model_inputs["attention_mask"] = model_inputs["attention_mask"].repeat(
-            model_inputs["inputs_embeds"].shape[0], 1
-        )
+        pert = (1 - alphas) * embeddings + alphas * baseline  # (n, b, l, d)
+
+        b = embeddings.shape[0]
+        # Flatten (n, b, l, d) -> (n*b, l, d)
+        model_inputs["inputs_embeds"] = pert.view(self.n_perturbations * b, *embeddings.shape[1:])
+
+        # Repeat and flatten the attention mask accordingly: (b, l) -> (n*b, l)
+        attn = model_inputs["attention_mask"]  # (b, l)
+        attn = attn.unsqueeze(0).repeat(self.n_perturbations, 1, 1).reshape(self.n_perturbations * b, -1)
+        model_inputs["attention_mask"] = attn
+
         return model_inputs, None
