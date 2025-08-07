@@ -417,6 +417,7 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
         aggregation_strategy: GranularityAggregationStrategy = GranularityAggregationStrategy.MEAN,
         concepts_x_gradients: bool = False,
         tqdm_bar: bool = True,
+        batch_size: int | None = None,
     ) -> list[Float[torch.Tensor, "t g c"]]:
         """ """
         self.concept_model.to(self.model_with_split_points.device)
@@ -430,5 +431,6 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
             aggregation_strategy=aggregation_strategy,
             concepts_x_gradients=concepts_x_gradients,
             tqdm_bar=tqdm_bar,
+            batch_size=batch_size,
         )
         return gradients

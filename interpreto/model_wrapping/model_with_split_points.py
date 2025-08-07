@@ -326,7 +326,7 @@ class ModelWithSplitPoints(LanguageModel):
         inputs: BatchEncoding | torch.Tensor,
         activations: Float[torch.Tensor, "n l d"],
         activation_granularity: ActivationGranularity,
-        aggregation_strategy: GranularityGranularityAggregationStrategy | None,
+        aggregation_strategy: GranularityAggregationStrategy | None,
     ) -> tuple[Float[torch.Tensor, "n l d"] | Float[torch.Tensor, "ng d"], list[list[list[int]]] | None]:
         """Apply selection strategy to activations.
 
@@ -335,7 +335,7 @@ class ModelWithSplitPoints(LanguageModel):
                 In the case of a `torch.Tensor`, we assume a batch dimension and token ids.
             activations (InterventionProxy): Activations to apply selection strategy to.
             activation_granularity (ActivationGranularity): Selection strategy to apply. see :meth:`ModelWithSplitPoints.get_activations`.
-            aggregation_strategy (GranularityGranularityAggregationStrategy | None): Aggregation strategy to apply. see :meth:`ModelWithSplitPoints.get_activations`.
+            aggregation_strategy (GranularityAggregationStrategy | None): Aggregation strategy to apply. see :meth:`ModelWithSplitPoints.get_activations`.
 
         Returns:
             torch.Tensor: The aggregated activations. (n, l, d) or (ng, d)
@@ -361,9 +361,10 @@ class ModelWithSplitPoints(LanguageModel):
                             "Please provide a tensor with the CLS token as the first token."
                             "This may happen if you asking for a ``CLS_TOKEN`` granularity while not doing classification."
                         )
-                return activations[:, 0, :], None
+                return activations[:, 0, :], [[[0]]] * len(activations)
             case ActivationGranularity.ALL_TOKENS:
-                return activations.flatten(0, 1), None
+                indices_list = [[[i] for i in list(range(activations.shape[1]))]] * len(activations)
+                return activations.flatten(0, 1), indices_list
             case ActivationGranularity.TOKEN | ActivationGranularity.SAMPLE:
                 if not isinstance(inputs, BatchEncoding):
                     raise ValueError(
@@ -546,7 +547,7 @@ class ModelWithSplitPoints(LanguageModel):
             "Often, adding '.mlp' to the split point path solves the issue."
         )
 
-    def get_activations(
+    def get_activations(  # noqa: PLR0912  # ignore too many branches
         self,
         inputs: list[str] | torch.Tensor | BatchEncoding,
         activation_granularity: ActivationGranularity = ActivationGranularity.ALL_TOKENS,
@@ -730,7 +731,7 @@ class ModelWithSplitPoints(LanguageModel):
                 )
         return activations  # type: ignore
 
-    def get_concepts_output_gradients(
+    def get_concepts_output_gradients(  # noqa: PLR0912  # ignore too many branches
         self,
         inputs: list[str] | torch.Tensor | BatchEncoding,
         encode_activations: Callable[[LatentActivations], ConceptsActivations],
@@ -741,6 +742,7 @@ class ModelWithSplitPoints(LanguageModel):
         aggregation_strategy: GranularityAggregationStrategy | None = GranularityAggregationStrategy.MEAN,
         concepts_x_gradients: bool = False,
         tqdm_bar: bool = False,
+        batch_size: int | None = None,
         **kwargs,
     ) -> list[Float[torch.Tensor, "t g c"]]:
         """Get intermediate activations for all model split points
@@ -821,7 +823,7 @@ class ModelWithSplitPoints(LanguageModel):
             local_split_point: str = self.split_points[0]
 
         # batch inputs
-        grad_batch_size = 1  # TODO: find a way to batch calls
+        grad_batch_size = batch_size or self.batch_size
         if isinstance(inputs, BatchEncoding):
             batch_generator = []
             for i in range(0, len(inputs), grad_batch_size):
@@ -868,7 +870,7 @@ class ModelWithSplitPoints(LanguageModel):
 
                 # get activations
                 layer_outputs = getattr(curr_module, module_out_name)
-                raw_activations: Float[torch.Tensor, "1 l d"] = self._manage_output_tuple(
+                raw_activations: Float[torch.Tensor, "n l d"] = self._manage_output_tuple(
                     layer_outputs, local_split_point
                 )
 
@@ -876,7 +878,7 @@ class ModelWithSplitPoints(LanguageModel):
                     tokenized_inputs["offset_mapping"] = offset_mapping  # type: ignore
 
                 # apply selection strategy
-                selected_activations: Float[torch.Tensor, "g, d"]
+                selected_activations: Float[torch.Tensor, "ng, d"]
                 selected_activations, granularity_indices = self._apply_selection_strategy(
                     inputs=tokenized_inputs,  # type: ignore
                     activations=raw_activations,  # use the last batch of activations
@@ -885,13 +887,13 @@ class ModelWithSplitPoints(LanguageModel):
                 )
 
                 # encode activations into concepts
-                concept_activations: Float[torch.Tensor, "g, c"] = encode_activations(selected_activations)
+                concept_activations: Float[torch.Tensor, "ng, c"] = encode_activations(selected_activations)
 
                 # decode concepts back into activations
-                decoded_activations: Float[torch.Tensor, "g, d"] = decode_activations(concept_activations)
+                decoded_activations: Float[torch.Tensor, "ng, d"] = decode_activations(concept_activations)
 
                 # reintegrate decoded activations into the original activations
-                reconstructed_activations: Float[torch.Tensor, "1, l, d"] = self._reintegrate_selected_activations(
+                reconstructed_activations: Float[torch.Tensor, "n, l, d"] = self._reintegrate_selected_activations(
                     initial_activations=raw_activations,
                     new_activations=decoded_activations,
                     granularity_indices=granularity_indices,
@@ -931,20 +933,32 @@ class ModelWithSplitPoints(LanguageModel):
                     targets = self.targets
 
                 for t in targets:
-                    with logits[:, t].backward(retain_graph=True):
+                    with logits[:, t].sum(dim=0).backward(retain_graph=True):
                         # compute the gradient of the concept activations
-                        concept_activations_grad: Float[torch.Tensor, "g c"] = concept_activations.grad
+                        concept_activations_grad: Float[torch.Tensor, "ng c"] = concept_activations.grad
 
                         # for gradient x concepts, multiply by concepts
                         if concepts_x_gradients:
                             concept_activations_grad *= concept_activations
                     target_gradient.append(concept_activations_grad)
 
-                target_gradient: Float[torch.Tensor, "t g d"] = (
+                target_gradient: Float[torch.Tensor, "t ng d"] = (
                     torch.stack(target_gradient, dim=0).detach().cpu().save()
                 )
 
-            gradients_list.append(target_gradient)
+                # split gradients for each input sentence from (t, ng, d) to n * (t, g, d)
+                if granularity_indices is None:
+                    raise ValueError(
+                        "This should not happen. "
+                        "`granularity_indices` cannot be None to split the gradients between inputs. "
+                        "Consider changing the granularity strategy."
+                    )
+
+                start = 0
+                for indices_list in granularity_indices:
+                    end = start + len(indices_list)
+                    gradients_list.append(target_gradient[:, start:end, :])
+                    start = end
             torch.cuda.empty_cache()
 
         return gradients_list
