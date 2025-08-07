@@ -24,7 +24,7 @@ nav:
         - SmoothGrad: api/attributions/methods/smoothgrad.md
         - SquareGrad: api/attributions/methods/squaregrad.md
         - Sobol: api/attributions/methods/sobol.md
-        - VarGrad: api/attributions/methods/vargad.md
+        - VarGrad: api/attributions/methods/vargrad.md
       - Metrics:
         - Overview: api/attributions/metrics/overview.md
     - Concept Explainers:
