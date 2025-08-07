@@ -96,7 +96,7 @@ def test_loading_possibilities(bert_model, bert_tokenizer, gpt2_model, gpt2_toke
     # Load model without split points
     model_without_split_points = ModelWithSplitPoints(
         "bert-base-cased",
-        model_autoclass=AutoModelForMaskedLM,  # type: ignore
+        automodel=AutoModelForMaskedLM,  # type: ignore
         split_points="bert.encoder.layer.1",
     )
     assert model_without_split_points.split_points == ["bert.encoder.layer.1"]
@@ -113,7 +113,7 @@ def test_loading_possibilities(bert_model, bert_tokenizer, gpt2_model, gpt2_toke
     # Load model without split points
     model_without_split_points = ModelWithSplitPoints(
         "gpt2",
-        model_autoclass=AutoModelForCausalLM,  # type: ignore
+        automodel=AutoModelForCausalLM,  # type: ignore
         split_points="transformer.h.1",
     )
     assert model_without_split_points.split_points == ["transformer.h.1"]
@@ -143,7 +143,7 @@ def test_manage_output_tuple():
     model = ModelWithSplitPoints(
         "hf-internal-testing/tiny-random-bert",
         split_points=["bert.encoder.layer.1.output"],
-        model_autoclass=AutoModelForSequenceClassification,  # type: ignore
+        automodel=AutoModelForSequenceClassification,  # type: ignore
     )
     tensor = torch.zeros(1, 2, 3)
     other = torch.zeros(1, 2)
@@ -207,7 +207,7 @@ def activation_selection_and_reintegration(model, tokenizer, split_point, senten
         model,
         tokenizer=tokenizer,
         split_points=[split_point],
-        model_autoclass=type(model),
+        automodel=type(model),
         batch_size=2,
     )
     tokens = tokenizer(
@@ -324,7 +324,7 @@ def get_activation_and_gradient(model, tokenizer, split_point, sentences):
         model,
         tokenizer=tokenizer,
         split_points=[split_point],
-        model_autoclass=type(model),
+        automodel=type(model),
         batch_size=2,
         device_map=device,
     )
@@ -435,8 +435,6 @@ def test_batching(splitted_encoder_ml: ModelWithSplitPoints, huge_text: list[str
     splitted_encoder_ml.get_activations(huge_text, activation_granularity=strategy)
 
 
-# TODO: This test was removed because we do not currently handle splitting over layers that return
-# outputs that are not tensors.
 def test_index_by_layer_idx(multi_split_model: ModelWithSplitPoints):
     """Test indexing by layer idx"""
     split_points_with_layer_idx: list = list(BERT_SPLIT_POINTS)
@@ -536,7 +534,7 @@ def evaluate_activations_and_gradients(model_name, sentences: list[str]):
         model,
         tokenizer=tokenizer,
         split_points=ALL_MODEL_SPLIT_POINTS[model_name],
-        model_autoclass=ALL_MODEL_LOADERS[model_name],
+        automodel=ALL_MODEL_LOADERS[model_name],
         device_map=device,
         batch_size=8,
     )
@@ -585,9 +583,17 @@ if __name__ == "__main__":
     ]
 
     splitted_encoder_ml = ModelWithSplitPoints(
+        "gpt2",
+        split_points=2,
+        automodel=AutoModelForCausalLM,  # type: ignore
+        device_map="auto",
+        batch_size=4,
+    )
+
+    splitted_encoder_ml = ModelWithSplitPoints(
         "bert-base-uncased",
         split_points=["bert.encoder.layer.2.output"],
-        model_autoclass=AutoModelForSequenceClassification,  # type: ignore
+        automodel=AutoModelForSequenceClassification,  # type: ignore
         device_map="auto",
         batch_size=4,
     )
@@ -598,7 +604,7 @@ if __name__ == "__main__":
             "bert.encoder.layer.1",
             "bert.encoder.layer.3.attention.self.query",
         ],
-        model_autoclass=AutoModelForMaskedLM,  # type: ignore
+        automodel=AutoModelForMaskedLM,  # type: ignore
         device_map="cuda",
         batch_size=4,
     )

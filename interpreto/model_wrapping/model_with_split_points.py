@@ -83,7 +83,7 @@ class ModelWithSplitPoints(LanguageModel):
         * Direct model inputs: (`dic[str,Any]`)
 
     Attributes:
-        model_autoclass (type): The [AutoClass](https://huggingface.co/docs/transformers/en/model_doc/auto#natural-language-processing)
+        automodel (type): The [AutoClass](https://huggingface.co/docs/transformers/en/model_doc/auto#natural-language-processing)
             corresponding to the loaded model type.
         split_points (list[str]): Getter/setters for model paths corresponding to split points inside the loaded model.
             Automatically handle validation, sorting and resolving int paths to strings.
@@ -103,7 +103,7 @@ class ModelWithSplitPoints(LanguageModel):
         >>> model_with_split_points = ModelWithSplitPoints(
         ...     "bert-base-uncased",
         ...     split_points="bert.encoder.layer.1.output",
-        ...     model_autoclass=AutoModelForMaskedLM,
+        ...     automodel=AutoModelForMaskedLM,
         ...     batch_size=64,
         ...     device_map="auto",
         ... )
@@ -127,7 +127,7 @@ class ModelWithSplitPoints(LanguageModel):
         ...     model,
         ...     tokenizer=tokenizer,
         ...     split_points="transformer.h.1.mlp"],,
-        ...     model_autoclass=AutoModelForMaskedLM,
+        ...     automodel=AutoModelForMaskedLM,
         ...     batch_size=16,
         ...     device_map="auto",
         ... )
@@ -149,7 +149,7 @@ class ModelWithSplitPoints(LanguageModel):
         model_or_repo_id: str | PreTrainedModel,
         split_points: str | int | list[str] | list[int] | tuple[str] | tuple[int],
         *args: tuple[Any],
-        model_autoclass: str | type[AutoModel] | None = None,
+        automodel: str | type[AutoModel] | None = None,
         tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast | None = None,
         config: PretrainedConfig | None = None,
         batch_size: int = 1,
@@ -165,15 +165,15 @@ class ModelWithSplitPoints(LanguageModel):
                 * A `str` corresponding to the ID of the model that should be loaded from the HF Hub.
                 * A `str` corresponding to the local path of a folder containing a compatible checkpoint.
                 * A preloaded `transformers.PreTrainedModel` object.
-                If a string is provided, a model_autoclass should also be provided.
+                If a string is provided, a automodel should also be provided.
             split_points (str | Sequence[str] | int | Sequence[int]): One or more to split locations inside the model.
                 Either the path is provided explicitly (`str`), or an `int` is used as shorthand for splitting at
                 the n-th layer. Example: `split_points='cls.predictions.transform.LayerNorm'` correspond to a split
                 after the LayerNorm layer in the MLM head (assuming a `BertForMaskedLM` model in input).
-            model_autoclass (Type): Huggingface [AutoClass](https://huggingface.co/docs/transformers/en/model_doc/auto#natural-language-processing)
+            automodel (Type): Huggingface [AutoClass](https://huggingface.co/docs/transformers/en/model_doc/auto#natural-language-processing)
                 corresponding to the desired type of model (e.g. `AutoModelForSequenceClassification`).
 
-                :warning: `model_autoclass` **must be defined** if `model_or_repo_id` is `str`, since the the model class
+                :warning: `automodel` **must be defined** if `model_or_repo_id` is `str`, since the the model class
                     cannot be known otherwise.
             config (PretrainedConfig): Custom configuration for the loaded model.
                 If not specified, it will be instantiated with the default configuration for the model.
@@ -185,31 +185,31 @@ class ModelWithSplitPoints(LanguageModel):
                 If `None`, an element with 3 dimensions is searched for. If not found, an error is raised. If several elements are found,
                 an error is raised.
         """
-        self.model_autoclass = model_autoclass
+        self.automodel = automodel
         if isinstance(model_or_repo_id, str):  # Repository ID
-            if model_autoclass is None:
+            if automodel is None:
                 raise InitializationError(
                     "Model autoclass not found.\n"
                     "The model class can be omitted if a pre-loaded model is passed to `model_or_repo_id` "
-                    "param.\nIf an HF Hub ID is used, the corresponding autoclass must be specified in `model_autoclass`.\n"
-                    "Example: ModelWithSplitPoints('bert-base-cased', model_autoclass=AutoModelForMaskedLM, ...)"
+                    "param.\nIf an HF Hub ID is used, the corresponding autoclass must be specified in `automodel`.\n"
+                    "Example: ModelWithSplitPoints('bert-base-cased', automodel=AutoModelForMaskedLM, ...)"
                 )
-            if isinstance(model_autoclass, str):
+            if isinstance(automodel, str):
                 supported_autoclasses = get_supported_hf_transformer_autoclasses()
                 try:
-                    self.model_autoclass = getattr(modeling_auto, model_autoclass)
+                    self.automodel = getattr(modeling_auto, automodel)
                 except AttributeError:
                     raise InitializationError(
-                        f"The specified class {model_autoclass} is not a valid autoclass.\n"
+                        f"The specified class {automodel} is not a valid autoclass.\n"
                         f"Supported autoclasses: {', '.join(supported_autoclasses)}"
                     ) from AttributeError
-                if model_autoclass not in supported_autoclasses:
+                if automodel not in supported_autoclasses:
                     raise InitializationError(
-                        f"The specified autoclass {model_autoclass} is not supported.\n"
+                        f"The specified autoclass {automodel} is not supported.\n"
                         f"Supported autoclasses: {', '.join(supported_autoclasses)}"
                     )
             else:
-                self.model_autoclass = model_autoclass
+                self.automodel = automodel
 
         # Handles model loading through LanguageModel._load
         super().__init__(
@@ -217,7 +217,7 @@ class ModelWithSplitPoints(LanguageModel):
             *args,
             config=config,
             tokenizer=tokenizer,  # type: ignore
-            automodel=self.model_autoclass,  # type: ignore
+            automodel=automodel,  # type: ignore ()
             device_map=device_map,
             **kwargs,
         )
@@ -277,7 +277,7 @@ class ModelWithSplitPoints(LanguageModel):
             gen_classes = get_supported_hf_transformer_generation_autoclasses()
             raise RuntimeError(
                 f"model.generate was called but model class {self._model.__class__.__name__} does not support "
-                "generation. Use regular forward passes for inference, or change model_autoclass in the initialization "
+                "generation. Use regular forward passes for inference, or change automodel in the initialization "
                 f"to use a generative class. Supported classes: {', '.join(gen_classes)}."
             )
         super()._generate(inputs=inputs, max_new_tokens=max_new_tokens, streamer=streamer, **kwargs)

@@ -13,7 +13,7 @@ from interpreto.concepts.interpretations import TopKInputs
 model_with_split_points = ModelWithSplitPoints(
     "your_model_id",
     split_points="your_split_point",
-    model_autoclass="your_model_autoclass",
+    automodel="your_automodel",
     nb_concepts=50,
     device_map="cuda"
 )
