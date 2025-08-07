@@ -68,6 +68,9 @@ class ActivationGranularity(Enum):
     SAMPLE = "sample"
 
 
+AG = ActivationGranularity
+
+
 class ModelWithSplitPoints(LanguageModel):
     """Code: [:octicons-mark-github-24: model_wrapping/model_with_split_points.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/model_wrapping/model_with_split_points.py)
 
@@ -320,74 +323,125 @@ class ModelWithSplitPoints(LanguageModel):
 
         return torch.cat(padded, dim=0)
 
-    # @jaxtyped(typechecker=beartype)
-    def _apply_selection_strategy(
+    def _get_granularity_indices(
         self,
         inputs: BatchEncoding | torch.Tensor,
-        activations: Float[torch.Tensor, "n l d"],
         activation_granularity: ActivationGranularity,
-        aggregation_strategy: GranularityAggregationStrategy | None,
-    ) -> tuple[Float[torch.Tensor, "n l d"] | Float[torch.Tensor, "ng d"], list[list[list[int]]] | None]:
-        """Apply selection strategy to activations.
+    ) -> list[list[list[int]]] | None:
+        """Get the indices of the granularity level, might be None.
 
         Args:
             inputs (BatchEncoding | torch.Tensor): Inputs to the model forward pass before or after tokenization.
                 In the case of a `torch.Tensor`, we assume a batch dimension and token ids.
-            activations (InterventionProxy): Activations to apply selection strategy to.
-            activation_granularity (ActivationGranularity): Selection strategy to apply. see :meth:`ModelWithSplitPoints.get_activations`.
-            aggregation_strategy (GranularityAggregationStrategy | None): Aggregation strategy to apply. see :meth:`ModelWithSplitPoints.get_activations`.
+            activation_granularity (ActivationGranularity): Selection strategy for activations.
 
         Returns:
-            torch.Tensor: The aggregated activations. (n, l, d) or (ng, d)
-            list[list[list[int]]]: The indices of the granularity level, might be None.
+            list[list[list[int]]] | None: The indices of the granularity level.
         """
+
         # Apply selection rule
         match activation_granularity:
-            case ActivationGranularity.ALL:
-                return activations, None
-            case ActivationGranularity.CLS_TOKEN:
-                if isinstance(inputs, torch.Tensor):
-                    if inputs[0, 0] != self.tokenizer.cls_token_id:
-                        raise ValueError(
-                            "The first token of the input tensor is not the CLS token. "
-                            "Please provide a tensor with the CLS token as the first token."
-                            "This may happen if you asking for a ``CLS_TOKEN`` granularity while not doing classification."
-                        )
+            case AG.ALL:
+                return None
 
-                if isinstance(inputs, BatchEncoding):
-                    if inputs["input_ids"][0, 0] != self.tokenizer.cls_token_id:  # type: ignore
-                        raise ValueError(
-                            "The first token of the input tensor is not the CLS token. "
-                            "Please provide a tensor with the CLS token as the first token."
-                            "This may happen if you asking for a ``CLS_TOKEN`` granularity while not doing classification."
-                        )
-                return activations[:, 0, :], [[[0]]] * len(activations)
-            case ActivationGranularity.ALL_TOKENS:
-                indices_list = [[[i] for i in list(range(activations.shape[1]))]] * len(activations)
-                return activations.flatten(0, 1), indices_list
-            case ActivationGranularity.TOKEN | ActivationGranularity.SAMPLE:
+            case AG.CLS_TOKEN:
+                inputs_tensor: torch.Tensor = inputs if isinstance(inputs, torch.Tensor) else inputs["input_ids"]  # type: ignore
+                if inputs_tensor[0, 0] != self.tokenizer.cls_token_id:
+                    raise ValueError(
+                        "The first token of the input tensor is not the CLS token. "
+                        "Please provide a tensor with the CLS token as the first token."
+                        "This may happen if you asking for a ``CLS_TOKEN`` granularity while not doing classification."
+                    )
+
+                return [[[0]]] * len(inputs_tensor)  # type: ignore
+
+            case AG.ALL_TOKENS:
+                inputs_tensor: torch.Tensor = inputs if isinstance(inputs, torch.Tensor) else inputs["input_ids"]  # type: ignore
+                n, l = inputs_tensor.shape
+                return [[[i] for i in list(range(l))]] * n
+
+            case AG.TOKEN | AG.SAMPLE:
                 if not isinstance(inputs, BatchEncoding):
                     raise ValueError(
-                        "Cannot get indices without a tokenizer if granularity is TOKEN."
+                        "Cannot get indices without a tokenizer if granularity is TOKEN or SAMPLE."
                         + "Please provide a tokenizer or set granularity to ALL_TOKENS."
                         + f"Got: {type(inputs)}"
                     )
-                if aggregation_strategy is None and activation_granularity == ActivationGranularity.SAMPLE:
-                    raise ValueError("aggregation_strategy cannot be None when activation_granularity is SAMPLE.")
 
                 # extract indices of activations to keep from inputs
-                indices_list = Granularity.get_indices(inputs, Granularity.TOKEN, self.tokenizer)  # type: ignore
+                return Granularity.get_indices(inputs, Granularity.TOKEN, self.tokenizer)  # type: ignore
+
+            case AG.WORD | AG.SENTENCE:
+                if not isinstance(inputs, BatchEncoding):
+                    raise ValueError(
+                        "Cannot get indices without a tokenizer if granularity is WORD or SENTENCE."
+                        + "Please provide a tokenizer or set granularity to ALL_TOKENS."
+                        + f"Got: {type(inputs)}"
+                    )
+                indices_list = Granularity.get_indices(
+                    inputs,
+                    granularity=activation_granularity.value,  # type: ignore
+                    tokenizer=self.tokenizer,
+                )
+                return indices_list
+
+            case _:
+                raise ValueError(f"Invalid activation selection strategy: {activation_granularity}")
+
+    # @jaxtyped(typechecker=beartype)
+    def _apply_selection_strategy(
+        self,
+        activations: Float[torch.Tensor, "n l d"],
+        granularity_indices: list[list[list[int]]] | None,
+        activation_granularity: ActivationGranularity,
+        aggregation_strategy: GranularityAggregationStrategy | None,
+    ) -> Float[torch.Tensor, "n l d"] | Float[torch.Tensor, "ng d"]:
+        """Apply selection strategy to activations.
+
+        In theory, we could use the same code for most granularities thanks to the `granularity_indices` argument.
+        However, we do special cases to go faster for some granularities.
+
+        Args:
+            activations (InterventionProxy): Activations to apply selection strategy to.
+            activation_granularity (ActivationGranularity): Selection strategy to apply. see :meth:`ModelWithSplitPoints.get_activations`.
+            aggregation_strategy (GranularityAggregationStrategy | None): Aggregation strategy to apply. see :meth:`ModelWithSplitPoints.get_activations`.
+            granularity_indices (list[list[list[int]]] | None): Indices of the granularity level, might be None.
+
+        Returns:
+            torch.Tensor: The aggregated activations. (n, l, d) or (ng, d)
+        """
+        if granularity_indices is None:
+            if activation_granularity in [AG.TOKEN, AG.SAMPLE, AG.WORD, AG.SENTENCE]:
+                raise ValueError(
+                    "This should never happen as we apply `_get_granularity_indices` prior. "
+                    "granularity_indices cannot be None when activation_granularity is TOKEN, SAMPLE, WORD or SENTENCE."
+                )
+
+        # Apply selection rule
+        match activation_granularity:
+            case AG.ALL:
+                return activations
+
+            case AG.CLS_TOKEN:
+                return activations[:, 0, :]
+
+            case AG.ALL_TOKENS:
+                return activations.flatten(0, 1)
+
+            case AG.TOKEN | AG.SAMPLE:
+                if aggregation_strategy is None and activation_granularity == AG.SAMPLE:
+                    raise ValueError("aggregation_strategy cannot be None when activation_granularity is SAMPLE.")
 
                 # select activations based on indices
                 activation_list: list[Float[torch.Tensor, "g d"]] = []
 
                 # iterate over samples
-                for i, indices in enumerate(indices_list):
+                for i, indices in enumerate(granularity_indices):  # type: ignore
                     indices_tensor = torch.tensor(indices).squeeze(1)
                     activation_list.append(activations[i, indices_tensor])
 
                     # aggregate activations for SAMPLE strategy
-                    if activation_granularity == ActivationGranularity.SAMPLE:
+                    if activation_granularity == AG.SAMPLE:
                         activation_list[-1] = GranularityAggregationStrategy.aggregate(
                             activation_list[-1],
                             strategy=aggregation_strategy,  # type: ignore
@@ -396,29 +450,19 @@ class ModelWithSplitPoints(LanguageModel):
 
                 # concat all activations
                 flatten_activations: Float[torch.Tensor, "ng d"] = torch.concat(activation_list, dim=0)
-                return flatten_activations, indices_list
-            case ActivationGranularity.WORD | ActivationGranularity.SENTENCE:
-                if not isinstance(inputs, BatchEncoding):
-                    raise ValueError(
-                        "Cannot get indices without a tokenizer if granularity is WORD or SENTENCE."
-                        + "Please provide a tokenizer or set granularity to ALL_TOKENS."
-                        + f"Got: {type(inputs)}"
-                    )
+                return flatten_activations
+
+            case AG.WORD | AG.SENTENCE:
                 if aggregation_strategy is None:
                     raise ValueError(
                         "aggregation_strategy cannot be None when activation_granularity is WORD or SENTENCE."
                     )
 
-                # extract indices of activations to keep from inputs
-                # activation_granularity and granularities correspond
-                granularity: Granularity = activation_granularity.value  # type: ignore
-                indices_list = Granularity.get_indices(inputs, granularity, self.tokenizer)
-
                 # select activations based on indices
                 activation_list: list[Float[torch.Tensor, "g d"]] = []
 
                 # iterate over samples
-                for i, indices in enumerate(indices_list):
+                for i, indices in enumerate(granularity_indices):  # type: ignore
                     # iterate over activations
                     for index in indices:
                         word_activations = activations[i, index]
@@ -429,7 +473,8 @@ class ModelWithSplitPoints(LanguageModel):
 
                 # concat all activations
                 flatten_activations: Float[torch.Tensor, "ng d"] = torch.concat(activation_list, dim=0)
-                return flatten_activations, indices_list
+                return flatten_activations
+
             case _:
                 raise ValueError(f"Invalid activation selection strategy: {activation_granularity}")
 
@@ -455,14 +500,17 @@ class ModelWithSplitPoints(LanguageModel):
             Float[torch.Tensor, "n l d"]: The reintegrated activations tensor.
         """
         match activation_granularity:
-            case ActivationGranularity.ALL:
+            case AG.ALL:
                 return new_activations
-            case ActivationGranularity.CLS_TOKEN:
+
+            case AG.CLS_TOKEN:
                 initial_activations[:, 0, :] = new_activations
                 return initial_activations
-            case ActivationGranularity.ALL_TOKENS:
+
+            case AG.ALL_TOKENS:
                 return new_activations.view(initial_activations.shape)
-            case ActivationGranularity.TOKEN:
+
+            case AG.TOKEN:
                 if granularity_indices is None:
                     raise ValueError("granularity_indices cannot be None when activation_granularity is TOKEN.")
                 # iterate over samples
@@ -475,7 +523,8 @@ class ModelWithSplitPoints(LanguageModel):
                     current_index += len(indices)
 
                 return initial_activations
-            case ActivationGranularity.WORD | ActivationGranularity.SENTENCE:
+
+            case AG.WORD | AG.SENTENCE:
                 if granularity_indices is None:
                     raise ValueError(
                         "granularity_indices cannot be None when activation_granularity is WORD or SENTENCE."
@@ -500,11 +549,13 @@ class ModelWithSplitPoints(LanguageModel):
                         initial_activations[i, torch_index] = unfolded_activations.to(initial_activations.device)
                         current_index += 1
                 return initial_activations
-            case ActivationGranularity.SAMPLE:
+
+            case AG.SAMPLE:
                 raise ValueError(
                     "Activations aggregated at the sample level cannot be reintegrated. "
                     "Please choose another granularity level, such as ALL_TOKENS, TOKEN, WORD, or SENTENCE."
                 )
+
             case _:
                 raise ValueError(f"Invalid activation selection strategy: {activation_granularity}")
 
@@ -550,7 +601,7 @@ class ModelWithSplitPoints(LanguageModel):
     def get_activations(  # noqa: PLR0912  # ignore too many branches
         self,
         inputs: list[str] | torch.Tensor | BatchEncoding,
-        activation_granularity: ActivationGranularity = ActivationGranularity.ALL_TOKENS,
+        activation_granularity: ActivationGranularity = AG.ALL_TOKENS,
         aggregation_strategy: GranularityAggregationStrategy = GranularityAggregationStrategy.MEAN,
         pad_side: str = "left",
         tqdm_bar: bool = False,
@@ -654,7 +705,7 @@ class ModelWithSplitPoints(LanguageModel):
                 ):
                     # tokenize text inputs
                     if isinstance(batch_inputs, list):
-                        if activation_granularity == ActivationGranularity.CLS_TOKEN:
+                        if activation_granularity == AG.CLS_TOKEN:
                             self.tokenizer.padding_side = "right"
                         tokenized_inputs = self.tokenizer(
                             batch_inputs,
@@ -669,21 +720,18 @@ class ModelWithSplitPoints(LanguageModel):
                     else:
                         tokenized_inputs = batch_inputs
 
-                    # extract offset mapping not supported by forward but necessary for sentence selection strategy
+                    # get granularity indices
+                    granularity_indices = self._get_granularity_indices(tokenized_inputs, activation_granularity)
+
+                    # extract offset mapping not supported by forward but was necessary for sentence selection strategy
                     if isinstance(tokenized_inputs, (BatchEncoding, dict)):  # noqa: UP038
-                        offset_mapping = tokenized_inputs.pop("offset_mapping", None)
-                    else:
-                        offset_mapping = None
+                        tokenized_inputs.pop("offset_mapping", None)
 
                     # call model forward pass and save split point outputs
                     with self.trace(tokenized_inputs, **kwargs) as tracer:
-                        batch_activations = tracer.cache(modules=[self.get(sp) for sp in self.split_points])
-                        activations["predictions"].append(self.output.logits.argmax(dim=-1).cpu().save())
+                        batch_activations = tracer.cache(modules=[self.get(sp) for sp in self.split_points])  # type: ignore
+                        activations["predictions"].append(self.output.logits.argmax(dim=-1).cpu().save())  # type: ignore
                     torch.cuda.empty_cache()
-
-                    # put back offset mapping
-                    if offset_mapping is not None:
-                        tokenized_inputs["offset_mapping"] = offset_mapping  # type: ignore
 
                     for sp in self.split_points:
                         sp_module = batch_activations["model." + sp]
@@ -691,31 +739,31 @@ class ModelWithSplitPoints(LanguageModel):
                         batch_outputs = getattr(sp_module, output_name)
                         batch_sp_activations = self._manage_output_tuple(batch_outputs, sp)
 
-                        granular_activations, indices_list = self._apply_selection_strategy(
-                            inputs=tokenized_inputs,  # type: ignore
-                            activations=batch_sp_activations.cpu(),  # type: ignore
+                        granular_activations = self._apply_selection_strategy(
+                            activations=batch_sp_activations,  # type: ignore
+                            granularity_indices=granularity_indices,
                             activation_granularity=activation_granularity,
                             aggregation_strategy=aggregation_strategy,
                         )
 
                         activations[sp].append(granular_activations)
 
-                    # adapt predictions ot match the granularity indices
-                    if indices_list is None:
-                        if activation_granularity == ActivationGranularity.ALL_TOKENS:
+                    # adapt predictions to match the granularity indices
+                    if granularity_indices is None:
+                        if activation_granularity == AG.ALL_TOKENS:
                             activations["predictions"][-1] = (
                                 activations["predictions"][-1].repeat(1, batch_sp_activations.shape[1]).flatten(0, 1)
                             )
                     else:
                         predictions = []
-                        for i, indices in enumerate(indices_list):
+                        for i, indices in enumerate(granularity_indices):
                             predictions.append(activations["predictions"][-1][i].repeat(len(indices)))
 
                         activations["predictions"][-1] = torch.cat(predictions, dim=0)
 
         # concat activation batches
         for split_point in self.split_points:
-            if activation_granularity == ActivationGranularity.ALL:
+            if activation_granularity == AG.ALL:
                 # three dimensional tensor (n, l, d)
                 activations[split_point] = ModelWithSplitPoints.pad_and_concat(activations[split_point], pad_side, 0.0)
             else:
@@ -738,7 +786,7 @@ class ModelWithSplitPoints(LanguageModel):
         decode_activations: Callable[[ConceptsActivations], LatentActivations],
         targets: list[int] | None = None,
         split_point: str | None = None,
-        activation_granularity: ActivationGranularity = ActivationGranularity.ALL_TOKENS,
+        activation_granularity: ActivationGranularity = AG.ALL_TOKENS,
         aggregation_strategy: GranularityAggregationStrategy | None = GranularityAggregationStrategy.MEAN,
         concepts_x_gradients: bool = False,
         tqdm_bar: bool = False,
@@ -845,7 +893,7 @@ class ModelWithSplitPoints(LanguageModel):
         ):
             # tokenize text inputs
             if isinstance(batch_inputs, list):
-                if activation_granularity == ActivationGranularity.CLS_TOKEN:
+                if activation_granularity == AG.CLS_TOKEN:
                     self.tokenizer.padding_side = "right"
                 tokenized_inputs = self.tokenizer(
                     batch_inputs, return_tensors="pt", padding=True, truncation=True, return_offsets_mapping=True
@@ -856,11 +904,11 @@ class ModelWithSplitPoints(LanguageModel):
             else:
                 tokenized_inputs = batch_inputs
 
+            granularity_indices = self._get_granularity_indices(tokenized_inputs, activation_granularity)
+
             # extract offset mapping not supported by forward but necessary for sentence selection strategy
             if isinstance(tokenized_inputs, (BatchEncoding, dict)):  # noqa: UP038
-                offset_mapping = tokenized_inputs.pop("offset_mapping", None)
-            else:
-                offset_mapping = None
+                tokenized_inputs.pop("offset_mapping", None)
 
             # call model forward pass and gradients on concept activations
             with self.trace(tokenized_inputs, **kwargs):
@@ -874,14 +922,11 @@ class ModelWithSplitPoints(LanguageModel):
                     layer_outputs, local_split_point
                 )
 
-                if offset_mapping is not None:
-                    tokenized_inputs["offset_mapping"] = offset_mapping  # type: ignore
-
                 # apply selection strategy
                 selected_activations: Float[torch.Tensor, "ng, d"]
-                selected_activations, granularity_indices = self._apply_selection_strategy(
-                    inputs=tokenized_inputs,  # type: ignore
+                selected_activations = self._apply_selection_strategy(
                     activations=raw_activations,  # use the last batch of activations
+                    granularity_indices=granularity_indices,
                     activation_granularity=activation_granularity,
                     aggregation_strategy=aggregation_strategy,
                 )

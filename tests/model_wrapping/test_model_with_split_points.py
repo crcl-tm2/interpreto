@@ -256,11 +256,15 @@ def activation_selection_and_reintegration(model, tokenizer, split_point, senten
     # --------------------------------------------------------------------------------
     # Test selection and reintegration for all combinations of granularity/aggregation
     for granularity, aggregation in granularities_without_aggregations + granularities_with_aggregations:
+        # ---------------------------
+        # Extract granularity indices
+        granularity_indices = mwsp._get_granularity_indices(tokens, granularity)
+
         # ------------------
         # Select activations
-        selected_activations, indices = mwsp._apply_selection_strategy(
-            inputs=tokens,
+        selected_activations = mwsp._apply_selection_strategy(
             activations=activations.clone(),
+            granularity_indices=granularity_indices,
             activation_granularity=granularity,
             aggregation_strategy=aggregation,
         )
@@ -276,7 +280,7 @@ def activation_selection_and_reintegration(model, tokenizer, split_point, senten
             selected_activations,
             activation_granularity=granularity,
             aggregation_strategy=aggregation,
-            granularity_indices=indices,
+            granularity_indices=granularity_indices,
         )
         # ensure that the shape of the reintegrated activations matches the initial shape
         assert reconstructed_activations.shape == activations.shape
@@ -287,9 +291,9 @@ def activation_selection_and_reintegration(model, tokenizer, split_point, senten
 
         # -----------------------
         # Reselect activations to ensure verify that the aggregation is idempotent
-        reselected_activations, indices = mwsp._apply_selection_strategy(
-            inputs=tokens,
+        reselected_activations = mwsp._apply_selection_strategy(
             activations=reconstructed_activations.clone(),
+            granularity_indices=granularity_indices,
             activation_granularity=granularity,
             aggregation_strategy=aggregation,
         )
