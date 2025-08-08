@@ -762,7 +762,9 @@ class ModelWithSplitPoints(LanguageModel):
                         sp_module = batch_activations["model." + sp]
                         output_name = "nns_output" if hasattr(sp_module, "nns_output") else "output"
                         batch_outputs = getattr(sp_module, output_name)
-                        batch_sp_activations = self._manage_output_tuple(batch_outputs, sp)
+                        batch_sp_activations: Float[torch.Tensor, "n l d"] = self._manage_output_tuple(
+                            batch_outputs, sp
+                        )
 
                         granular_activations = self._apply_selection_strategy(
                             activations=batch_sp_activations,  # type: ignore
@@ -774,12 +776,7 @@ class ModelWithSplitPoints(LanguageModel):
                         activations[sp].append(granular_activations)
 
                     # adapt predictions to match the granularity indices
-                    if granularity_indices is None:
-                        if activation_granularity == AG.ALL_TOKENS:
-                            activations["predictions"][-1] = (
-                                activations["predictions"][-1].repeat(1, batch_sp_activations.shape[1]).flatten(0, 1)
-                            )
-                    else:
+                    if granularity_indices is not None:
                         predictions = []
                         for i, indices in enumerate(granularity_indices):
                             predictions.append(activations["predictions"][-1][i].repeat(len(indices)))
@@ -880,7 +877,7 @@ class ModelWithSplitPoints(LanguageModel):
         """
         if not hasattr(self.tokenizer, "pad_token") or self.tokenizer.pad_token is None:
             self.tokenizer.add_special_tokens({"pad_token": "[PAD]"})
-            self.model.resize_token_embeddings(len(self.tokenizer))
+            self._model.resize_token_embeddings(len(self.tokenizer))  # type: ignore
 
         self.targets = targets
         if split_point is not None:
@@ -992,28 +989,29 @@ class ModelWithSplitPoints(LanguageModel):
                 else:  # classification (n, nb_classes)
                     logits = all_logits
 
-                # TODO: test if gradient of sum is equivalent to individual gradients
-                # It would allow batching the gradient computation
-
                 # compute gradients for each target
-                target_gradient = []
                 if self.targets is None:
-                    targets = range(logits.shape[1])
+                    targets: Iterable[int] = range(logits.shape[1])
                 else:
-                    targets = self.targets
+                    targets: Iterable[int] = self.targets
+                logits = logits.sum(dim=0)
 
+                # TODO: find a way to compute gradients for all targets simultaneously
+
+                targets_gradients = []
                 for t in targets:
-                    with logits[:, t].sum(dim=0).backward(retain_graph=True):
+                    # sum over samples but compute the gradients for each target separately
+                    with logits[t].backward(retain_graph=True):
                         # compute the gradient of the concept activations
                         concept_activations_grad: Float[torch.Tensor, "ng c"] = concept_activations.grad
 
                         # for gradient x concepts, multiply by concepts
                         if concepts_x_gradients:
                             concept_activations_grad *= concept_activations
-                    target_gradient.append(concept_activations_grad)
+                    targets_gradients.append(concept_activations_grad)
 
-                target_gradient: Float[torch.Tensor, "t ng d"] = (
-                    torch.stack(target_gradient, dim=0).detach().cpu().save()
+                targets_gradients: Float[torch.Tensor, "t ng d"] = (
+                    torch.stack(targets_gradients, dim=0).detach().cpu().save()
                 )
 
                 # split gradients for each input sentence from (t, ng, d) to n * (t, g, d)
@@ -1027,7 +1025,7 @@ class ModelWithSplitPoints(LanguageModel):
                 start = 0
                 for indices_list in granularity_indices:
                     end = start + len(indices_list)
-                    gradients_list.append(target_gradient[:, start:end, :])
+                    gradients_list.append(targets_gradients[:, start:end, :])
                     start = end
             torch.cuda.empty_cache()
 
