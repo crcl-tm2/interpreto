@@ -454,7 +454,7 @@ def test_index_by_layer_idx(multi_split_model: ModelWithSplitPoints):
 ALL_MODEL_LOADERS = {
     "hf-internal-testing/tiny-random-albert": AutoModelForSequenceClassification,
     "hf-internal-testing/tiny-random-bart": AutoModelForSequenceClassification,
-    "hf-internal-testing/tiny-random-bert": AutoModelForSequenceClassification,
+    "hf-internal-testing/tiny-random-bert": AutoModelForMaskedLM,
     # "hf-internal-testing/tiny-random-DebertaV2Model": AutoModelForSequenceClassification,
     "hf-internal-testing/tiny-random-distilbert": AutoModelForSequenceClassification,
     "hf-internal-testing/tiny-random-ElectraModel": AutoModelForSequenceClassification,
@@ -598,7 +598,7 @@ if __name__ == "__main__":
         "bert-base-uncased",
         split_points=["bert.encoder.layer.2.output"],
         automodel=AutoModelForSequenceClassification,  # type: ignore
-        device_map="auto",
+        device_map="cuda",
         batch_size=4,
     )
     multi_split_model = ModelWithSplitPoints(

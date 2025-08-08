@@ -34,10 +34,10 @@ import torch.nn.functional as F
 from jaxtyping import Float
 from nnsight.modeling.language import LanguageModel
 from tqdm import tqdm
-from transformers import AutoModel, T5ForConditionalGeneration
+from transformers import AutoModel, AutoTokenizer, T5ForConditionalGeneration
 from transformers.configuration_utils import PretrainedConfig
+from transformers.generation.utils import GenerationMixin
 from transformers.modeling_utils import PreTrainedModel
-from transformers.models.auto import modeling_auto
 from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_utils_base import BatchEncoding
 from transformers.tokenization_utils_fast import PreTrainedTokenizerFast
@@ -45,7 +45,6 @@ from transformers.tokenization_utils_fast import PreTrainedTokenizerFast
 from interpreto.commons.granularity import Granularity, GranularityAggregationStrategy
 from interpreto.model_wrapping.splitting_utils import get_layer_by_idx, sort_paths, validate_path, walk_modules
 from interpreto.model_wrapping.transformers_classes import (
-    get_supported_hf_transformer_autoclasses,
     get_supported_hf_transformer_generation_autoclasses,
     get_supported_hf_transformer_generation_classes,
 )
@@ -152,7 +151,7 @@ class ModelWithSplitPoints(LanguageModel):
         model_or_repo_id: str | PreTrainedModel,
         split_points: str | int | list[str] | list[int] | tuple[str] | tuple[int],
         *args: tuple[Any],
-        automodel: str | type[AutoModel] | None = None,
+        automodel: type[AutoModel] | None = None,
         tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast | None = None,
         config: PretrainedConfig | None = None,
         batch_size: int = 1,
@@ -188,31 +187,10 @@ class ModelWithSplitPoints(LanguageModel):
                 If `None`, an element with 3 dimensions is searched for. If not found, an error is raised. If several elements are found,
                 an error is raised.
         """
-        self.automodel = automodel
-        if isinstance(model_or_repo_id, str):  # Repository ID
-            if automodel is None:
-                raise InitializationError(
-                    "Model autoclass not found.\n"
-                    "The model class can be omitted if a pre-loaded model is passed to `model_or_repo_id` "
-                    "param.\nIf an HF Hub ID is used, the corresponding autoclass must be specified in `automodel`.\n"
-                    "Example: ModelWithSplitPoints('bert-base-cased', automodel=AutoModelForMaskedLM, ...)"
-                )
-            if isinstance(automodel, str):
-                supported_autoclasses = get_supported_hf_transformer_autoclasses()
-                try:
-                    self.automodel = getattr(modeling_auto, automodel)
-                except AttributeError:
-                    raise InitializationError(
-                        f"The specified class {automodel} is not a valid autoclass.\n"
-                        f"Supported autoclasses: {', '.join(supported_autoclasses)}"
-                    ) from AttributeError
-                if automodel not in supported_autoclasses:
-                    raise InitializationError(
-                        f"The specified autoclass {automodel} is not supported.\n"
-                        f"Supported autoclasses: {', '.join(supported_autoclasses)}"
-                    )
-            else:
-                self.automodel = automodel
+        # error raising and sanitization prior to nnsight.LanguageModel initialization
+        model_or_repo_id, tokenizer, self.automodel = self.__sanitize_model_tokenizer(
+            model_or_repo_id=model_or_repo_id, tokenizer=tokenizer, automodel=automodel
+        )
 
         # Handles model loading through LanguageModel._load
         super().__init__(
@@ -220,7 +198,7 @@ class ModelWithSplitPoints(LanguageModel):
             *args,
             config=config,
             tokenizer=tokenizer,  # type: ignore
-            automodel=automodel,  # type: ignore ()
+            automodel=self.automodel,  # type: ignore
             device_map=device_map,
             **kwargs,
         )
@@ -237,7 +215,7 @@ class ModelWithSplitPoints(LanguageModel):
         if not isinstance(model_or_repo_id, str) and device_map is not None:
             if device_map == "auto":
                 raise ValueError(
-                    "'auto' device_map is only supported when loading a model from a repository id. "
+                    "'auto' device_map is only supported when loading a generation model from a repository id. "
                     "Please specify a device_map, e.g. 'cuda' or 'cpu'."
                 )
             self.to(device_map)  # type: ignore
@@ -245,6 +223,53 @@ class ModelWithSplitPoints(LanguageModel):
         if self.tokenizer is None:
             raise ValueError("Tokenizer is not set. When providing a model instance, the tokenizer must be set.")
         self.output_tuple_index = output_tuple_index
+
+    def __sanitize_model_tokenizer(
+        self,
+        model_or_repo_id: str | PreTrainedModel,
+        tokenizer: PreTrainedTokenizer | None,
+        automodel: type[AutoModel] | None,
+    ) -> tuple[str | PreTrainedModel, PreTrainedTokenizer | None, type[AutoModel] | None]:
+        """
+        Sanitize the model and tokenizer inputs.
+        Ensure the model and tokenizer are valid and compatible with the `nnsight.LanguageModel` model initialization.
+
+        Args:
+            model_or_repo_id (str | transformers.PreTrainedModel): Model or repository ID.
+            tokenizer (PreTrainedTokenizer): Tokenizer to use.
+            automodel (type[AutoModel] | None): AutoModel class to use.
+
+        Returns:
+            tuple[str | PreTrainedModel, PreTrainedTokenizer, type[AutoModel] | None]: Sanitized inputs.
+        """
+        if isinstance(model_or_repo_id, PreTrainedModel):
+            if tokenizer is None:
+                raise InitializationError(
+                    "Tokenizer is not set. When providing a model instance, the tokenizer must be set."
+                )
+            return model_or_repo_id, tokenizer, automodel
+
+        if isinstance(model_or_repo_id, str):  # Repository ID
+            if automodel is None:
+                raise InitializationError(
+                    "Model autoclass not found.\n"
+                    "The model class can be omitted if a pre-loaded model is passed to `model_or_repo_id` "
+                    "param.\nIf an HF Hub ID is used, the corresponding autoclass must be specified in `automodel`.\n"
+                    "Example: ModelWithSplitPoints('bert-base-uncased', automodel=AutoModelForMaskedLM, ...)"
+                )
+
+            # NNsight.LanguageModel initialization does not support initialization with non-generation autoclasses
+            if not issubclass(automodel, GenerationMixin):
+                # instantiate the tokenizer with the repository ID
+                tokenizer = AutoTokenizer.from_pretrained(model_or_repo_id)
+                # instantiate the model with the repository ID
+                model_or_repo_id = automodel.from_pretrained(model_or_repo_id)
+            return model_or_repo_id, tokenizer, automodel
+
+        raise InitializationError(
+            f"Invalid model_or_repo_id type: {type(model_or_repo_id)}. "
+            "Expected `str` or `transformers.PreTrainedModel`."
+        )
 
     @property
     def split_points(self) -> list[str]:
@@ -485,7 +510,7 @@ class ModelWithSplitPoints(LanguageModel):
         activation_granularity: ActivationGranularity,
         aggregation_strategy: GranularityAggregationStrategy | None,
         granularity_indices: list[list[list[int]]] | None = None,
-    ):
+    ) -> Float[torch.Tensor, "n l d"]:
         """
         Reintegrates the selected activations into the initial activations.
 
