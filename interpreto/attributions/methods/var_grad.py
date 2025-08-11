@@ -63,7 +63,7 @@ class VarGrad(MultitaskExplainerMixin, AttributionExplainer):
     Examples:
         >>> from interpreto import VarGrad
         >>> method = VarGrad(model, tokenizer, batch_size=4,
-        >>>                     n_perturbations=50, noise_level=0.01)
+        >>>                     n_perturbations=50, noise_std=0.01)
         >>> explanations = method.explain(text)
     """
 
@@ -78,7 +78,7 @@ class VarGrad(MultitaskExplainerMixin, AttributionExplainer):
         inference_mode: Callable[[torch.Tensor], torch.Tensor] = InferenceModes.LOGITS,
         input_x_gradient: bool = False,
         n_perturbations: int = 10,  # TODO: find better name
-        noise_level: float = 0.1,
+        noise_std: float = 0.1,
     ):
         """
         Initialize the attribution method.
@@ -100,10 +100,10 @@ class VarGrad(MultitaskExplainerMixin, AttributionExplainer):
             input_x_gradient (bool, optional): If True, multiplies the input embeddings with
                 their gradients before aggregation. Defaults to ``False``.
             n_perturbations (int): the number of interpolations to generate
-            noise_level (float): standard deviation of the Gaussian noise to add to the inputs
+            noise_std (float): standard deviation of the Gaussian noise to add to the inputs
         """
         perturbator = GaussianNoisePerturbator(
-            inputs_embedder=model.get_input_embeddings(), n_perturbations=n_perturbations, std=noise_level
+            inputs_embedder=model.get_input_embeddings(), n_perturbations=n_perturbations, std=noise_std
         )
 
         super().__init__(

@@ -60,23 +60,23 @@ attribution_method_kwargs = {
     GradientShap: {
         "baseline": 0.0,
         "n_perturbations": 2,
-        "noise_level": 0.001,
+        "noise_std": 0.001,
     },
     Saliency: {},
     IntegratedGradients: {"n_perturbations": 3, "baseline": 0.0},
     SmoothGrad: {
         "n_perturbations": 3,
-        "noise_level": 0.1,
+        "noise_std": 0.1,
     },
     VarGrad: {
         "inference_mode": InferenceModes.LOG_SOFTMAX,
         "input_x_gradient": True,
         "n_perturbations": 2,
-        "noise_level": 0.05,
+        "noise_std": 0.05,
     },
     SquareGrad: {
         "n_perturbations": 2,
-        "noise_level": 0.12,
+        "noise_std": 0.12,
     },
     # ---------------------------
     # Perturbation based methods:

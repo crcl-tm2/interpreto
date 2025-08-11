@@ -57,7 +57,7 @@ class GradientShap(MultitaskExplainerMixin, AttributionExplainer):
         >>> method = GradientShap(model, tokenizer, batch_size=4,
         >>>                       n_perturbations=20,
         >>>                       baseline=0,
-        >>>                       noise_level=0.1,)
+        >>>                       noise_std=0.1,)
         >>> explanations = method(text)
     """
 
@@ -73,7 +73,7 @@ class GradientShap(MultitaskExplainerMixin, AttributionExplainer):
         input_x_gradient: bool = False,
         n_perturbations: int = 10,
         baseline: torch.Tensor | float | None = None,
-        noise_level: float = 0.1,
+        noise_std: float = 0.1,
     ) -> None:
         """
         Initialize the attribution method.
@@ -96,13 +96,13 @@ class GradientShap(MultitaskExplainerMixin, AttributionExplainer):
                 their gradients before aggregation. Defaults to ``False``.
             n_perturbations (int): the number of interpolations to generate
             baseline (torch.Tensor | float | None): the baseline to use for the interpolations
-            noise_level (float): the standard deviation of the noise added to the baseline
+            noise_std (float): the standard deviation of the noise added to the baseline
         """
         perturbator = GradientShapPerturbator(
             inputs_embedder=model.get_input_embeddings(),
             baseline=baseline,
             n_perturbations=n_perturbations,
-            std=noise_level,
+            std=noise_std,
         )
         super().__init__(
             model=model,
