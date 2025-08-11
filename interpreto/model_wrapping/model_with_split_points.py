@@ -27,7 +27,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from enum import Enum
 from math import ceil
-from typing import Any
+from typing import Any, Iterable
 
 import torch
 import torch.nn.functional as F
@@ -73,8 +73,18 @@ AG = ActivationGranularity
 class ModelWithSplitPoints(LanguageModel):
     """Code: [:octicons-mark-github-24: model_wrapping/model_with_split_points.py` ](https://github.com/FOR-sight-ai/interpreto/blob/dev/interpreto/model_wrapping/model_with_split_points.py)
 
-    Generalized NNsight.LanguageModel wrapper around encoder-only, decoder-only and encoder-decoder language models.
-    Handles splitting model at specified locations and activation extraction.
+    The `ModelWithSplitPoints` is a wrapper around your HuggingFace model.
+    Its goal is to allow you to easily split your model at specified locations and extract activations.
+
+    It is one of the key component of the Concept-Based Explainers framework in Interpreto.
+    Indeed, any Interpeto concept explainer is build around a `ModelWithSplitPoints` object.
+    Because, splitting the model is the first step of the concept-based explanation process.
+
+    It is based on the `LanguageModel` class from NNsight and inherits its functionalities.
+    In a sense, the LanguageModel class is a wrapper around the HuggingFace model.
+    The `ModelWithSplitPoints` class is a wrapper around the LanguageModel class.
+
+
 
     Inputs can be in the form of:
 
@@ -97,6 +107,16 @@ class ModelWithSplitPoints(LanguageModel):
         _split_points (list[str]): List of split points, should be accessed with getter/setter.
 
     Examples:
+        Minimal loading example:
+        >>> from transformers import AutoModelForCausalLM
+        >>> from interpreto import ModelWithSplitPoints
+        >>> model_with_split_points = ModelWithSplitPoints(
+        ...     "meta-llama/Meta-Llama-3-8B-Instruct",
+        ...     split_points=10,  # split at the 10th layer
+        ...     automodel=AutoModelForCausalLM,
+        ...     device_map="auto",
+        ... )
+
         Load the model from its repository id, split it at the first layer,
         and get the raw activations for the first layer.
         >>> from datasets import load_dataset
@@ -105,7 +125,7 @@ class ModelWithSplitPoints(LanguageModel):
         >>> model_with_split_points = ModelWithSplitPoints(
         ...     "bert-base-uncased",
         ...     split_points="bert.encoder.layer.1.output",
-        ...     automodel=AutoModelForMaskedLM,
+        ...     automodel=AutoModelForSequenceClassification,
         ...     batch_size=64,
         ...     device_map="auto",
         ... )
@@ -113,23 +133,22 @@ class ModelWithSplitPoints(LanguageModel):
         >>> dataset = load_dataset("cornell-movie-review-data/rotten_tomatoes")["train"]["text"]
         >>> activations = model_with_split_points.get_activations(
         ...     dataset,
-        ...     activation_granularity=ModelWithSplitPoints.activation_granularities.TOKEN,
+        ...     activation_granularity=ModelWithSplitPoints.activation_granularities.TOKEN,  # only non-special tokens
         ... )
 
         Load the model then pass it the `ModelWithSplitPoint`, split it at the first layer,
         get the word activations for the first layer, skip special tokens, and aggregate tokens activations by mean into words.
         >>> from transformers import AutoModelCausalLM, AutoTokenizer
         >>> from datasets import load_dataset
-        >>> from interpreto import ModelWithSplitPoints
+        >>> from interpreto import ModelWithSplitPoints as MWSP
         >>> # load the model
         >>> model = AutoModelCausalLM.from_pretrained("gpt2")
         >>> tokenizer = AutoTokenizer.from_pretrained("gpt2")
         >>> # wrap and split the model
-        >>> model_with_split_points = ModelWithSplitPoints(
+        >>> model_with_split_points = MWSP(
         ...     model,
         ...     tokenizer=tokenizer,
-        ...     split_points="transformer.h.1.mlp"],,
-        ...     automodel=AutoModelForMaskedLM,
+        ...     split_points="transformer.h.1.mlp",
         ...     batch_size=16,
         ...     device_map="auto",
         ... )
@@ -137,8 +156,8 @@ class ModelWithSplitPoints(LanguageModel):
         >>> dataset = load_dataset("cornell-movie-review-data/rotten_tomatoes")["train"]["text"]
         >>> activations = model_with_split_points.get_activations(
         ...     dataset,
-        ...     activation_granularity=ModelWithSplitPoints.activation_granularities.WORD,
-        ...     aggregation_strategy=ModelWithSplitPoints.aggregation_strategies.MEAN,
+        ...     activation_granularity=MWSP.activation_granularities.WORD,
+        ...     aggregation_strategy=MWSP.aggregation_strategies.MEAN,  # average tokens activations by words
         ... )
     """
 
@@ -160,6 +179,8 @@ class ModelWithSplitPoints(LanguageModel):
         **kwargs,
     ) -> None:
         """Initialize a ModelWithSplitPoints object.
+
+        Most of the work is forwarded to the `LanguageModel` class initialization from NNsight.
 
         Args:
             model_or_repo_id (str | transformers.PreTrainedModel): One of:
@@ -186,10 +207,17 @@ class ModelWithSplitPoints(LanguageModel):
             output_tuple_index (int | None): If the output at the split point is a tuple, this is the index of the hidden state.
                 If `None`, an element with 3 dimensions is searched for. If not found, an error is raised. If several elements are found,
                 an error is raised.
+
+        Raises:
+            InitializationError (ValueError): If the model cannot be loaded, because of a missing `tokenizer` or `automodel`.
+            ValueError: If the `device_map` is set to 'auto' and the model is not a generation model.
+            TypeError: If the `model_or_repo_id` is not a `str` or a `transformers.PreTrainedModel`.
         """
         # error raising and sanitization prior to nnsight.LanguageModel initialization
         model_or_repo_id, tokenizer, self.automodel = self.__sanitize_model_tokenizer(
-            model_or_repo_id=model_or_repo_id, tokenizer=tokenizer, automodel=automodel
+            model_or_repo_id=model_or_repo_id,
+            tokenizer=tokenizer,
+            automodel=automodel,
         )
 
         # Handles model loading through LanguageModel._load
@@ -197,8 +225,8 @@ class ModelWithSplitPoints(LanguageModel):
             model_or_repo_id,
             *args,
             config=config,
-            tokenizer=tokenizer,  # type: ignore
-            automodel=self.automodel,  # type: ignore
+            tokenizer=tokenizer,  # type: ignore  (under specification from NNsight)
+            automodel=self.automodel,  # type: ignore (under specification from NNsight)
             device_map=device_map,
             **kwargs,
         )
@@ -227,16 +255,16 @@ class ModelWithSplitPoints(LanguageModel):
     def __sanitize_model_tokenizer(
         self,
         model_or_repo_id: str | PreTrainedModel,
-        tokenizer: PreTrainedTokenizer | None,
+        tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast | None,
         automodel: type[AutoModel] | None,
-    ) -> tuple[str | PreTrainedModel, PreTrainedTokenizer | None, type[AutoModel] | None]:
+    ) -> tuple[str | PreTrainedModel, PreTrainedTokenizer | PreTrainedTokenizerFast | None, type[AutoModel] | None]:
         """
         Sanitize the model and tokenizer inputs.
         Ensure the model and tokenizer are valid and compatible with the `nnsight.LanguageModel` model initialization.
 
         Args:
             model_or_repo_id (str | transformers.PreTrainedModel): Model or repository ID.
-            tokenizer (PreTrainedTokenizer): Tokenizer to use.
+            tokenizer (PreTrainedTokenizer | PreTrainedTokenizerFast | None): Tokenizer to use.
             automodel (type[AutoModel] | None): AutoModel class to use.
 
         Returns:
@@ -266,7 +294,7 @@ class ModelWithSplitPoints(LanguageModel):
                 model_or_repo_id = automodel.from_pretrained(model_or_repo_id)
             return model_or_repo_id, tokenizer, automodel
 
-        raise InitializationError(
+        raise TypeError(
             f"Invalid model_or_repo_id type: {type(model_or_repo_id)}. "
             "Expected `str` or `transformers.PreTrainedModel`."
         )
@@ -991,15 +1019,15 @@ class ModelWithSplitPoints(LanguageModel):
 
                 # compute gradients for each target
                 if self.targets is None:
-                    targets: Iterable[int] = range(logits.shape[1])
+                    current_targets: Iterable[int] = range(logits.shape[1])
                 else:
-                    targets: Iterable[int] = self.targets
+                    current_targets: Iterable[int] = self.targets
                 logits = logits.sum(dim=0)
 
                 # TODO: find a way to compute gradients for all targets simultaneously
 
                 targets_gradients = []
-                for t in targets:
+                for t in current_targets:
                     # sum over samples but compute the gradients for each target separately
                     with logits[t].backward(retain_graph=True):
                         # compute the gradient of the concept activations
