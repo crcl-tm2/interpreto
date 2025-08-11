@@ -64,7 +64,7 @@ class GradientShapPerturbator(LinearInterpolationPerturbator):
 
         baseline = baseline.unsqueeze(0).expand(b, *baseline.shape)  # (b, l, d)
         baseline = baseline.unsqueeze(0).repeat(self.n_perturbations, 1, 1, 1)  # (n, b, l, d)
-        baseline += torch.randn_like(baseline) * self.std  # bruit
+        baseline += torch.randn_like(baseline) * self.std  # noise
 
         return baseline
 
