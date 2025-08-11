@@ -57,7 +57,7 @@ class IntegratedGradients(MultitaskExplainerMixin, AttributionExplainer):
     Examples:
         >>> from interpreto import IntegratedGradients
         >>> method = IntegratedGradients(model=model, tokenizer=tokenizer,
-        >>>                              batch_size=4, n_interpolations=50)
+        >>>                              batch_size=4, n_perturbations=50)
         >>> explanations = method.explain(model_inputs=text)
     """
 
@@ -71,7 +71,7 @@ class IntegratedGradients(MultitaskExplainerMixin, AttributionExplainer):
         device: torch.device | None = None,
         inference_mode: Callable[[torch.Tensor], torch.Tensor] = InferenceModes.LOGITS,
         input_x_gradient: bool = False,
-        n_interpolations: int = 10,
+        n_perturbations: int = 10,
         baseline: torch.Tensor | float | None = None,
     ):
         """
@@ -93,11 +93,11 @@ class IntegratedGradients(MultitaskExplainerMixin, AttributionExplainer):
                 It can be either one of LOGITS, SOFTMAX, or LOG_SOFTMAX. Use InferenceModes to choose the appropriate mode.
             input_x_gradient (bool, optional): If True, multiplies the input embeddings with
                 their gradients before aggregation. Defaults to ``False``.
-            n_interpolations (int): the number of interpolations to generate
+            n_perturbations (int): the number of interpolations to generate
             baseline (torch.Tensor | float | None): the baseline to use for the interpolations
         """
         perturbator = LinearInterpolationPerturbator(
-            inputs_embedder=model.get_input_embeddings(), baseline=baseline, n_perturbations=n_interpolations
+            inputs_embedder=model.get_input_embeddings(), baseline=baseline, n_perturbations=n_perturbations
         )
         super().__init__(
             model=model,

@@ -71,7 +71,7 @@ class GradientShap(MultitaskExplainerMixin, AttributionExplainer):
         device: torch.device | None = None,
         inference_mode: Callable[[torch.Tensor], torch.Tensor] = InferenceModes.LOGITS,
         input_x_gradient: bool = False,
-        n_interpolations: int = 10,
+        n_perturbations: int = 10,
         baseline: torch.Tensor | float | None = None,
         noise_level: float = 0.1,
     ) -> None:
@@ -94,14 +94,14 @@ class GradientShap(MultitaskExplainerMixin, AttributionExplainer):
                 It can be either one of LOGITS, SOFTMAX, or LOG_SOFTMAX. Use InferenceModes to choose the appropriate mode.
             input_x_gradient (bool, optional): If True, multiplies the input embeddings with
                 their gradients before aggregation. Defaults to ``False``.
-            n_interpolations (int): the number of interpolations to generate
+            n_perturbations (int): the number of interpolations to generate
             baseline (torch.Tensor | float | None): the baseline to use for the interpolations
             noise_level (float): the standard deviation of the noise added to the baseline
         """
         perturbator = GradientShapPerturbator(
             inputs_embedder=model.get_input_embeddings(),
             baseline=baseline,
-            n_perturbations=n_interpolations,
+            n_perturbations=n_perturbations,
             std=noise_level,
         )
         super().__init__(

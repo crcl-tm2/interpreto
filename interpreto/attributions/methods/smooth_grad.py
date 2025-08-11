@@ -59,7 +59,7 @@ class SmoothGrad(MultitaskExplainerMixin, AttributionExplainer):
     Examples:
         >>> from interpreto import Smoothgrad
         >>> method = Smoothgrad(model, tokenizer, batch_size=4,
-        >>>                     n_interpolations=50, noise_level=0.01)
+        >>>                     n_perturbations=50, noise_level=0.01)
         >>> explanations = method.explain(text)
     """
 
@@ -73,7 +73,7 @@ class SmoothGrad(MultitaskExplainerMixin, AttributionExplainer):
         device: torch.device | None = None,
         inference_mode: Callable[[torch.Tensor], torch.Tensor] = InferenceModes.LOGITS,
         input_x_gradient: bool = False,
-        n_interpolations: int = 10,  # TODO: find better name
+        n_perturbations: int = 10,  # TODO: find better name
         noise_level: float = 0.1,
     ):
         """
@@ -95,11 +95,11 @@ class SmoothGrad(MultitaskExplainerMixin, AttributionExplainer):
                 It can be either one of LOGITS, SOFTMAX, or LOG_SOFTMAX. Use InferenceModes to choose the appropriate mode.
             input_x_gradient (bool, optional): If True, multiplies the input embeddings with
                 their gradients before aggregation. Defaults to ``False``.
-            n_interpolations (int): the number of interpolations to generate
+            n_perturbations (int): the number of interpolations to generate
             noise_level (float): standard deviation of the Gaussian noise to add to the inputs
         """
         perturbator = GaussianNoisePerturbator(
-            inputs_embedder=model.get_input_embeddings(), n_perturbations=n_interpolations, std=noise_level
+            inputs_embedder=model.get_input_embeddings(), n_perturbations=n_perturbations, std=noise_level
         )
 
         super().__init__(
