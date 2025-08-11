@@ -163,7 +163,7 @@ class AttributionExplainer:
         granularity_aggregation_strategy: GranularityAggregationStrategy = GranularityAggregationStrategy.MEAN,
         inference_mode: Callable[[torch.Tensor], torch.Tensor] = InferenceModes.LOGITS,  # TODO: add to all classes
         use_gradient: bool = False,
-        input_x_gradient: bool = False,
+        input_x_gradient: bool = True,
     ) -> None:
         """
         Initializes the AttributionExplainer.
@@ -190,7 +190,7 @@ class AttributionExplainer:
                 It can be either one of LOGITS, SOFTMAX, or LOG_SOFTMAX. Use InferenceModes to choose the appropriate mode.
             use_gradient (bool, optional): If True, computes gradients instead of inference for targeted explanations.
             input_x_gradient (bool, optional): If True and ``use_gradient`` is set, multiplies the input embeddings
-                with their gradients before reducing them. Defaults to ``False``.
+                with their gradients before reducing them. Defaults to ``True``.
         """
         self.use_gradient = use_gradient
         self.input_x_gradient = input_x_gradient

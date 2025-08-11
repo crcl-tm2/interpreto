@@ -70,7 +70,7 @@ attribution_method_kwargs = {
     },
     VarGrad: {
         "inference_mode": InferenceModes.LOG_SOFTMAX,
-        "input_x_gradient": True,
+        "input_x_gradient": False,
         "n_perturbations": 2,
         "noise_std": 0.05,
     },
