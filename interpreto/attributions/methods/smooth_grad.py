@@ -47,6 +47,7 @@ class SmoothGrad(MultitaskExplainerMixin, AttributionExplainer):
     over multiple noisy versions of the input. The result is a smoothed importance score for each token.
 
     Procedure:
+
     - Generate multiple perturbed versions of the input by adding noise (Gaussian) to the input embeddings.
     - For each noisy input, compute the gradient of the output with respect to the embeddings.
     - Average the gradients across all samples.

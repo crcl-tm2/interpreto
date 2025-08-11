@@ -47,6 +47,7 @@ class SquareGrad(MultitaskExplainerMixin, AttributionExplainer):
     SquareGrad averages the square of the gradient.
 
     Procedure:
+
     - Generate multiple perturbed versions of the input by adding noise (Gaussian) to the input embeddings.
     - For each noisy input, compute the gradient of the output with respect to the embeddings.
     - Average the square of the gradients across all samples.

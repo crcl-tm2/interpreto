@@ -51,6 +51,7 @@ class VarGrad(MultitaskExplainerMixin, AttributionExplainer):
     thus potentially highlighting areas where explanations may be less reliable or more fragile.
 
     Procedure:
+
     - Generate multiple perturbed versions of the input by adding noise (Gaussian) to the input embeddings.
     - For each noisy input, compute the gradient of the output with respect to the embeddings.
     - Compute the element-wise variance of the gradient values across these samples.

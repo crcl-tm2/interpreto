@@ -45,6 +45,7 @@ class Saliency(MultitaskExplainerMixin, AttributionExplainer):
     with respect to its input embeddings to estimate which input tokens most influence the output.
 
     Procedure:
+
     - Pass the input through the model to obtain an output (e.g., class logit, token probability).
     - Compute the gradient of the output with respect to the input embeddings.
     - For each token, reduce the gradient vector (e.g., via norm with the embedding) to obtain a scalar importance score.
