@@ -15,13 +15,16 @@ nav:
     - Attribution Explainers:
       - Overview: api/attributions/overview.md
       - Methods:
+        - GradientShap: api/attributions/methods/gradient_shap.md
+        - IntegratedGradients: api/attributions/methods/integrated_gradients.md
         - KernelShap: api/attributions/methods/kernelshap.md
         - Lime: api/attributions/methods/lime.md
-        - IntegratedGradients: api/attributions/methods/integrated_gradients.md
         - Occlusion: api/attributions/methods/occlusion.md
         - Saliency: api/attributions/methods/saliency.md
         - SmoothGrad: api/attributions/methods/smoothgrad.md
+        - SquareGrad: api/attributions/methods/squaregrad.md
         - Sobol: api/attributions/methods/sobol.md
+        - VarGrad: api/attributions/methods/vargrad.md
       - Metrics:
         - Overview: api/attributions/metrics/overview.md
     - Concept Explainers:
