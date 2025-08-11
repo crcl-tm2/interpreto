@@ -30,6 +30,7 @@ import torch
 from interpreto.attributions.perturbations.linear_interpolation_perturbation import (
     LinearInterpolationPerturbator,
 )
+from interpreto.typing import TensorBaseline
 
 
 class GradientShapPerturbator(LinearInterpolationPerturbator):
@@ -38,15 +39,21 @@ class GradientShapPerturbator(LinearInterpolationPerturbator):
     and in the baseline, to approximate the expectation over multiple noisy baselines and paths.
     """
 
-    def __init__(self, inputs_embedder=None, baseline=None, n_perturbations=10, std=0.1):
+    def __init__(
+        self,
+        inputs_embedder: torch.nn.Module | None = None,
+        baseline: TensorBaseline = None,
+        n_perturbations: int = 10,
+        std: float = 0.1,
+    ):
         """
         Initializes the GradientShapPerturbator.
 
         Args:
-            inputs_embedder: Optional module to transform inputs into embeddings.
-            baseline: The reference embedding (can be a tensor, float, int, or None).
-            n_perturbations: Number of random samples for interpolation.
-            std: Standard deviation of the Gaussian noise added to the baseline.
+            inputs_embedder (torch.nn.Module, optional): Optional module to transform inputs into embeddings. Defaults to None.
+            baseline (TensorBaseline, optional): The reference embedding (can be a tensor, float, int, or None). Defaults to None.
+            n_perturbations (int, optional): Number of random samples for interpolation. Defaults to 10.
+            std (float, optional): Standard deviation of the Gaussian noise added to the baseline. Defaults to 0.1.
         """
         super().__init__(inputs_embedder=inputs_embedder, baseline=baseline, n_perturbations=n_perturbations)
         self.std = std
@@ -60,10 +67,9 @@ class GradientShapPerturbator(LinearInterpolationPerturbator):
         """
         baseline = self.adjust_baseline(self.baseline, embeddings)
         baseline = baseline.to(embeddings.device)
-        b = embeddings.shape[0]
 
-        baseline = baseline.unsqueeze(0).expand(b, *baseline.shape)  # (b, l, d)
-        baseline = baseline.unsqueeze(0).repeat(self.n_perturbations, 1, 1, 1)  # (n, b, l, d)
+        baseline = baseline.unsqueeze(0).expand(1, *baseline.shape)  # (1, l, d)
+        baseline = baseline.unsqueeze(0).repeat(self.n_perturbations, 1, 1, 1)  # (p, 1, l, d)
         baseline += torch.randn_like(baseline) * self.std  # noise
 
         return baseline
