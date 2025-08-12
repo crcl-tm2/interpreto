@@ -419,23 +419,22 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
         tqdm_bar: bool = True,
         batch_size: int | None = None,
     ) -> list[Float[torch.Tensor, "t g c"]]:
-        # TODO: find a way for latex notations to work.
         """
         Compute the gradients of the predictions with respect to the concepts.
 
         To clarify what this function does, lets detail some notations.
-        Suppose the initial model was splitted such that $f = g o h$.
+        Suppose the initial model was splitted such that $f = g \\circ h$.
         Hence the concept model was fitted on $A = h(X)$ with $X$ a dataset of samples.
-        The resulting concept model encoders and decoders are noted $p$ and $p^{-1}$.
-        $p$ can be seen as projections from the latent space to the concept space.
-        Hence, the function going from the inputs to the concepts is $f_{ic} = p o h$
-        and the function going from the concepts to the outputs is $f_{co} = g o p^-1$.
+        The resulting concept model encoders and decoders are noted $t$ and $t^{-1}$.
+        $t$ can be seen as projections from the latent space to the concept space.
+        Hence, the function going from the inputs to the concepts is $f_{ic} = t \\circ h$
+        and the function going from the concepts to the outputs is $f_{co} = g \\circ t^-1$.
 
-        Given a set of samples $X$, and the functions $(h, p, p^{-1}, g)$
-        This function first compute $C = p(A) = p o h(X)$, then returns $\nabla{f_{co}}(C)$.
+        Given a set of samples $X$, and the functions $(h, t, t^{-1}, g)$
+        This function first compute $C = t(A) = t \\circ h(X)$, then returns $\\nabla{f_{co}}(C)$.
 
-        In practice all computations are done by `ModelWithSplitPoints.get_concepts_output_gradients`,
-        which relies on NNsight. The current method only forwards the $p$ and $p^{-1}$,
+        In practice all computations are done by `ModelWithSplitPoints.get_concept_output_gradients`,
+        which relies on NNsight. The current method only forwards the $t$ and $t^{-1}$,
         respectively `self.encode_activations` and `self.decode_concepts` methods.
 
         Args:
@@ -497,7 +496,7 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
             concepts_x_gradients (bool):
                 If the resulting gradients should be multiplied by the concepts activations.
                 True by default (similarly to attributions), because of mathematical properties.
-                Therefore the out put is $C * \nabla{f_{co}}(C)$.
+                Therefore the out put is $C * \\nabla{f_{co}}(C)$.
 
             tqdm_bar (bool):
                 Whether to display a progress bar.
@@ -518,7 +517,7 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
         self.concept_model.to(self.model_with_split_points.device)
 
         # forward all computations to
-        gradients = self.model_with_split_points.get_concepts_output_gradients(
+        gradients = self.model_with_split_points.get_concept_output_gradients(
             inputs=inputs,
             targets=targets,
             encode_activations=self.encode_activations,
