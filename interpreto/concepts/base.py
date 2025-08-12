@@ -513,6 +513,12 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
                     Tensor shape: (t, g, c) with t the target dimension, g the number of granularity elements in one input, and c the number of
                     concepts.
         """
+        if not self.has_differentiable_concept_decoder:
+            raise ValueError(
+                "The concept decoder of this explainer is not differentiable. This is required to compute concept-to-output gradients. "
+                f"Current explainer class: {self.__class__.__name__}."
+            )
+
         # put everything on device
         self.concept_model.to(self.model_with_split_points.device)
 
