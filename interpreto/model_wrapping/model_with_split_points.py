@@ -702,6 +702,13 @@ class ModelWithSplitPoints(LanguageModel):
             RuntimeError: If the activations are a tuple, but we were not able to determine which element is the hidden state.
         """
         if isinstance(activations, torch.Tensor):
+            if activations.dim() != 3:
+                raise ValueError(
+                    f"Invalid activations for split point '{split_point}'. "
+                    f"Expected a 3D tensor of shape (n, l, d), "
+                    f"got a tensor of shape {activations.shape}. "
+                    "It is recommended to look for another split point."
+                )
             return activations
 
         if not isinstance(activations, tuple):
