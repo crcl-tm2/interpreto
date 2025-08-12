@@ -433,7 +433,7 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
         Given a set of samples $X$, and the functions $(h, t, t^{-1}, g)$
         This function first compute $C = t(A) = t \\circ h(X)$, then returns $\\nabla{f_{co}}(C)$.
 
-        In practice all computations are done by `ModelWithSplitPoints.get_concept_output_gradients`,
+        In practice all computations are done by `ModelWithSplitPoints._get_concept_output_gradients`,
         which relies on NNsight. The current method only forwards the $t$ and $t^{-1}$,
         respectively `self.encode_activations` and `self.decode_concepts` methods.
 
@@ -517,7 +517,7 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
         self.concept_model.to(self.model_with_split_points.device)
 
         # forward all computations to
-        gradients = self.model_with_split_points.get_concept_output_gradients(
+        gradients = self.model_with_split_points._get_concept_output_gradients(
             inputs=inputs,
             targets=targets,
             encode_activations=self.encode_activations,

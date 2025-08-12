@@ -312,7 +312,7 @@ def test_get_activation_and_gradient_with_gpt2(gpt2_model, gpt2_tokenizer, sente
 
 def get_activation_and_gradient(model, tokenizer, split_point, sentences):
     """
-    Test that the `get_activations` and `get_concept_output_gradients` methods return the expected shapes.
+    Test that the `get_activations` and `_get_concept_output_gradients` methods return the expected shapes.
     """
     # ----------------------------
     # Add a padding token for gpt2
@@ -366,7 +366,7 @@ def get_activation_and_gradient(model, tokenizer, split_point, sentences):
     encoder_weights = decoder_weights.T
 
     # ---------------------------------------------------------------------------------
-    # Test get_activations and get_concept_output_gradients for all granularity levels
+    # Test get_activations and _get_concept_output_gradients for all granularity levels
     for granularity, expected_shape in granularities_expected_shapes.items():
         # ---------------
         # Get activations
@@ -392,7 +392,7 @@ def get_activation_and_gradient(model, tokenizer, split_point, sentences):
         else:
             aggregations = [None]
         for aggregation in aggregations:
-            grads_list = mwsp.get_concept_output_gradients(
+            grads_list = mwsp._get_concept_output_gradients(
                 sentences,
                 encode_activations=lambda x: x @ encoder_weights,
                 decode_activations=lambda x: x @ decoder_weights,
@@ -567,7 +567,7 @@ def evaluate_activations_and_gradients(model_name, sentences: list[str]):
             # ALL and SAMPLE granularities are not compatible with gradients
             continue
 
-        splitted_model.get_concept_output_gradients(
+        splitted_model._get_concept_output_gradients(
             sentences,
             encode_activations=lambda x: x @ encoder_weights,
             decode_activations=lambda x: x @ decoder_weights,

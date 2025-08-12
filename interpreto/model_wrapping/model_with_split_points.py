@@ -415,7 +415,7 @@ class ModelWithSplitPoints(LanguageModel):
         """Get the indices of the granularity level, might be None.
 
         The indices correspond to how Granularity work in general in Interpreto.
-        Called by the `get_activations` and `get_concept_output_gradients` methods.
+        Called by the `get_activations` and `_get_concept_output_gradients` methods.
         They are used to select the activations through the `_apply_selection_strategy` method.
         But also to put back the activations through the `_reintegrate_selected_activations` method.
 
@@ -997,7 +997,7 @@ class ModelWithSplitPoints(LanguageModel):
         return activations  # type: ignore
 
     @jaxtyped(typechecker=beartype)
-    def get_concept_output_gradients(  # noqa: PLR0912  # ignore too many branches
+    def _get_concept_output_gradients(  # noqa: PLR0912  # ignore too many branches
         self,
         inputs: list[str] | torch.Tensor | BatchEncoding,
         encode_activations: Callable[[LatentActivations], ConceptsActivations],
