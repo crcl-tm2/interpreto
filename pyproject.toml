@@ -72,6 +72,7 @@ dependencies = [
   "jaxtyping<=0.2.36",
   "beartype",
   "mknotebooks",
+  "pymdown-extensions",
   "nvidia-cublas-cu11>=11.10.3.66; sys_platform=='Linux'",
   "nvidia-cuda-cupti-cu11>=11.7.101; sys_platform=='Linux'",
   "nvidia-cuda-nvrtc-cu11>=11.7.99; sys_platform=='Linux'",
