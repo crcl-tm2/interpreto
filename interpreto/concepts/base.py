@@ -521,7 +521,7 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
             inputs=inputs,
             targets=targets,
             encode_activations=self.encode_activations,
-            decode_activations=self.decode_concepts,
+            decode_concepts=self.decode_concepts,
             split_point=split_point,
             activation_granularity=activation_granularity,
             aggregation_strategy=aggregation_strategy,

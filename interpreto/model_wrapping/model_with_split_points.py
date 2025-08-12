@@ -690,7 +690,6 @@ class ModelWithSplitPoints(LanguageModel):
 
     def _manage_output_tuple(self, activations: torch.Tensor | tuple[torch.Tensor], split_point: str) -> torch.Tensor:
         """
-
         Handles the case in which the model has a tuple of outputs,
         and we need to know which element is the hidden state.
 
@@ -1002,7 +1001,7 @@ class ModelWithSplitPoints(LanguageModel):
         self,
         inputs: list[str] | torch.Tensor | BatchEncoding,
         encode_activations: Callable[[LatentActivations], ConceptsActivations],
-        decode_activations: Callable[[ConceptsActivations], LatentActivations],
+        decode_concepts: Callable[[ConceptsActivations], LatentActivations],
         targets: list[int] | None = None,
         split_point: str | None = None,
         activation_granularity: ActivationGranularity = AG.TOKEN,
@@ -1187,7 +1186,7 @@ class ModelWithSplitPoints(LanguageModel):
                     c = concept_activations.shape[-1]
 
                     # decode concepts back into activations
-                    decoded_activations: Float[torch.Tensor, ng, d] = decode_activations(concept_activations)
+                    decoded_activations: Float[torch.Tensor, ng, d] = decode_concepts(concept_activations)
 
                     # reintegrate decoded activations into the original activations
                     reconstructed_activations: Float[torch.Tensor, n, l, d] = self._reintegrate_selected_activations(

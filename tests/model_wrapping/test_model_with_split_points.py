@@ -395,7 +395,7 @@ def get_activation_and_gradient(model, tokenizer, split_point, sentences):
             grads_list = mwsp._get_concept_output_gradients(
                 sentences,
                 encode_activations=lambda x: x @ encoder_weights,
-                decode_activations=lambda x: x @ decoder_weights,
+                decode_concepts=lambda x: x @ decoder_weights,
                 activation_granularity=granularity,
                 aggregation_strategy=aggregation,
                 targets=None,
@@ -570,7 +570,7 @@ def evaluate_activations_and_gradients(model_name, sentences: list[str]):
         splitted_model._get_concept_output_gradients(
             sentences,
             encode_activations=lambda x: x @ encoder_weights,
-            decode_activations=lambda x: x @ decoder_weights,
+            decode_concepts=lambda x: x @ decoder_weights,
             activation_granularity=strategy,
             targets=[0],
         )
