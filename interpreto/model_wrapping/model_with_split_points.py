@@ -497,6 +497,36 @@ class ModelWithSplitPoints(LanguageModel):
         In theory, we could use the same code for most granularities thanks to the `granularity_indices` argument.
         However, we do special cases to go faster for some granularities.
 
+        The way activations indices are treated is far from trivial. Here is an example:
+        This indices are the same we defined in `Granularity`, lets take an example with the `WORD` granularity.
+
+        >>> example:list[str] = [
+        ...     "A BC DEF",
+        ...     "abc de f"
+        ... ]
+        >>> indices = Granularity.get_indices(example, Granularity.WORD, tokenizer)
+        >>> indices
+        [
+             [ [0], [1, 2], [3, 4, 5] ],
+             [ [0, 1, 2], [3, 4], [5] ],
+        ]
+
+        Here, the word `"abc"` belongs to the second sample;
+        therefore, we need to look at the second element of the `indices` list.
+        `"abc"` is the first word, thus the first granular element of this second sample.
+        Therefore, `[0, 1, 2]`,
+        which tells us that the word `"abc"` is formed with the first three tokens of the second sample.
+
+        If we had to use this information to obtain the activations of the word `"abc"`,
+        we would look at the activations of shape (n, l, d).
+        Then extract the elements of interest by `activations[1, [0, 1, 2],:]`,
+        the second sample, first three tokens, all of the model dimensions.
+        The final step would be the aggregation over the token dimension.
+
+        By applying this operation to all words, we would obtain six activation vectors, as we have six words.
+        These are stacked to build the granular activations of shape `(ng, d)`
+        where `ng` is the total number of granular elements over the n provided samples.
+
         Args:
             activations (InterventionProxy): Activations to apply selection strategy to.
             activation_granularity (ActivationGranularity): Selection strategy to apply. see :meth:`ModelWithSplitPoints.get_activations`.
