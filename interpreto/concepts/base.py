@@ -421,7 +421,7 @@ class ConceptAutoEncoderExplainer(ConceptEncoderExplainer[BaseDictionaryLearning
     ) -> list[Float[torch.Tensor, "t g c"]]:
         """ """
         self.concept_model.to(self.model_with_split_points.device)
-        gradients = self.model_with_split_points.get_concepts_output_gradients(
+        gradients = self.model_with_split_points.get_concept_output_gradients(
             inputs=inputs,
             targets=targets,
             encode_activations=self.encode_activations,

@@ -34,8 +34,11 @@ from transformers import (
     AutoTokenizer,
 )
 
-from interpreto import Granularity, ModelWithSplitPoints
+from interpreto import Granularity
+from interpreto import ModelWithSplitPoints as MWSP
 from interpreto.model_wrapping.model_with_split_points import ActivationGranularity, InitializationError
+
+AG = MWSP.activation_granularities
 
 BERT_SPLIT_POINTS = [
     "cls.predictions.transform.LayerNorm",
@@ -60,14 +63,14 @@ GRANULARITIES = [
 ]
 
 AGGREGATIONS = [
-    ModelWithSplitPoints.aggregation_strategies.MEAN,
-    ModelWithSplitPoints.aggregation_strategies.SUM,
-    ModelWithSplitPoints.aggregation_strategies.MAX,
-    ModelWithSplitPoints.aggregation_strategies.SIGNED_MAX,
+    MWSP.aggregation_strategies.MEAN,
+    MWSP.aggregation_strategies.SUM,
+    MWSP.aggregation_strategies.MAX,
+    MWSP.aggregation_strategies.SIGNED_MAX,
 ]
 
 
-def test_order_split_points(multi_split_model: ModelWithSplitPoints):
+def test_order_split_points(multi_split_model: MWSP):
     """
     Test the sort_paths method upon split assignment
     """
@@ -88,13 +91,11 @@ def test_loading_possibilities(bert_model, bert_tokenizer, gpt2_model, gpt2_toke
     # BERT
     # Load model with split points
     with pytest.raises(ValueError):  # tokenizer is not set
-        ModelWithSplitPoints(bert_model, "bert.encoder.layer.1")
-    model_with_split_points = ModelWithSplitPoints(
-        bert_model, split_points="bert.encoder.layer.1", tokenizer=bert_tokenizer
-    )
+        MWSP(bert_model, "bert.encoder.layer.1")
+    model_with_split_points = MWSP(bert_model, split_points="bert.encoder.layer.1", tokenizer=bert_tokenizer)
     assert model_with_split_points.split_points == ["bert.encoder.layer.1"]
     # Load model without split points
-    model_without_split_points = ModelWithSplitPoints(
+    model_without_split_points = MWSP(
         "bert-base-cased",
         automodel=AutoModelForMaskedLM,  # type: ignore
         split_points="bert.encoder.layer.1",
@@ -105,13 +106,11 @@ def test_loading_possibilities(bert_model, bert_tokenizer, gpt2_model, gpt2_toke
     # GPT2
     # Load model with split points
     with pytest.raises(ValueError):  # tokenizer is not set
-        ModelWithSplitPoints(gpt2_model, "transformer.h.1")
-    model_with_split_points = ModelWithSplitPoints(
-        gpt2_model, split_points="transformer.h.1", tokenizer=gpt2_tokenizer
-    )
+        MWSP(gpt2_model, "transformer.h.1")
+    model_with_split_points = MWSP(gpt2_model, split_points="transformer.h.1", tokenizer=gpt2_tokenizer)
     assert model_with_split_points.split_points == ["transformer.h.1"]
     # Load model without split points
-    model_without_split_points = ModelWithSplitPoints(
+    model_without_split_points = MWSP(
         "gpt2",
         automodel=AutoModelForCausalLM,  # type: ignore
         split_points="transformer.h.1",
@@ -120,7 +119,7 @@ def test_loading_possibilities(bert_model, bert_tokenizer, gpt2_model, gpt2_toke
 
     with pytest.raises(InitializationError):
         # Model id with no auto class
-        ModelWithSplitPoints("gpt2", "transformer.h.1")
+        MWSP("gpt2", "transformer.h.1")
 
 
 def test_pad_and_concat():
@@ -129,8 +128,8 @@ def test_pad_and_concat():
         torch.zeros(1, 2, 3),
         torch.ones(1, 3, 3),
     ]
-    out_right = ModelWithSplitPoints.pad_and_concat(tensors, "right", 0.5)
-    out_left = ModelWithSplitPoints.pad_and_concat(tensors, "left", -1.0)
+    out_right = MWSP._pad_and_concat(tensors, "right", 0.5)
+    out_left = MWSP._pad_and_concat(tensors, "left", -1.0)
 
     assert out_right.shape == (2, 3, 3)
     assert out_right[0, -1].tolist() == [0.5, 0.5, 0.5]
@@ -140,7 +139,7 @@ def test_pad_and_concat():
 
 def test_manage_output_tuple():
     """Ensure ``_manage_output_tuple`` extracts the 3-D tensor from a tuple."""
-    model = ModelWithSplitPoints(
+    model = MWSP(
         "hf-internal-testing/tiny-random-bert",
         split_points=["bert.encoder.layer.1.output"],
         automodel=AutoModelForSequenceClassification,  # type: ignore
@@ -155,9 +154,9 @@ def test_manage_output_tuple():
         model._manage_output_tuple(42, "dummy")  # type: ignore
 
 
-def test_get_split_activations(splitted_encoder_ml: ModelWithSplitPoints, sentences: list[str]):
+def test_get_split_activations(splitted_encoder_ml: MWSP, sentences: list[str]):
     """Test activation extraction for a specific split."""
-    acts = splitted_encoder_ml.get_activations(sentences)
+    acts = splitted_encoder_ml.get_activations(sentences, activation_granularity=AG.ALL)
     split = splitted_encoder_ml.split_points[0]
     extracted = splitted_encoder_ml.get_split_activations(acts, split)
     assert torch.equal(extracted, acts[split])
@@ -169,7 +168,7 @@ def test_get_split_activations(splitted_encoder_ml: ModelWithSplitPoints, senten
         splitted_encoder_ml.get_split_activations(42)  # type: ignore
 
 
-def test_get_latent_shape(splitted_encoder_ml: ModelWithSplitPoints, sentences: list[str]):
+def test_get_latent_shape(splitted_encoder_ml: MWSP, sentences: list[str]):
     """Shapes returned by ``get_latent_shape`` match activation shapes."""
     shapes = splitted_encoder_ml.get_latent_shape(sentences)
     acts = splitted_encoder_ml.get_activations(sentences, activation_granularity=ActivationGranularity.ALL)
@@ -203,7 +202,7 @@ def activation_selection_and_reintegration(model, tokenizer, split_point, senten
     if not hasattr(tokenizer, "pad_token") or tokenizer.pad_token is None:
         tokenizer.add_special_tokens({"pad_token": "[PAD]"})
         model.resize_token_embeddings(len(tokenizer))
-    mwsp = ModelWithSplitPoints(
+    mwsp = MWSP(
         model,
         tokenizer=tokenizer,
         split_points=[split_point],
@@ -313,7 +312,7 @@ def test_get_activation_and_gradient_with_gpt2(gpt2_model, gpt2_tokenizer, sente
 
 def get_activation_and_gradient(model, tokenizer, split_point, sentences):
     """
-    Test that the `get_activations` and `get_concepts_output_gradients` methods return the expected shapes.
+    Test that the `get_activations` and `get_concept_output_gradients` methods return the expected shapes.
     """
     # ----------------------------
     # Add a padding token for gpt2
@@ -324,7 +323,7 @@ def get_activation_and_gradient(model, tokenizer, split_point, sentences):
     # --------------------------------------------------------
     # Setup the model with split points, tokenizer, and tokens
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    mwsp = ModelWithSplitPoints(
+    mwsp = MWSP(
         model,
         tokenizer=tokenizer,
         split_points=[split_point],
@@ -367,7 +366,7 @@ def get_activation_and_gradient(model, tokenizer, split_point, sentences):
     encoder_weights = decoder_weights.T
 
     # ---------------------------------------------------------------------------------
-    # Test get_activations and get_concepts_output_gradients for all granularity levels
+    # Test get_activations and get_concept_output_gradients for all granularity levels
     for granularity, expected_shape in granularities_expected_shapes.items():
         # ---------------
         # Get activations
@@ -393,7 +392,7 @@ def get_activation_and_gradient(model, tokenizer, split_point, sentences):
         else:
             aggregations = [None]
         for aggregation in aggregations:
-            grads_list = mwsp.get_concepts_output_gradients(
+            grads_list = mwsp.get_concept_output_gradients(
                 sentences,
                 encode_activations=lambda x: x @ encoder_weights,
                 decode_activations=lambda x: x @ decoder_weights,
@@ -409,7 +408,7 @@ def get_activation_and_gradient(model, tokenizer, split_point, sentences):
                 assert grads.shape[2] == nb_concepts  # number of concepts
 
 
-def test_activation_equivalence_batched_text_token_inputs(multi_split_model: ModelWithSplitPoints):
+def test_activation_equivalence_batched_text_token_inputs(multi_split_model: MWSP):
     """
     Test the equivalence of activations for text and token inputs
     """
@@ -419,8 +418,8 @@ def test_activation_equivalence_batched_text_token_inputs(multi_split_model: Mod
         inputs_str, return_tensors="pt", padding=True, truncation=True, return_offsets_mapping=True
     )
 
-    activations_str = multi_split_model.get_activations(inputs_str)
-    activations_tensor = multi_split_model.get_activations(inputs_tensor)
+    activations_str = multi_split_model.get_activations(inputs_str, activation_granularity=AG.ALL)
+    activations_tensor = multi_split_model.get_activations(inputs_tensor, activation_granularity=AG.ALL)
 
     for k in activations_str.keys():
         assert torch.allclose(activations_str[k], activations_tensor[k])  # type: ignore
@@ -429,20 +428,20 @@ def test_activation_equivalence_batched_text_token_inputs(multi_split_model: Mod
 @pytest.mark.parametrize(
     "strategy",
     [
-        # ModelWithSplitPoints.activation_granularities.ALL,
-        ModelWithSplitPoints.activation_granularities.CLS_TOKEN,
-        ModelWithSplitPoints.activation_granularities.ALL_TOKENS,
-        ModelWithSplitPoints.activation_granularities.TOKEN,
-        ModelWithSplitPoints.activation_granularities.WORD,
-        ModelWithSplitPoints.activation_granularities.SENTENCE,
-        ModelWithSplitPoints.activation_granularities.SAMPLE,
+        # AG.ALL,
+        AG.CLS_TOKEN,
+        AG.ALL_TOKENS,
+        AG.TOKEN,
+        AG.WORD,
+        AG.SENTENCE,
+        AG.SAMPLE,
     ],
 )
-def test_batching(splitted_encoder_ml: ModelWithSplitPoints, huge_text: list[str], strategy: ActivationGranularity):
+def test_batching(splitted_encoder_ml: MWSP, huge_text: list[str], strategy: ActivationGranularity):
     splitted_encoder_ml.get_activations(huge_text, activation_granularity=strategy)
 
 
-def test_index_by_layer_idx(multi_split_model: ModelWithSplitPoints):
+def test_index_by_layer_idx(multi_split_model: MWSP):
     """Test indexing by layer idx"""
     split_points_with_layer_idx: list = list(BERT_SPLIT_POINTS)
     split_points_with_layer_idx[1] = 1  # instead of bert.encoder.layer.1
@@ -505,13 +504,13 @@ CI_MODEL_LOADERS = [
 ]
 
 STRATEGIES = [
-    ModelWithSplitPoints.activation_granularities.ALL,
-    ModelWithSplitPoints.activation_granularities.CLS_TOKEN,
-    ModelWithSplitPoints.activation_granularities.ALL_TOKENS,
-    ModelWithSplitPoints.activation_granularities.TOKEN,
-    ModelWithSplitPoints.activation_granularities.WORD,
-    ModelWithSplitPoints.activation_granularities.SENTENCE,
-    ModelWithSplitPoints.activation_granularities.SAMPLE,
+    AG.ALL,
+    AG.CLS_TOKEN,
+    AG.ALL_TOKENS,
+    AG.TOKEN,
+    AG.WORD,
+    AG.SENTENCE,
+    AG.SAMPLE,
 ]
 
 
@@ -537,7 +536,7 @@ def evaluate_activations_and_gradients(model_name, sentences: list[str]):
         model.resize_token_embeddings(len(tokenizer))
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    splitted_model = ModelWithSplitPoints(
+    splitted_model = MWSP(
         model,
         tokenizer=tokenizer,
         split_points=ALL_MODEL_SPLIT_POINTS[model_name],
@@ -556,22 +555,19 @@ def evaluate_activations_and_gradients(model_name, sentences: list[str]):
     encoder_weights = decoder_weights.T
 
     for strategy in STRATEGIES:
-        if (
-            ALL_MODEL_LOADERS[model_name] != AutoModelForSequenceClassification
-            and strategy == ModelWithSplitPoints.activation_granularities.CLS_TOKEN
-        ):
+        if ALL_MODEL_LOADERS[model_name] != AutoModelForSequenceClassification and strategy == AG.CLS_TOKEN:
             # CLS_TOKEN is only supported for sequence classification models
             continue
         splitted_model.get_activations(sentences, activation_granularity=strategy)
 
         if strategy in [
-            ModelWithSplitPoints.activation_granularities.ALL,
-            ModelWithSplitPoints.activation_granularities.SAMPLE,
+            AG.ALL,
+            AG.SAMPLE,
         ]:
             # ALL and SAMPLE granularities are not compatible with gradients
             continue
 
-        splitted_model.get_concepts_output_gradients(
+        splitted_model.get_concept_output_gradients(
             sentences,
             encode_activations=lambda x: x @ encoder_weights,
             decode_activations=lambda x: x @ decoder_weights,
@@ -589,7 +585,7 @@ if __name__ == "__main__":
         "Testing interpreto",
     ]
 
-    splitted_encoder_ml = ModelWithSplitPoints(
+    splitted_encoder_ml = MWSP(
         "gpt2",
         split_points=2,
         automodel=AutoModelForCausalLM,  # type: ignore
@@ -597,14 +593,14 @@ if __name__ == "__main__":
         batch_size=4,
     )
 
-    splitted_encoder_ml = ModelWithSplitPoints(
+    splitted_encoder_ml = MWSP(
         "bert-base-uncased",
         split_points=["bert.encoder.layer.2.output"],
         automodel=AutoModelForSequenceClassification,  # type: ignore
         device_map="cuda",
         batch_size=4,
     )
-    multi_split_model = ModelWithSplitPoints(
+    multi_split_model = MWSP(
         "bert-base-uncased",
         split_points=[
             "cls.predictions.transform.LayerNorm",
@@ -624,7 +620,7 @@ if __name__ == "__main__":
     test_order_split_points(multi_split_model)
     test_loading_possibilities(bert_model, bert_tokenizer, gpt2_model, gpt2_tokenizer)
     test_activation_equivalence_batched_text_token_inputs(multi_split_model)
-    test_batching(splitted_encoder_ml, sentences * 10, ModelWithSplitPoints.activation_granularities.CLS_TOKEN)
+    test_batching(splitted_encoder_ml, sentences * 10, AG.CLS_TOKEN)
     evaluate_activations_and_gradients("hf-internal-testing/tiny-random-t5", sentences * 100)
     get_activation_and_gradient(bert_model, bert_tokenizer, "bert.encoder.layer.1.output", sentences)
     get_activation_and_gradient(gpt2_model, gpt2_tokenizer, "transformer.h.1.mlp", sentences)
