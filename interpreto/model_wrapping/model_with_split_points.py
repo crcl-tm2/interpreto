@@ -993,18 +993,19 @@ class ModelWithSplitPoints(LanguageModel):
         concepts_x_gradients: bool = False,
         tqdm_bar: bool = False,
         batch_size: int | None = None,
-        **kwargs,
+        model_forward_kwargs: dict[str, Any] = {},
     ) -> list[Float[torch.Tensor, "t g c"]]:
         """Get intermediate activations for all model split points
 
         :warning: This method should not be called directly. The concept explainer should be used instead.
 
         Args:
-            inputs list[str] | torch.Tensor | BatchEncoding: Inputs to the model forward pass before or after tokenization.
+            inputs list[str] | torch.Tensor | BatchEncoding:
+                Inputs to the model forward pass before or after tokenization.
                 In the case of a `torch.Tensor`, we assume a batch dimension and token ids.
-            activation_granularity (ActivationGranularity): Selection strategy for activations.
 
-                Options are:
+            activation_granularity (ActivationGranularity):
+                Selection strategy for activations. Options are:
 
                 - ``ModelWithSplitPoints.activation_granularities.CLS_TOKEN``:
                     only the first token (e.g. ``[CLS]``) activation is returned ``(batch, d_model)``.
@@ -1023,8 +1024,9 @@ class ModelWithSplitPoints(LanguageModel):
                     :class:`~interpreto.commons.granularity.Granularity.SENTENCE`.
                     Requires `spacy` to be installed.
 
-            aggregation_strategy: Strategy to aggregate token activations into larger inputs granularities.
-                Applied for `WORD`, `SENTENCE` and `SAMPLE` activation strategies.
+            aggregation_strategy:
+                Strategy to aggregate token activations into larger inputs granularities.
+                Applied for `WORD` and `SENTENCE` activation strategies.
                 Token activations of shape  n * (l, d) are aggregated on the sequence length dimension.
                 The concatenated into (ng, d) tensors.
                 Existing strategies are:
@@ -1042,8 +1044,11 @@ class ModelWithSplitPoints(LanguageModel):
                     The maximum of the absolute value of the activations multiplied by its initial sign.
                     signed_max([[-1, 0, 1, 2], [-3, 1, -2, 0]]) = [-3, 1, -2, 2]
 
-            tqdm_bar (bool): Whether to display a progress bar.
-            **kwargs: Additional keyword arguments passed to the model forward pass.
+            tqdm_bar (bool):
+                Whether to display a progress bar.
+
+            model_forward_kwargs (dict):
+                Additional keyword arguments passed to the model forward pass.
 
         Returns:
             gradients (list[torch.Tensor]): The gradients of the model output with respect to the concept activations.
@@ -1137,7 +1142,7 @@ class ModelWithSplitPoints(LanguageModel):
                 # then backward from the predictions to the concepts activations (gradients)
 
                 # all model calls use trace with nnsight
-                with self.trace(tokenized_inputs, **kwargs):
+                with self.trace(tokenized_inputs, **model_forward_kwargs):
                     curr_module = self.get(local_split_point)
                     # Handle case in which module has .output attribute, and .nns_output gets overridden instead
                     module_out_name = "nns_output" if hasattr(curr_module, "nns_output") else "output"
