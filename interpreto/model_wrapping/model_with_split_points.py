@@ -782,6 +782,7 @@ class ModelWithSplitPoints(LanguageModel):
 
                 - ``ModelWithSplitPoints.activation_granularities.ALL_TOKENS``:
                     every token activation is treated as a separate element ``(n x l, d)``.
+                    This includes special tokens such as [CLS], [SEP], [EOS], [PAD], etc.
 
                 - ``ModelWithSplitPoints.activation_granularities.TOKEN``: remove special tokens.
 
@@ -1024,10 +1025,11 @@ class ModelWithSplitPoints(LanguageModel):
                 Selection strategy for activations. Options are:
 
                 - ``ModelWithSplitPoints.activation_granularities.CLS_TOKEN``:
-                    only the first token (e.g. ``[CLS]``) activation is returned ``(batch, d_model)``.
+                    only the first token (e.g. ``[CLS]``) activation is returned ``(n, d)``.
 
                 - ``ModelWithSplitPoints.activation_granularities.ALL_TOKENS``:
-                    every token activation is treated as a separate element ``(batch x seq_len, d_model)``.
+                    every token activation is treated as a separate element ``(n x l, d)``.
+                    This includes special tokens such as [CLS], [SEP], [EOS], [PAD], etc.
 
                 - ``ModelWithSplitPoints.activation_granularities.TOKEN``: remove special tokens.
 
