@@ -475,23 +475,23 @@ ALL_MODEL_LOADERS = {
 }
 
 ALL_MODEL_SPLIT_POINTS = {
-    "hf-internal-testing/tiny-random-albert": ["albert.encoder.albert_layer_groups.1.albert_layers.0.ffn_output"],
+    "hf-internal-testing/tiny-random-albert": [1],
     "hf-internal-testing/tiny-random-bart": ["model.decoder.layers.1.fc2"],
     "hf-internal-testing/tiny-random-bert": ["bert.encoder.layer.1.output"],
     # "hf-internal-testing/tiny-random-DebertaV2Model": ["todo"],
     "hf-internal-testing/tiny-random-distilbert": ["distilbert.transformer.layer.1.ffn"],
     "hf-internal-testing/tiny-random-ElectraModel": ["electra.encoder.layer.1.output"],
-    "hf-internal-testing/tiny-random-roberta": ["roberta.encoder.layer.1.output"],
+    "hf-internal-testing/tiny-random-roberta": [1],
     "hf-internal-testing/tiny-random-t5": ["decoder.block.1.layer.2"],
     "hf-internal-testing/tiny-xlm-roberta": ["roberta.encoder.layer.1.output"],
     "hf-internal-testing/tiny-random-gpt2": ["transformer.h.1.mlp"],
-    "hf-internal-testing/tiny-random-gpt_neo": ["transformer.h.1.mlp"],
+    "hf-internal-testing/tiny-random-gpt_neo": [1],
     "hf-internal-testing/tiny-random-gptj": ["transformer.h.1.mlp"],
     "hf-internal-testing/tiny-random-CodeGenForCausalLM": ["transformer.h.1.mlp"],
     "hf-internal-testing/tiny-random-FalconModel": ["transformer.h.1.mlp"],
     "hf-internal-testing/tiny-random-Gemma3ForCausalLM": ["model.layers.1.mlp"],
     "hf-internal-testing/tiny-random-LlamaForCausalLM": ["model.layers.1.mlp"],
-    "hf-internal-testing/tiny-random-MistralForCausalLM": ["model.layers.1.mlp"],
+    "hf-internal-testing/tiny-random-MistralForCausalLM": [1],
     "hf-internal-testing/tiny-random-Starcoder2ForCausalLM": ["model.layers.1.mlp"],
 }
 
