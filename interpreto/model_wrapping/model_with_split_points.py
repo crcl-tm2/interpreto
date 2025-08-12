@@ -597,6 +597,15 @@ class ModelWithSplitPoints(LanguageModel):
         """
         Reintegrates the selected activations into the initial activations.
 
+        It is the opposite of `_apply_selection_strategy`.
+
+        It is not possible to reconstruct the latent activations from the granular activations alone.
+        For example, the `TOKEN` granularity removes the special tokens, so the reconstructed activations
+        cannot be the same as the initial activations.
+
+        Therefore this function is used to reintegrate the reconstructed activations back into the initial activations.
+        When activations were aggregated, they are unfolded (often copied) to match back the number of tokens.
+
         Args:
             initial_activations (Float[torch.Tensor, "n l d"]): The initial activations tensor.
             new_activations (Float[torch.Tensor, "n l d"] | Float[torch.Tensor, "ng d"]): The new activations tensor.
