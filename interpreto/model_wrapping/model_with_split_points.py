@@ -237,12 +237,24 @@ class ModelWithSplitPoints(LanguageModel):
             ValueError: If the `device_map` is set to 'auto' and the model is not a generation model.
             TypeError: If the `model_or_repo_id` is not a `str` or a `transformers.PreTrainedModel`.
         """
-        # error raising and sanitization prior to nnsight.LanguageModel initialization
-        model_or_repo_id, tokenizer, self.automodel = self.__sanitize_model_tokenizer(
-            model_or_repo_id=model_or_repo_id,
-            tokenizer=tokenizer,
-            automodel=automodel,
-        )
+        if isinstance(model_or_repo_id, PreTrainedModel):
+            if tokenizer is None:
+                raise InitializationError(
+                    "Tokenizer is not set. When providing a model instance, the tokenizer must be set."
+                )
+        elif isinstance(model_or_repo_id, str):  # Repository ID
+            if automodel is None:
+                raise InitializationError(
+                    "Model autoclass not found.\n"
+                    "The model class can be omitted if a pre-loaded model is passed to `model_or_repo_id` "
+                    "param.\nIf an HF Hub ID is used, the corresponding autoclass must be specified in `automodel`.\n"
+                    "Example: ModelWithSplitPoints('bert-base-uncased', automodel=AutoModelForMaskedLM, ...)"
+                )
+        else:
+            raise TypeError(
+                f"Invalid model_or_repo_id type: {type(model_or_repo_id)}. "
+                "Expected `str` or `transformers.PreTrainedModel`."
+            )
 
         # Handles model loading through nnsight.LanguageModel._load
         super().__init__(
@@ -250,7 +262,7 @@ class ModelWithSplitPoints(LanguageModel):
             *args,
             config=config,
             tokenizer=tokenizer,  # type: ignore  (under specification from NNsight)
-            automodel=self.automodel,  # type: ignore (under specification from NNsight)
+            automodel=automodel,  # type: ignore (under specification from NNsight)
             device_map=device_map,
             **kwargs,
         )
@@ -278,53 +290,6 @@ class ModelWithSplitPoints(LanguageModel):
         if self.tokenizer is None:
             raise ValueError("Tokenizer is not set. When providing a model instance, the tokenizer must be set.")
         self.output_tuple_index = output_tuple_index
-
-    def __sanitize_model_tokenizer(
-        self,
-        model_or_repo_id: str | PreTrainedModel,
-        tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast | None,
-        automodel: type[AutoModel] | None,
-    ) -> tuple[str | PreTrainedModel, PreTrainedTokenizer | PreTrainedTokenizerFast | None, type[AutoModel] | None]:
-        """
-        Sanitize the model and tokenizer inputs.
-        Ensure the model and tokenizer are valid and compatible with the `nnsight.LanguageModel` model initialization.
-
-        Args:
-            model_or_repo_id (str | transformers.PreTrainedModel): Model or repository ID.
-            tokenizer (PreTrainedTokenizer | PreTrainedTokenizerFast | None): Tokenizer to use.
-            automodel (type[AutoModel] | None): AutoModel class to use.
-
-        Returns:
-            tuple[str | PreTrainedModel, PreTrainedTokenizer, type[AutoModel] | None]: Sanitized inputs.
-        """
-        if isinstance(model_or_repo_id, PreTrainedModel):
-            if tokenizer is None:
-                raise InitializationError(
-                    "Tokenizer is not set. When providing a model instance, the tokenizer must be set."
-                )
-            return model_or_repo_id, tokenizer, automodel
-
-        if isinstance(model_or_repo_id, str):  # Repository ID
-            if automodel is None:
-                raise InitializationError(
-                    "Model autoclass not found.\n"
-                    "The model class can be omitted if a pre-loaded model is passed to `model_or_repo_id` "
-                    "param.\nIf an HF Hub ID is used, the corresponding autoclass must be specified in `automodel`.\n"
-                    "Example: ModelWithSplitPoints('bert-base-uncased', automodel=AutoModelForMaskedLM, ...)"
-                )
-
-            # NNsight.LanguageModel does not support initialization with  repo_id and non-generation autoclasses
-            if not issubclass(automodel, GenerationMixin):
-                # instantiate the tokenizer with the repository ID
-                tokenizer = AutoTokenizer.from_pretrained(model_or_repo_id)
-                # instantiate the model with the repository ID
-                model_or_repo_id = automodel.from_pretrained(model_or_repo_id)
-            return model_or_repo_id, tokenizer, automodel
-
-        raise TypeError(
-            f"Invalid model_or_repo_id type: {type(model_or_repo_id)}. "
-            "Expected `str` or `transformers.PreTrainedModel`."
-        )
 
     @property
     def split_points(self) -> list[str]:
