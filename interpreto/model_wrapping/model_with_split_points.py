@@ -35,9 +35,8 @@ from beartype import beartype
 from jaxtyping import Float, jaxtyped
 from nnsight.modeling.language import LanguageModel
 from tqdm import tqdm
-from transformers import AutoModel, AutoTokenizer, T5ForConditionalGeneration
+from transformers import AutoModel, T5ForConditionalGeneration
 from transformers.configuration_utils import PretrainedConfig
-from transformers.generation.utils import GenerationMixin
 from transformers.modeling_utils import PreTrainedModel
 from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_utils_base import BatchEncoding
@@ -261,7 +260,7 @@ class ModelWithSplitPoints(LanguageModel):
             model_or_repo_id,
             *args,
             config=config,
-            tokenizer=tokenizer,  # type: ignore  (under specification from NNsight)
+            tokenizer=tokenizer,  # type: ignore (under specification from NNsight)
             automodel=automodel,  # type: ignore (under specification from NNsight)
             device_map=device_map,
             **kwargs,
@@ -273,9 +272,6 @@ class ModelWithSplitPoints(LanguageModel):
         self._model: PreTrainedModel  # specify type of `_model` attribute from NNsight
         if self.repo_id is None:
             self.repo_id = self._model.config.name_or_path
-        # TODO: see if the `_generate()` is used, otherwise, it can be removed
-        # if self._model.__class__.__name__ not in get_supported_hf_transformer_generation_classes():
-        #     self.generator = None  # type: ignore  (NNsight do not consider classification models)
         self.batch_size = batch_size
 
         if not isinstance(model_or_repo_id, str):
@@ -316,23 +312,6 @@ class ModelWithSplitPoints(LanguageModel):
 
         # Sort split points to match execution order
         self._split_points: list[str] = sort_paths(post_conversion_split_points, model_paths=self._model_paths)
-
-    # TODO: see if this is useful
-    # def _generate(
-    #     self,
-    #     inputs: BatchEncoding,
-    #     max_new_tokens=1,
-    #     streamer: Any = None,
-    #     **kwargs,
-    # ):
-    #     if self.generator is None:
-    #         gen_classes = get_supported_hf_transformer_generation_autoclasses()
-    #         raise RuntimeError(
-    #             f"model.generate was called but model class {self._model.__class__.__name__} does not support "
-    #             "generation. Use regular forward passes for inference, or change automodel in the initialization "
-    #             f"to use a generative class. Supported classes: {', '.join(gen_classes)}."
-    #         )
-    #     super()._generate(inputs=inputs, max_new_tokens=max_new_tokens, streamer=streamer, **kwargs)
 
     @staticmethod
     def _pad_and_concat(
