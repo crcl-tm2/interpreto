@@ -629,7 +629,9 @@ class InferenceWrapper(ABC):
     def _get_gradients_from_mapping(
         self, model_inputs: TensorMapping, targets: torch.Tensor, input_x_gradient: bool = False
     ) -> torch.Tensor:  # TODO: add jaxtyping
-        model_inputs = self.embed(model_inputs)
+        if "inputs_embeds" not in model_inputs:
+            model_inputs = self.embed(model_inputs)
+        
         inputs_embeds = model_inputs["inputs_embeds"]
 
         def get_score(inputs_embeds: torch.Tensor):
@@ -638,11 +640,15 @@ class InferenceWrapper(ABC):
             )
 
         # Compute gradient of the selected logits:
-        grad_matrix = torch.autograd.functional.jacobian(get_score, inputs_embeds)  # (n, lt, n, l, d)
+        grad_matrices = []
+        for input_embeds in inputs_embeds:
+            grad_matrix_ = torch.autograd.functional.jacobian(get_score, input_embeds.unsqueeze(0))  # (1, lt, 1, l, d)
+            grad_matrices.append(grad_matrix_)
 
-        grad_matrix = grad_matrix[
-            torch.arange(grad_matrix.shape[0]), :, torch.arange(grad_matrix.shape[0])
-        ]  # (n, lt, l, d)
+        grad_matrix_cat = torch.cat(grad_matrices)
+        grad_matrix_cat = torch.nan_to_num(grad_matrix_cat, nan=0.0)
+        grad_matrix = grad_matrix_cat.squeeze()
+
         if input_x_gradient:
             grad_matrix = grad_matrix * inputs_embeds.unsqueeze(1)
 
