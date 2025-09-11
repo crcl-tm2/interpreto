@@ -1221,7 +1221,10 @@ class ModelWithSplitPoints(LanguageModel):
                         # sum over samples but compute the gradients for each target separately
                         with logits[t].backward(retain_graph=True):  # type: ignore
                             # compute the gradient of the concept activations
-                            concept_activations_grad: Float[torch.Tensor, ng, c] = concept_activations.grad  # type: ignore
+                            concept_activations_grad: Float[torch.Tensor, ng, c] = concept_activations.grad.clone()  # type: ignore
+
+                            # clean gradient for following operations
+                            concept_activations.grad.zero_()  # type: ignore
 
                             # for gradient x concepts, multiply by concepts
                             if concepts_x_gradients:
