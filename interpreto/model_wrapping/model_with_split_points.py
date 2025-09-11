@@ -312,13 +312,18 @@ class ModelWithSplitPoints(LanguageModel):
         self.batch_size = batch_size
 
         if not isinstance(model_or_repo_id, str):
+            # `device_map` is ignored by `nnsight` in this case, hence we manage it manually
             if device_map is not None:
                 if device_map == "auto":
                     raise ValueError(
                         "'auto' device_map is only supported when loading a generation model from a repository id. "
                         "Please specify a device_map, e.g. 'cuda' or 'cpu'."
                     )
+                    # pass the provided model to the specified device
                 self.to(device_map)  # type: ignore  (under specification from NNsight)
+            else:
+                # we leave the model on its device
+                pass
 
         if self.tokenizer is None:
             raise ValueError("Tokenizer is not set. When providing a model instance, the tokenizer must be set.")
@@ -1288,7 +1293,7 @@ class ModelWithSplitPoints(LanguageModel):
                     targets_gradients: Float[torch.Tensor, t, ng, d] = (
                         torch.stack(targets_gradients_list, dim=0).detach().cpu().save()  # type: ignore  (nnsight under specification)
                     )
-                    del targets_gradients_list, concept_activations, concept_activations_grad, logits, all_logits
+                    del targets_gradients_list, concept_activations, concept_activations_grad, logits, all_logits  # type: ignore (possibly unbound grad)
 
                     # split gradients for each input sentence from (t, ng, d) to n * (t, g, d)
                     start = 0
