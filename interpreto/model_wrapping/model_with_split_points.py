@@ -845,6 +845,7 @@ class ModelWithSplitPoints(LanguageModel):
 
             pad_side (str | None):
                 'left' or 'right' — side on which to apply padding along dim=1 only for ALL strategy.
+                Forced right for classification models and left for causal LMs.
 
             tqdm_bar (bool):
                 Whether to display a progress bar.
@@ -862,10 +863,13 @@ class ModelWithSplitPoints(LanguageModel):
                 for the given `inputs`.
         """
         # set default pad side value and catch unsupported cases
-        if self._model.__class__.__name__.endswith("Classification"):
-            pad_side = pad_side or "right"
+        if self._model.__class__.__name__.endswith("ForSequenceClassification"):
+            pad_side = "right"
         else:
-            pad_side = pad_side or "left"
+            if self._model.__class__.__name__.endswith("ForCausalLM"):
+                pad_side = "left"
+            else:
+                pad_side = pad_side or "left"
             if include_predicted_classes:
                 raise ValueError(
                     "`include_predicted_classes` is only supported for classification models. "
