@@ -629,27 +629,57 @@ class InferenceWrapper(ABC):
     def _get_gradients_from_mapping(
         self, model_inputs: TensorMapping, targets: torch.Tensor, input_x_gradient: bool = False
     ) -> torch.Tensor:  # TODO: add jaxtyping
-        model_inputs = self.embed(model_inputs)
+        if "inputs_embeds" not in model_inputs:
+            model_inputs = self.embed(model_inputs)
         inputs_embeds = model_inputs["inputs_embeds"]
 
-        def get_score(inputs_embeds: torch.Tensor):
+        def get_score(inputs_embeds: torch.Tensor, attention_mask, targets):
             return self.get_targeted_logits(
-                {"inputs_embeds": inputs_embeds, "attention_mask": model_inputs["attention_mask"]}, targets
+                {
+                    "inputs_embeds": inputs_embeds,
+                    "attention_mask": attention_mask,
+                },
+                targets,
             )
 
         # Compute gradient of the selected logits:
-        grad_matrix = torch.autograd.functional.jacobian(get_score, inputs_embeds)  # (n, lt, n, l, d)
+        grad_matrices = []
+        for i, input_embeds in enumerate(inputs_embeds):
+            attention_mask = model_inputs["attention_mask"][i].unsqueeze(0)
+            if len(targets.shape) == 2 and targets.shape[0] > 1:
+                current_targets = targets[i].unsqueeze(0)
+            else:
+                current_targets = targets
 
-        grad_matrix = grad_matrix[
-            torch.arange(grad_matrix.shape[0]), :, torch.arange(grad_matrix.shape[0])
-        ]  # (n, lt, l, d)
+            grad_matrix_ = torch.autograd.functional.jacobian(
+                lambda x, attention_mask=attention_mask, current_targets=current_targets: get_score(
+                    x, attention_mask, current_targets
+                ),
+                input_embeds.unsqueeze(0),
+            )  # (1, lt, 1, l, d)
+            grad_matrices.append(grad_matrix_)
+
+        grad_matrix_cat = torch.cat(grad_matrices)
+        grad_matrix_cat = torch.nan_to_num(grad_matrix_cat, nan=0.0)
+        grad_matrix = grad_matrix_cat.squeeze()
+
         if input_x_gradient:
             grad_matrix = grad_matrix * inputs_embeds.unsqueeze(1)
 
         grad_matrix = grad_matrix.abs().mean(
             dim=-1
         )  # (n, lt, l)  # average over the embedding dimension  # TODO: discuss if th average should be forced or an argument
-        return grad_matrix
+
+        if len(grad_matrix.shape) == 3:
+            return grad_matrix
+        else:
+            batch_size = inputs_embeds.shape[0]
+            target_size = 1
+            if len(targets.shape) == 1:
+                target_size = targets.shape[0]
+            elif len(targets.shape) == 2:
+                target_size = targets.shape[1]
+            return grad_matrix.view((batch_size, target_size, -1))
 
     @get_gradients.register(Iterable)  # type: ignore
     def _get_gradients_from_iterable(
